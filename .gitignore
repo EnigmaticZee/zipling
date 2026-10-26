@@ -10,3 +10,7 @@ app/Zipling.xcodeproj/project.xcworkspace/xcuserdata/
 design/icon/out/
 design/icon/icons/
 __pycache__/
+
+# Private research (not published)
+research_notes/
+reports/
