@@ -1,0 +1,15 @@
+[package]
+name = "arca-cli"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "arca"
+path = "src/main.rs"
+
+[dependencies]
+arca-core = { path = "../arca-core" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+mimalloc = { version = "0.1", default-features = false }

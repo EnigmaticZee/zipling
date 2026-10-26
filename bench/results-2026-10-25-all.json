@@ -1,0 +1,380 @@
+[
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Finder zip (ditto)",
+  "size": 68225617,
+  "compress_s": 5.764991333009675,
+  "extract_s": 0.2993208340194542,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "7-Zip ultra (7z -mx9)",
+  "size": 48688243,
+  "compress_s": 57.074166542006424,
+  "extract_s": 1.708025625004666,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "tar.zst -19 --long",
+  "size": 52599811,
+  "compress_s": 32.87500733300112,
+  "extract_s": 0.2733000419975724,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "tar.xz -9e",
+  "size": 48439068,
+  "compress_s": 99.26861316699069,
+  "extract_s": 2.1507639580231626,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca fast",
+  "size": 65737650,
+  "compress_s": 0.2623988749983255,
+  "extract_s": 0.136111957981484,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca balanced",
+  "size": 57046304,
+  "compress_s": 6.942500832985388,
+  "extract_s": 0.15822974999900907,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca max",
+  "size": 47001233,
+  "compress_s": 29.79230791699956,
+  "extract_s": 7.01188262499636,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Finder zip (ditto)",
+  "size": 24809559,
+  "compress_s": 5.186211457999889,
+  "extract_s": 6.094758416991681,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "7-Zip ultra (7z -mx9)",
+  "size": 8511179,
+  "compress_s": 24.347790750005515,
+  "extract_s": 1.1829874590039253,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "tar.zst -19 --long",
+  "size": 9288977,
+  "compress_s": 26.56358991700108,
+  "extract_s": 3.4512990420043934,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "tar.xz -9e",
+  "size": 8341500,
+  "compress_s": 71.54835879200255,
+  "extract_s": 3.5477797920175362,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca fast",
+  "size": 13546589,
+  "compress_s": 0.6697502089955378,
+  "extract_s": 0.7993862500006799,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca balanced",
+  "size": 11328593,
+  "compress_s": 2.3673531250096858,
+  "extract_s": 0.8330683340027463,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca max",
+  "size": 8290894,
+  "compress_s": 27.437317250005435,
+  "extract_s": 4.544669249997241,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Finder zip (ditto)",
+  "size": 87401193,
+  "compress_s": 5.784761415998219,
+  "extract_s": 1.963426915986929,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "7-Zip ultra (7z -mx9)",
+  "size": 54101863,
+  "compress_s": 31.551452291023452,
+  "extract_s": 1.6875525830255356,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "tar.zst -19 --long",
+  "size": 59362569,
+  "compress_s": 23.170642458018847,
+  "extract_s": 1.151312041998608,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "tar.xz -9e",
+  "size": 54352360,
+  "compress_s": 67.00483287498355,
+  "extract_s": 2.4342528749839403,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca fast",
+  "size": 72397337,
+  "compress_s": 0.4473130829865113,
+  "extract_s": 0.37209404198802076,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca balanced",
+  "size": 64510805,
+  "compress_s": 3.9251256250136066,
+  "extract_s": 0.48693554202327505,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca max",
+  "size": 49809817,
+  "compress_s": 28.366350500000408,
+  "extract_s": 1.231836041988572,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Finder zip (ditto)",
+  "size": 93315824,
+  "compress_s": 2.4966057920246385,
+  "extract_s": 0.4729484579875134,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "7-Zip ultra (7z -mx9)",
+  "size": 85192989,
+  "compress_s": 6.286426374979783,
+  "extract_s": 1.66963108399068,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "tar.zst -19 --long",
+  "size": 85722436,
+  "compress_s": 15.123906042019371,
+  "extract_s": 0.26665812500868924,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "tar.xz -9e",
+  "size": 85839764,
+  "compress_s": 43.27615383302327,
+  "extract_s": 2.0379240829788614,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca fast",
+  "size": 94999947,
+  "compress_s": 0.13657383300596848,
+  "extract_s": 0.09219349999330007,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca balanced",
+  "size": 71016525,
+  "compress_s": 2.649493959004758,
+  "extract_s": 1.5786711249966174,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca max",
+  "size": 71016342,
+  "compress_s": 2.969289500004379,
+  "extract_s": 1.4526207089948002,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Finder zip (ditto)",
+  "size": 48585799,
+  "compress_s": 1.455694834003225,
+  "extract_s": 0.6752719589858316,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "7-Zip ultra (7z -mx9)",
+  "size": 36610837,
+  "compress_s": 2.838846041006036,
+  "extract_s": 0.8373038329882547,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "tar.zst -19 --long",
+  "size": 37131608,
+  "compress_s": 8.019623833999503,
+  "extract_s": 0.4178022079868242,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "tar.xz -9e",
+  "size": 36941420,
+  "compress_s": 22.26354320801329,
+  "extract_s": 1.0960187909950037,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca fast",
+  "size": 40012792,
+  "compress_s": 0.14039041599608026,
+  "extract_s": 0.11550645797979087,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca balanced",
+  "size": 23305864,
+  "compress_s": 6.878824082989013,
+  "extract_s": 1.7585644590144511,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca max",
+  "size": 16461168,
+  "compress_s": 31.690991916984785,
+  "extract_s": 1.6474559159833007,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Finder zip (ditto)",
+  "size": 322653232,
+  "compress_s": 19.821769457979826,
+  "extract_s": 9.31730779199279,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "7-Zip ultra (7z -mx9)",
+  "size": 233409559,
+  "compress_s": 49.02559899998596,
+  "extract_s": 3.7797931660024915,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "tar.zst -19 --long",
+  "size": 244050407,
+  "compress_s": 46.47232137498213,
+  "extract_s": 5.518717917002505,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "tar.xz -9e",
+  "size": 235086044,
+  "compress_s": 97.91743795899674,
+  "extract_s": 7.2808505420107394,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca fast",
+  "size": 286764186,
+  "compress_s": 1.4895896250091027,
+  "extract_s": 1.489336040976923,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca balanced",
+  "size": 222071444,
+  "compress_s": 19.81647241601604,
+  "extract_s": 3.9369983340147883,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca max",
+  "size": 190952633,
+  "compress_s": 48.03107441600878,
+  "extract_s": 12.278552958014188,
+  "identical": true
+ }
+]

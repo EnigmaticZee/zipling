@@ -1,0 +1,110 @@
+[
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca max",
+  "size": 48645230,
+  "compress_s": 38.31865574998665,
+  "extract_s": 0.9679549579741433,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca ultra",
+  "size": 47001233,
+  "compress_s": 30.305385540996213,
+  "extract_s": 7.18120404201909,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca max",
+  "size": 8294191,
+  "compress_s": 28.804468374990392,
+  "extract_s": 1.1619055419869255,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca ultra",
+  "size": 8290894,
+  "compress_s": 28.82623712500208,
+  "extract_s": 4.559781040996313,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca max",
+  "size": 49839675,
+  "compress_s": 28.672306917025708,
+  "extract_s": 1.2366826250217855,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca ultra",
+  "size": 49809816,
+  "compress_s": 28.602847708010813,
+  "extract_s": 1.2467624580021948,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca max",
+  "size": 71016340,
+  "compress_s": 2.8094947499921545,
+  "extract_s": 1.6970601670036558,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca ultra",
+  "size": 71016342,
+  "compress_s": 3.0055542920017615,
+  "extract_s": 1.6085001250030473,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca max",
+  "size": 16461168,
+  "compress_s": 33.20512229099404,
+  "extract_s": 1.825927124998998,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca ultra",
+  "size": 16461168,
+  "compress_s": 33.40427554200869,
+  "extract_s": 1.7039174999808893,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca max",
+  "size": 192798322,
+  "compress_s": 56.07724362501176,
+  "extract_s": 5.90948999999091,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca ultra",
+  "size": 190952614,
+  "compress_s": 47.36558891701861,
+  "extract_s": 12.260100584011525,
+  "identical": true
+ }
+]

@@ -1,0 +1,218 @@
+[
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca fast",
+  "size": 286764204,
+  "compress_s": 1.5387631669873372,
+  "extract_s": 1.0785932499857154,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca balanced",
+  "size": 221462113,
+  "compress_s": 10.466818625020096,
+  "extract_s": 2.7936964580148924,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca max",
+  "size": 192798321,
+  "compress_s": 58.247205416992074,
+  "extract_s": 4.71078220801428,
+  "identical": true
+ },
+ {
+  "dataset": "mixed",
+  "raw": 735620414,
+  "tool": "Arca ultra",
+  "size": 190952615,
+  "compress_s": 45.3771865000017,
+  "extract_s": 11.343288208008744,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca fast",
+  "size": 40012791,
+  "compress_s": 0.16372450001654215,
+  "extract_s": 0.09133083300548606,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca balanced",
+  "size": 20786607,
+  "compress_s": 2.395723249996081,
+  "extract_s": 0.3363386669952888,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca max",
+  "size": 16461168,
+  "compress_s": 32.03350975000649,
+  "extract_s": 1.8840211250062566,
+  "identical": true
+ },
+ {
+  "dataset": "docs",
+  "raw": 89428138,
+  "tool": "Arca ultra",
+  "size": 16461169,
+  "compress_s": 32.013312124996446,
+  "extract_s": 1.695473416999448,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca fast",
+  "size": 94999947,
+  "compress_s": 0.1388162080256734,
+  "extract_s": 0.0647833340044599,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca balanced",
+  "size": 71016342,
+  "compress_s": 3.05351412500022,
+  "extract_s": 1.6569367500196677,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca max",
+  "size": 71016341,
+  "compress_s": 2.6976020830043126,
+  "extract_s": 1.6326419159886427,
+  "identical": true
+ },
+ {
+  "dataset": "jpeg",
+  "raw": 98428070,
+  "tool": "Arca ultra",
+  "size": 71016341,
+  "compress_s": 2.8234968750039116,
+  "extract_s": 1.577863582991995,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca fast",
+  "size": 72397339,
+  "compress_s": 0.4536498749803286,
+  "extract_s": 0.3050372910220176,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca balanced",
+  "size": 62433437,
+  "compress_s": 2.557661917002406,
+  "extract_s": 0.4575418749882374,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca max",
+  "size": 49839675,
+  "compress_s": 27.809851250000065,
+  "extract_s": 1.1884169160039164,
+  "identical": true
+ },
+ {
+  "dataset": "apps",
+  "raw": 173844185,
+  "tool": "Arca ultra",
+  "size": 49809818,
+  "compress_s": 27.804532000009203,
+  "extract_s": 1.2177712499978952,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca fast",
+  "size": 13546588,
+  "compress_s": 0.5193533749843482,
+  "extract_s": 0.5201499160029925,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca balanced",
+  "size": 11214969,
+  "compress_s": 2.2805883339897264,
+  "extract_s": 0.5604158329952043,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca max",
+  "size": 8294190,
+  "compress_s": 27.929572790977545,
+  "extract_s": 0.856102165998891,
+  "identical": true
+ },
+ {
+  "dataset": "source",
+  "raw": 161981441,
+  "tool": "Arca ultra",
+  "size": 8290894,
+  "compress_s": 28.30221850000089,
+  "extract_s": 4.231537749990821,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca fast",
+  "size": 65737653,
+  "compress_s": 0.29278604200226255,
+  "extract_s": 0.09511520800879225,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca balanced",
+  "size": 57273760,
+  "compress_s": 5.2382104999851435,
+  "extract_s": 0.1867121249961201,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca max",
+  "size": 48645229,
+  "compress_s": 37.12272841701633,
+  "extract_s": 0.9498738749825861,
+  "identical": true
+ },
+ {
+  "dataset": "silesia",
+  "raw": 211938580,
+  "tool": "Arca ultra",
+  "size": 47001232,
+  "compress_s": 29.908513083006255,
+  "extract_s": 7.356063667015405,
+  "identical": true
+ }
+]
