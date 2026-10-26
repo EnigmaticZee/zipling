@@ -2,7 +2,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 extension UTType {
-    static let arcaArchive = UTType(exportedAs: "com.observantsystems.arca-archive")
+    static let ziplingArchive = UTType(exportedAs: "com.observantsystems.zipling-archive")
 }
 
 enum Format {

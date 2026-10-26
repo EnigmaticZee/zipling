@@ -156,7 +156,7 @@ practical risk.
 * **Integrity:** BLAKE3 on every block (compressed and decoded), on every
   transformed object, and on the index itself; the `verify` command decodes
   everything without writing.
-* **Atomic writes:** archives are written to `*.arca.partial`, `fsync`ed, renamed.
+* **Atomic writes:** archives are written to `<name>.partial`, `fsync`ed, renamed.
 * **Hostile archives:** entry paths are validated (no absolute paths, `..`, NUL);
   files are opened with `O_NOFOLLOW`; nothing is written beneath a symlink the
   archive creates; symlinks are materialised last; existing files are never

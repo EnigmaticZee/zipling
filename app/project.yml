@@ -1,5 +1,5 @@
-# XcodeGen spec: run `xcodegen` in this folder to (re)generate Arca.xcodeproj.
-name: Arca
+# XcodeGen spec: run `xcodegen` in this folder to (re)generate Zipling.xcodeproj.
+name: Zipling
 options:
   bundleIdPrefix: com.observantsystems
   deploymentTarget:
@@ -12,36 +12,36 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
-  Arca:
+  Zipling:
     type: application
     platform: macOS
     sources:
-      - path: Arca
+      - path: Zipling
     info:
-      path: Arca/Info.plist
+      path: Zipling/Info.plist
       properties:
-        CFBundleName: Arca
-        CFBundleDisplayName: Arca
+        CFBundleName: Zipling
+        CFBundleDisplayName: Zipling
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.utilities
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: "© 2026 Observant Systems"
         CFBundleDocumentTypes:
-          - CFBundleTypeName: Arca Archive
+          - CFBundleTypeName: Zipling Archive
             CFBundleTypeRole: Viewer
             LSHandlerRank: Owner
-            LSItemContentTypes: [com.observantsystems.arca-archive]
+            LSItemContentTypes: [com.observantsystems.zipling-archive]
         UTExportedTypeDeclarations:
-          - UTTypeIdentifier: com.observantsystems.arca-archive
-            UTTypeDescription: Arca Archive
+          - UTTypeIdentifier: com.observantsystems.zipling-archive
+            UTTypeDescription: Zipling Archive
             UTTypeConformsTo: [public.data, public.archive]
             UTTypeTagSpecification:
-              public.filename-extension: [arca]
+              public.filename-extension: [zlg]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.arca
-        PRODUCT_NAME: Arca
+        PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.zipling
+        PRODUCT_NAME: Zipling
         # The Rust engine: C header + module map, and the static library.
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/../engine/arca-ffi/include
         LIBRARY_SEARCH_PATHS: $(SRCROOT)/../engine/target/xcode/release
@@ -58,7 +58,7 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         DEAD_CODE_STRIPPING: YES
     scheme:
-      testTargets: [ArcaTests]
+      testTargets: [ZiplingTests]
     preBuildScripts:
       - name: Build Rust engine
         basedOnDependencyAnalysis: false
@@ -69,18 +69,18 @@ targets:
           # differs from the CLI's, and sharing one dir would rebuild every time.
           CARGO_TARGET_DIR="$SRCROOT/../engine/target/xcode" cargo build --release -p arca-ffi
 
-  ArcaTests:
+  ZiplingTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: ArcaTests
+      - path: ZiplingTests
     dependencies:
-      - target: Arca
+      - target: Zipling
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.arca.tests
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Arca.app/Contents/MacOS/Arca
+        PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.zipling.tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Zipling.app/Contents/MacOS/Zipling
         BUNDLE_LOADER: $(TEST_HOST)
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/../engine/arca-ffi/include
         ARCHS: arm64

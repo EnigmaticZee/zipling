@@ -50,9 +50,9 @@ final class AppRouter {
 
     func chooseArchive() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.arcaArchive]
+        panel.allowedContentTypes = [.ziplingArchive]
         panel.allowsMultipleSelection = true
-        panel.message = "Choose an Arca archive to open"
+        panel.message = "Choose a Zipling archive to open"
         if panel.runModal() == .OK { open(panel.urls) }
     }
 
@@ -69,7 +69,7 @@ final class AppRouter {
     }
 
     private static func isArchive(_ url: URL) -> Bool {
-        url.pathExtension.lowercased() == "arca"
+        url.pathExtension.lowercased() == "zlg"
     }
 }
 

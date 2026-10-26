@@ -1,7 +1,8 @@
 engine/target/
 app/build/
-app/Arca.xcodeproj/xcuserdata/
-app/Arca.xcodeproj/project.xcworkspace/xcuserdata/
+app/Zipling.xcodeproj/xcuserdata/
+app/Zipling.xcodeproj/project.xcworkspace/xcuserdata/
+*.zlg
+*.partial
 *.arca
-*.arca.partial
 .DS_Store

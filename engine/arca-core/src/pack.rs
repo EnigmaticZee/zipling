@@ -288,7 +288,9 @@ fn order_key(job: &Job, entries: &[Entry]) -> (u8, Class, String, u64, String) {
 /// temporary name and renamed into place only when complete; on error or
 /// cancellation nothing is left behind.
 pub fn pack(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result<PackStats> {
-    let tmp_path = output.with_extension("arca.partial");
+    let mut tmp_name = output.file_name().unwrap_or_default().to_os_string();
+    tmp_name.push(".partial");
+    let tmp_path = output.with_file_name(tmp_name);
     let result = pack_to(inputs, output, &tmp_path, opts);
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp_path);

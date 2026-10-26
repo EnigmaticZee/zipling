@@ -1,11 +1,11 @@
 import SwiftUI
 
 @main
-struct ArcaApp: App {
+struct ZiplingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        Window("Arca", id: AppRouter.homeWindow) {
+        Window("Zipling", id: AppRouter.homeWindow) {
             HomeView()
         }
         .windowStyle(.hiddenTitleBar)

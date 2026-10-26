@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "7446D93B76AB94A819C36A48"
-               BuildableName = "Arca.app"
-               BlueprintName = "Arca"
-               ReferencedContainer = "container:Arca.xcodeproj">
+               BlueprintIdentifier = "66B8215606C368780592EEE7"
+               BuildableName = "Zipling.app"
+               BlueprintName = "Zipling"
+               ReferencedContainer = "container:Zipling.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -32,10 +32,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "7446D93B76AB94A819C36A48"
-            BuildableName = "Arca.app"
-            BlueprintName = "Arca"
-            ReferencedContainer = "container:Arca.xcodeproj">
+            BlueprintIdentifier = "66B8215606C368780592EEE7"
+            BuildableName = "Zipling.app"
+            BlueprintName = "Zipling"
+            ReferencedContainer = "container:Zipling.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -44,10 +44,10 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "BAB28BE196D64CB9031A4F7A"
-               BuildableName = "ArcaTests.xctest"
-               BlueprintName = "ArcaTests"
-               ReferencedContainer = "container:Arca.xcodeproj">
+               BlueprintIdentifier = "7DAE62F9470FF4E9C45A67EB"
+               BuildableName = "ZiplingTests.xctest"
+               BlueprintName = "ZiplingTests"
+               ReferencedContainer = "container:Zipling.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -68,10 +68,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "7446D93B76AB94A819C36A48"
-            BuildableName = "Arca.app"
-            BlueprintName = "Arca"
-            ReferencedContainer = "container:Arca.xcodeproj">
+            BlueprintIdentifier = "66B8215606C368780592EEE7"
+            BuildableName = "Zipling.app"
+            BlueprintName = "Zipling"
+            ReferencedContainer = "container:Zipling.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>
@@ -87,10 +87,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "7446D93B76AB94A819C36A48"
-            BuildableName = "Arca.app"
-            BlueprintName = "Arca"
-            ReferencedContainer = "container:Arca.xcodeproj">
+            BlueprintIdentifier = "66B8215606C368780592EEE7"
+            BuildableName = "Zipling.app"
+            BlueprintName = "Zipling"
+            ReferencedContainer = "container:Zipling.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>

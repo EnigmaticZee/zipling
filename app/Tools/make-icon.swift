@@ -1,5 +1,5 @@
-// Renders the app icon (a stylised chest, for "Arca") into the asset catalog.
-// Usage: swift app/Tools/make-icon.swift app/Arca/Resources/Assets.xcassets/AppIcon.appiconset
+// Renders the app icon (a stylised chest, for Zipling) into the asset catalog.
+// Usage: swift app/Tools/make-icon.swift app/Zipling/Resources/Assets.xcassets/AppIcon.appiconset
 import AppKit
 import CoreGraphics
 

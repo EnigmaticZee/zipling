@@ -122,7 +122,7 @@ final class ArchiveModel {
         if item.isFolder {
             enter(item)
         } else {
-            let temp = FileManager.default.temporaryDirectory.appending(path: "Arca/\(UUID().uuidString)")
+            let temp = FileManager.default.temporaryDirectory.appending(path: "Zipling/\(UUID().uuidString)")
             try? FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
             extract([id], to: temp, then: .open)
         }
@@ -158,7 +158,7 @@ final class ArchiveModel {
             // Extract into a hidden staging folder on the same volume, then move the
             // results into place under Finder-style names: nothing is ever
             // overwritten, and a cancelled extraction leaves nothing behind.
-            let staging = dest.appending(path: ".arca-extract-\(UUID().uuidString)")
+            let staging = dest.appending(path: ".zipling-extract-\(UUID().uuidString)")
             do {
                 let result = try await Engine.extract(archive, to: staging, only: roots, task: job.task, progress: job.progressHandler)
                 var placed: [URL] = []

@@ -105,7 +105,7 @@ struct CompressView: View {
 
     private var destination: some View {
         HStack(spacing: 10) {
-            Image(nsImage: NSWorkspace.shared.icon(for: .arcaArchive))
+            Image(nsImage: NSWorkspace.shared.icon(for: .ziplingArchive))
                 .resizable()
                 .frame(width: 22, height: 22)
             VStack(alignment: .leading, spacing: 1) {
@@ -181,7 +181,7 @@ struct CompressView: View {
 
     private func chooseOutput() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.arcaArchive]
+        panel.allowedContentTypes = [.ziplingArchive]
         panel.directoryURL = output.deletingLastPathComponent()
         panel.nameFieldStringValue = output.lastPathComponent
         panel.canCreateDirectories = true
@@ -193,7 +193,7 @@ struct CompressView: View {
     private static func defaultOutput(for items: [URL]) -> URL {
         let folder = items.first?.deletingLastPathComponent() ?? URL.homeDirectory
         let base = items.count == 1 ? items[0].deletingPathExtension().lastPathComponent : "Archive"
-        return Placement.unique("\(base).arca", in: folder)
+        return Placement.unique("\(base).zlg", in: folder)
     }
 
     /// Total size of the items, walking folders off the main thread.

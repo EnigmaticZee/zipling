@@ -5,19 +5,19 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Arca</string>
+	<string>Zipling</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Arca Archive</string>
+			<string>Zipling Archive</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.observantsystems.arca-archive</string>
+				<string>com.observantsystems.zipling-archive</string>
 			</array>
 		</dict>
 	</array>
@@ -28,7 +28,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Arca</string>
+	<string>Zipling</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -50,14 +50,14 @@
 				<string>public.archive</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Arca Archive</string>
+			<string>Zipling Archive</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.observantsystems.arca-archive</string>
+			<string>com.observantsystems.zipling-archive</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
-					<string>arca</string>
+					<string>zlg</string>
 				</array>
 			</dict>
 		</dict>

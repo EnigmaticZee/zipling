@@ -13,7 +13,7 @@ struct HomeView: View {
             if !router.recents.isEmpty {
                 RecentList(urls: Array(router.recents.prefix(5))) { router.open([$0]) }
             }
-            Text("Arca engine \(Engine.version) · lossless · every byte verified")
+            Text("Zipling engine \(Engine.version) · lossless · every byte verified")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity)
@@ -45,7 +45,7 @@ struct HomeView: View {
             }
             Text("Drop files to compress")
                 .font(.title2.weight(.semibold))
-            Text("Or drop an .arca archive to open it.")
+            Text("Or drop a .zlg archive to open it.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {

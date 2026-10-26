@@ -1,17 +1,17 @@
 import Foundation
 import os
 import Testing
-@testable import Arca
+@testable import Zipling
 
 /// End-to-end tests through the real Rust engine: the C bridge, JSON, progress,
 /// cancellation, and the browser model's tree building and file placement.
 @MainActor
-struct ArcaTests {
+struct ZiplingTests {
     /// Project/docs/readme.txt, Project/docs/nested/copy.txt (a duplicate), Project/noise.bin
     private func makeTree() throws -> URL {
-        let root = FileManager.default.temporaryDirectory.appending(path: "ArcaTests-\(UUID().uuidString)/Project")
+        let root = FileManager.default.temporaryDirectory.appending(path: "ZiplingTests-\(UUID().uuidString)/Project")
         try FileManager.default.createDirectory(at: root.appending(path: "docs/nested"), withIntermediateDirectories: true)
-        let text = Data(String(repeating: "hello arca\n", count: 5000).utf8)
+        let text = Data(String(repeating: "hello zlg!\n", count: 5000).utf8)
         try text.write(to: root.appending(path: "docs/readme.txt"))
         try text.write(to: root.appending(path: "docs/nested/copy.txt"))
         var rng = SystemRandomNumberGenerator()
@@ -20,14 +20,14 @@ struct ArcaTests {
     }
 
     private func pack(_ src: URL) async throws -> (URL, PackResult) {
-        let archive = src.deletingLastPathComponent().appending(path: "Project.arca")
+        let archive = src.deletingLastPathComponent().appending(path: "Project.zlg")
         let result = try await Engine.pack([src], into: archive, level: .balanced, task: EngineTask()) { _, _ in }
         return (archive, result)
     }
 
     @Test func packListVerifyExtract() async throws {
         let src = try makeTree()
-        let archive = src.deletingLastPathComponent().appending(path: "Project.arca")
+        let archive = src.deletingLastPathComponent().appending(path: "Project.zlg")
         let progress = ProgressLog()
         let result = try await Engine.pack([src], into: archive, level: .balanced, task: EngineTask()) { done, total in
             progress.record(done, total)
@@ -55,7 +55,7 @@ struct ArcaTests {
 
     @Test func cancelledPackLeavesNothingBehind() async throws {
         let src = try makeTree()
-        let archive = src.deletingLastPathComponent().appending(path: "Cancelled.arca")
+        let archive = src.deletingLastPathComponent().appending(path: "Cancelled.zlg")
         let task = EngineTask()
         task.cancel()
         await #expect {
@@ -67,8 +67,8 @@ struct ArcaTests {
 
     @Test func engineErrorsBecomeMessages() async throws {
         await #expect {
-            _ = try await Engine.list(URL(filePath: "/nonexistent/missing.arca"))
-        } throws: { ($0 as? EngineError)?.message.contains("missing.arca") == true }
+            _ = try await Engine.list(URL(filePath: "/nonexistent/missing.zlg"))
+        } throws: { ($0 as? EngineError)?.message.contains("missing.zlg") == true }
     }
 
     @Test func browserTreeAndFinderStylePlacement() async throws {
