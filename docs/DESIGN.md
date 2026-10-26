@@ -109,19 +109,34 @@ encoder. So it lives in *ultra* only, where it gains 3.4% on Silesia at about 7�
 extraction time. *Max* keeps LZMA's fast decoding. Separate text and binary lanes
 let each block use the codec that suits it, and give each its own statistics.
 
+LZMA comes from a vendored copy of liblzma with two speed patches that leave
+every output byte unchanged. The fast unaligned-load path is turned on, as xz's
+own build does, and the BT4 match finder prefetches the next hash buckets.
+Together they make `-9e` blocks 1.3–1.45× faster (`engine/vendor/liblzma-sys/ARCA-PATCHES.md`).
+
 A block that would expand is stored raw.
 
 ### 2.5 Extraction
-Blocks decode in parallel waves, and wave N+1 decodes while wave N's files are
-rebuilt and written. Single-chunk files, the vast majority, are created, written
-and given their permissions, timestamps and xattrs through one file descriptor
-(no repeated path lookups). Larger plain objects stream chunk-by-chunk into their
-final files with `pwrite`, so a 50 GB video never sits in RAM. Transformed objects
-are rebuilt once their blocks are present, and a file's Deflate streams are
-re-created in parallel. A block stays in memory only while some
-pending object still needs it. Nothing is written until the block holding it has
-passed both of its hash checks, and every transformed object is checked again
-after its inverse transform runs.
+Extraction runs as a dependency graph rather than in waves. Every core takes
+the best ready item from one priority queue: block decodes first (they unlock
+everything else, and cheap stored blocks go first because they hold the JPEGs),
+then the costliest remaining work (a large JPEG before a small one), so no long
+task starts last. A transformed object is rebuilt the moment its last block
+decodes. Directories are created by the first file that needs them, because
+APFS serialises `mkdir`: creating them all up front kept every core waiting
+for 0.1–1 s. Decoded
+blocks are capped at two per thread (and 2 GiB). When everything in memory is
+waiting on a block that isn't, one more is admitted, so odd layouts cost
+memory, never a deadlock.
+
+Single-chunk files, the vast majority, are created, written and given their
+permissions, timestamps and xattrs through one file descriptor (no repeated path
+lookups). Larger plain objects stream chunk-by-chunk into their final files with
+`pwrite`, so a 50 GB video never sits in RAM. A file's Deflate streams are
+re-created in parallel. A block stays in memory only while some pending work
+still needs it. Nothing is written until the block holding it has passed both
+of its hash checks, and every transformed object is checked again after its
+inverse transform runs.
 
 ## 3. File format v1
 

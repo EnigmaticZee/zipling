@@ -77,7 +77,7 @@ helper.
 | **1 — App MVP** | SwiftUI app shell, Rust FFI (UniFFI), libarchive backend in XPC helper, browser, extract/compress sheets, drag & drop, progress, Quick Look preview | daily-driver for zip/7z/rar/tar/arca |
 | **2 — Breadth** | 7-Zip + XADMaster backends, all read formats, write matrix, split + encryption everywhere, edit in place | every comparison row green |
 | **3 — Differentiators** | Finder mount (FSKit), Spotlight, recovery records, versioned archives, optimise-archive, estimate | features nobody else has |
-| **4 — Engine v2** | encryption + recovery in arca; multi-threaded Lepton decoding of large JPEGs (max extraction is still ~1.25× slower than 7z on mixed data); x86-64 BCJ; recursive unwrapping (zip-in-zip, JPEG-in-PDF); PNG pixel model; WAV/AIFF predictor; context-mixing text codec for ultra; memory budgeting for 8 GB Macs; deterministic block order | another 10–30% on mixed data, and extraction at least as fast as 7z at every level |
+| **4 — Engine v2** | encryption + recovery in arca; multi-threaded Lepton decoding for folders of a few huge photos (max extraction already beats 7z on mixed data, but not yet on PDF/PNG folders); a multi-threaded LZMA match finder for inputs with fewer blocks than cores; x86-64 BCJ; recursive unwrapping (zip-in-zip, JPEG-in-PDF); PNG pixel model; WAV/AIFF predictor; context-mixing text codec for ultra; memory budgeting for 8 GB Macs; deterministic block order | another 10–30% on mixed data, and extraction at least as fast as 7z at every level |
 | **5 — Ship** | notarisation, Sparkle updates or Mac App Store, localisation, docs site | 1.0 |
 
 ## 6. Open decisions
