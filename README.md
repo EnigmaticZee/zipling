@@ -7,7 +7,7 @@ A macOS archive manager built around Arca, a new compression engine. Its own arc
 * `app/`: the macOS app (SwiftUI). `project.yml` is the XcodeGen spec, and `Zipling/Resources/AppIcon.icon` is the Icon Composer app icon.
 * `engine/`: the Arca engine in Rust (`arca-core`), its C API for the app (`arca-ffi`), and the `arca` CLI. It provides the Zipling format (`.zlg`), format-aware lossless transforms, deduplication and parallel solid blocks.
 * `site/`: the landing page, a static site deployed to GitHub Pages by `.github/workflows/pages.yml`.
-* `design/icons/simple/`: generators for the app icon (`zpull.py`) and its review sheets.
+* `design/icon/`: the app icon's generator (`zpull.py --style metal indigo`) and its review sheets.
 * `docs/DESIGN.md`: how the engine works, the on-disk format, and the safety model.
 * `docs/BENCHMARKS.md`: head-to-head results against Finder zip, 7-Zip, xz and zstd.
 * `docs/ROADMAP.md`: the plan for turning every row of the MacPacker comparison green, and going further.

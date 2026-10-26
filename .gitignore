@@ -6,7 +6,7 @@ app/Zipling.xcodeproj/project.xcworkspace/xcuserdata/
 *.partial
 *.arca
 .DS_Store
-design/icon-concepts/*.png
-# Icon generator outputs (rebuilt by design/icons/simple/*.py)
-design/icons/simple/out/
-design/icons/simple/icons/
+# Icon generator outputs (rebuilt by design/icon/zpull.py)
+design/icon/out/
+design/icon/icons/
+__pycache__/

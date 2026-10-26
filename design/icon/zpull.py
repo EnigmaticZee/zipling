@@ -12,7 +12,7 @@ import os
 import subprocess
 import sys
 
-from make import ICTOOL, Svg, color, rrect
+from iconkit import ICTOOL, Svg, color, rrect
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CX = 512
