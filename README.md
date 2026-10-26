@@ -2,7 +2,7 @@
 
 A macOS archive manager built around Arca, a new compression engine. Its own archive format uses the `.zlg` extension. Zipling is in development and isn't available to download yet.
 
-**Website:** https://enigmaticzee.github.io/zipling/
+**Website:** https://www.zipling.app/
 
 * `app/`: the macOS app (SwiftUI). `project.yml` is the XcodeGen spec, and `Zipling/Resources/AppIcon.icon` is the Icon Composer app icon.
 * `engine/`: the Arca engine in Rust (`arca-core`), its C API for the app (`arca-ffi`), and the `arca` CLI. It provides the Zipling format (`.zlg`), format-aware lossless transforms, deduplication and parallel solid blocks.
