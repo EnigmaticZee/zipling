@@ -9,6 +9,8 @@
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>Zipling Archive</string>
 			<key>CFBundleTypeRole</key>
@@ -51,6 +53,13 @@
 			</array>
 			<key>UTTypeDescription</key>
 			<string>Zipling Archive</string>
+			<key>UTTypeIcons</key>
+			<dict>
+				<key>UTTypeIconBadgeName</key>
+				<string>AppIcon</string>
+				<key>UTTypeIconText</key>
+				<string>ZLG</string>
+			</dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.observantsystems.zipling-archive</string>
 			<key>UTTypeTagSpecification</key>

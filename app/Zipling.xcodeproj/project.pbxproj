@@ -17,6 +17,7 @@
 		A13550513D68069532046631 /* ZiplingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B33F289736EB5FDFF14FA885 /* ZiplingTests.swift */; };
 		BE2D05AC466F0D40B6F0F824 /* Job.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B1CADA860B2A2F44C2F740 /* Job.swift */; };
 		CC075058E7BA2FFAECDE2504 /* CompressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FB800CAEFFC703215743489 /* CompressView.swift */; };
+		CC98815DBE0927140C0EBEFC /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 861C913B63EE06413120185A /* AppIcon.icon */; };
 		CE2DBD73E00FE175B0D336D8 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8189F5251B5C516F3BEA98F7 /* HomeView.swift */; };
 		EC69F1B31323891ACE074B92 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB16AC7784B577A28E612204 /* Assets.xcassets */; };
 		F5307E9ECEA9AF78F9DFB4BE /* Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1911BC0B062C2920D4A5207C /* Engine.swift */; };
@@ -43,6 +44,7 @@
 		4FB800CAEFFC703215743489 /* CompressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressView.swift; sourceTree = "<group>"; };
 		8189F5251B5C516F3BEA98F7 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		84B1CADA860B2A2F44C2F740 /* Job.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Job.swift; sourceTree = "<group>"; };
+		861C913B63EE06413120185A /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		AB16AC7784B577A28E612204 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B33F289736EB5FDFF14FA885 /* ZiplingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZiplingTests.swift; sourceTree = "<group>"; };
 		D3E2C578020156E8B4B447A4 /* ArchiveWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveWindow.swift; sourceTree = "<group>"; };
@@ -124,6 +126,7 @@
 		E921809CCDEC68D00A2D6A6A /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				861C913B63EE06413120185A /* AppIcon.icon */,
 				AB16AC7784B577A28E612204 /* Assets.xcassets */,
 			);
 			path = Resources;
@@ -220,6 +223,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC98815DBE0927140C0EBEFC /* AppIcon.icon in Resources */,
 				EC69F1B31323891ACE074B92 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

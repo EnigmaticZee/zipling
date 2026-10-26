@@ -32,12 +32,17 @@ targets:
             CFBundleTypeRole: Viewer
             LSHandlerRank: Owner
             LSItemContentTypes: [com.observantsystems.zipling-archive]
+            # macOS draws the .zlg icon: a page badged with the app icon and the label below.
+            CFBundleTypeIconSystemGenerated: true
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.observantsystems.zipling-archive
             UTTypeDescription: Zipling Archive
             UTTypeConformsTo: [public.data, public.archive]
             UTTypeTagSpecification:
               public.filename-extension: [zlg]
+            UTTypeIcons:
+              UTTypeIconBadgeName: AppIcon
+              UTTypeIconText: ZLG
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.zipling
