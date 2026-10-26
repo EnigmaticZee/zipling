@@ -379,6 +379,21 @@ impl Index {
         Ok(idx)
     }
 
+    /// Approximate compressed bytes attributable to an object: each chunk's share
+    /// of its block's compressed size. Shared (deduplicated) chunks count fully
+    /// for every object that uses them.
+    pub fn packed_estimate(&self, object: u32) -> u64 {
+        let o = &self.objects[object as usize];
+        o.chunks
+            .iter()
+            .map(|&c| {
+                let ch = &self.chunks[c as usize];
+                let b = &self.blocks[ch.block as usize];
+                (ch.len as u128 * b.comp_len as u128 / b.raw_len.max(1) as u128) as u64
+            })
+            .sum()
+    }
+
     /// Structural checks so later stages can index without bounds surprises.
     fn validate(&self) -> Result<()> {
         for e in &self.entries {

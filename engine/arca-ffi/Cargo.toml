@@ -1,0 +1,15 @@
+[package]
+name = "arca-ffi"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "C API over arca-core for the macOS app"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+anyhow = "1"
+arca-core = { path = "../arca-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

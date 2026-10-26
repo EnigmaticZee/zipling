@@ -13,7 +13,8 @@ fastcdc = "3"
 filetime = "0.2"
 lepton_jpeg = "0.5"
 libc = "0.2"
-liblzma = "0.4"
+# Built from source: the app must not depend on a Homebrew dylib.
+liblzma = { version = "0.4", features = ["static"] }
 memchr = "2"
 memmap2 = "0.9"
 ppmd-rust = "1.5"

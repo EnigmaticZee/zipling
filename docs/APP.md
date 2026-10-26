@@ -53,10 +53,21 @@ SF Symbols, full keyboard navigation, VoiceOver, light and dark modes. AppKit
 
 ## Milestone 1 (app MVP) checklist
 
-- [ ] Xcode project: app, XPC helper, Quick Look extension; macOS 15+, universal binary
-- [ ] `arca-ffi` crate (UniFFI) with list, extract (selected paths), pack, progress, cancel
-- [ ] libarchive vendored into the helper (zip, 7z, rar, tar.*, iso, xar, cab, lha, cpio, deb, rpm)
-- [ ] ArchiveKit: provider protocol, VFS, job queue
-- [ ] Browser window with list view, inspector, drag-out, Quick Look on inner files
-- [ ] Compress sheet (Arca/ZIP/7z/tar.*), extract sheet, Finder "Open With"
-- [ ] Notarised build + Sparkle
+Done (first slice):
+
+- [x] Xcode project (XcodeGen), macOS 15+ target, `.arca` registered as the app's document type
+- [x] `arca-ffi` C API: list, pack, extract (selected paths), verify, progress, cancel; panic-safe
+- [x] Home window: drop zone, Choose Files / Open Archive, recent archives
+- [x] Compress sheet: four levels, destination, live progress with ETA, cancel, "why it got smaller" results
+- [x] Browser window: Finder-style table (icons, sort, search, breadcrumbs, Saved meter, method), inspector, extract selected/all, verify, double-click to open a file
+- [x] Safe extraction: staging folder, Finder-style names ("docs 2"), nothing overwritten, nothing left on cancel
+- [x] App icon; app tests through the real engine (`ArcaTests`)
+
+Next:
+
+- [ ] Switch to the official `rustup` toolchain (Homebrew's Rust standard library targets macOS 27 only) and build a universal (arm64 + x86_64) engine
+- [ ] Drag items out to Finder (file promises); Quick Look on inner files; `.arca` document icon
+- [ ] XPC helper + libarchive (zip, 7z, rar, tar.*, iso, xar, cab, lha, cpio, deb, rpm) behind an `ArchiveProvider` protocol
+- [ ] Nested-archive VFS, job queue window, Dock progress
+- [ ] Quick Look extension, Finder context menu, Share extension
+- [ ] Developer ID signing, hardened runtime, notarisation, Sparkle

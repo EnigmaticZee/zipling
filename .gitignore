@@ -1,4 +1,7 @@
 engine/target/
+app/build/
+app/Arca.xcodeproj/xcuserdata/
+app/Arca.xcodeproj/project.xcworkspace/xcuserdata/
 *.arca
 *.arca.partial
 .DS_Store

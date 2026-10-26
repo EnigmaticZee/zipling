@@ -1,0 +1,88 @@
+# XcodeGen spec: run `xcodegen` in this folder to (re)generate Arca.xcodeproj.
+name: Arca
+options:
+  bundleIdPrefix: com.observantsystems
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Arca:
+    type: application
+    platform: macOS
+    sources:
+      - path: Arca
+    info:
+      path: Arca/Info.plist
+      properties:
+        CFBundleName: Arca
+        CFBundleDisplayName: Arca
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.utilities
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: "© 2026 Observant Systems"
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Arca Archive
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes: [com.observantsystems.arca-archive]
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.observantsystems.arca-archive
+            UTTypeDescription: Arca Archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [arca]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.arca
+        PRODUCT_NAME: Arca
+        # The Rust engine: C header + module map, and the static library.
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/../engine/arca-ffi/include
+        LIBRARY_SEARCH_PATHS: $(SRCROOT)/../engine/target/xcode/release
+        OTHER_LDFLAGS: [-larca_ffi, -liconv]
+        # The engine is built for Apple silicon only for now.
+        ARCHS: arm64
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Local development signing; notarised Developer ID signing comes later.
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+        # cargo writes outside the project's derived data.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        DEAD_CODE_STRIPPING: YES
+    scheme:
+      testTargets: [ArcaTests]
+    preBuildScripts:
+      - name: Build Rust engine
+        basedOnDependencyAnalysis: false
+        script: |
+          export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+          cd "$SRCROOT/../engine"
+          # A separate target dir: Xcode's environment (deployment target, SDK)
+          # differs from the CLI's, and sharing one dir would rebuild every time.
+          CARGO_TARGET_DIR="$SRCROOT/../engine/target/xcode" cargo build --release -p arca-ffi
+
+  ArcaTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ArcaTests
+    dependencies:
+      - target: Arca
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.arca.tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Arca.app/Contents/MacOS/Arca
+        BUNDLE_LOADER: $(TEST_HOST)
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/../engine/arca-ffi/include
+        ARCHS: arm64
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual

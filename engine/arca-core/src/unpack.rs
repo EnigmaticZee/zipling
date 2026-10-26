@@ -8,6 +8,7 @@
 //! against the hash of its original content.
 
 use crate::codec;
+use crate::hooks::Hooks;
 use crate::format::{self, BlockInfo, Entry, EntryKind, Footer, Index, Transform, FOOTER_LEN, HEADER_LEN};
 use crate::transform;
 use anyhow::{bail, ensure, Context, Result};
@@ -32,6 +33,7 @@ pub struct ExtractOptions {
     pub overwrite: bool,
     /// Extract only entries whose path equals or lies under one of these.
     pub only: Vec<String>,
+    pub hooks: Hooks,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -85,6 +87,11 @@ impl Archive {
     /// Decodes everything and checks every hash without writing anything.
     pub fn verify(&self, threads: usize) -> Result<ExtractStats> {
         self.run(None, &ExtractOptions { threads, ..Default::default() })
+    }
+
+    /// `verify` with progress and cancellation (`only` and `overwrite` are ignored).
+    pub fn verify_with(&self, opts: &ExtractOptions) -> Result<ExtractStats> {
+        self.run(None, &ExtractOptions { only: Vec::new(), ..opts.clone() })
     }
 
     pub fn extract(&self, dest: &Path, opts: &ExtractOptions) -> Result<ExtractStats> {
@@ -226,7 +233,13 @@ impl Archive {
         }
 
         let bytes = AtomicU64::new(0);
+        let total: u64 = objs.iter().map(|&o| idx.objects[o as usize].size).sum();
+        let advance = |n: u64| {
+            let done = bytes.fetch_add(n, Ordering::Relaxed) + n;
+            opts.hooks.report(done, total);
+        };
         let process = |wave: &[u32], loaded: &HashMap<u32, Arc<Vec<u8>>>| -> Result<()> {
+            opts.hooks.check()?;
             let units: Vec<(u32, u64, u32)> = wave.iter().flat_map(|&b| stream_units[b as usize].iter().copied()).collect();
             let wholes: Vec<u32> = wave.iter().flat_map(|&b| whole_ready[b as usize].iter().copied()).collect();
             units.par_iter().with_max_len(16).try_for_each(|&(o, off, c)| -> Result<()> {
@@ -241,7 +254,7 @@ impl Archive {
                         f.write_all_at(data, off)?;
                     }
                 }
-                bytes.fetch_add(ch.len, Ordering::Relaxed);
+                advance(ch.len);
                 Ok(())
             })?;
             wholes.par_iter().with_max_len(1).try_for_each(|&o| -> Result<()> {
@@ -256,7 +269,7 @@ impl Archive {
                 if dest.is_some() {
                     write_whole(o, &content)?;
                 }
-                bytes.fetch_add(obj.size, Ordering::Relaxed);
+                advance(obj.size);
                 Ok(())
             })
         };

@@ -161,7 +161,7 @@ fn main() -> Result<()> {
         }
         Cmd::Unpack { archive, dest, threads, force, only, json } => {
             let a = Archive::open(&archive)?;
-            let s = a.extract(&dest, &ExtractOptions { threads: threads.unwrap_or(0), overwrite: force, only })?;
+            let s = a.extract(&dest, &ExtractOptions { threads: threads.unwrap_or(0), overwrite: force, only, ..Default::default() })?;
             if json {
                 println!("{{\"bytes\":{},\"seconds\":{:.3},\"files\":{}}}", s.bytes, s.seconds, s.files);
             } else {

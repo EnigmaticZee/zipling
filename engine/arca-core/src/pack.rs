@@ -11,6 +11,7 @@
 use crate::classify::{self, Class, Lane, SNIFF_LEN};
 use crate::codec::{self, CodecConfig};
 use crate::format::{self, BlockInfo, Chunk, Codec, Entry, EntryKind, Footer, Index, Object, Transform};
+use crate::hooks::Hooks;
 use crate::scan;
 use crate::transform::{self, TransformOpts};
 use anyhow::{bail, ensure, Context, Result};
@@ -51,6 +52,7 @@ pub struct PackOptions {
     pub probe: bool,
     pub text_codec: CodecConfig,
     pub binary_codec: CodecConfig,
+    pub hooks: Hooks,
 }
 
 impl PackOptions {
@@ -88,6 +90,7 @@ impl PackOptions {
             probe: matches!(level, Level::Fast | Level::Balanced),
             text_codec: text,
             binary_codec: binary,
+            hooks: Hooks::default(),
         }
     }
 }
@@ -281,7 +284,19 @@ fn order_key(job: &Job, entries: &[Entry]) -> (u8, Class, String, u64, String) {
     (order_group(job.class), job.class, ext, size_first, name.to_owned())
 }
 
+/// Packs `inputs` into a new archive at `output`. The archive is written to a
+/// temporary name and renamed into place only when complete; on error or
+/// cancellation nothing is left behind.
 pub fn pack(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result<PackStats> {
+    let tmp_path = output.with_extension("arca.partial");
+    let result = pack_to(inputs, output, &tmp_path, opts);
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    result
+}
+
+fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOptions) -> Result<PackStats> {
     let start = Instant::now();
     let pool = rayon::ThreadPoolBuilder::new().num_threads(opts.threads.max(1)).build()?;
 
@@ -333,8 +348,7 @@ pub fn pack(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result<Pac
     }
 
     // Write to a temporary name and rename at the end: never leave a half archive.
-    let tmp_path = output.with_extension("arca.partial");
-    let mut out = File::create(&tmp_path).with_context(|| format!("creating {}", tmp_path.display()))?;
+    let mut out = File::create(tmp_path).with_context(|| format!("creating {}", tmp_path.display()))?;
     out.write_all(&format::header_bytes(0))?;
 
     let in_flight = opts.threads.max(1) * 2;
@@ -408,7 +422,7 @@ pub fn pack(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result<Pac
 
     let jobs = &jobs;
     pool.in_place_scope(|scope| -> Result<()> {
-        let (mut spawned, mut inflight) = (0usize, 0u64);
+        let (mut spawned, mut inflight, mut done_bytes) = (0usize, 0u64, 0u64);
         let take = |k: usize| -> Option<Result<Hashed>> { slots[k].lock().unwrap().take() };
         let wait_for = |k: usize| -> Result<Hashed> {
             loop {
@@ -496,6 +510,9 @@ pub fn pack(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result<Pac
                 if let EntryKind::File { object, .. } = &mut entries[job.entry].kind {
                     *object = obj;
                 }
+                done_bytes += job.size;
+                opts.hooks.report(done_bytes, stats.input_bytes);
+                opts.hooks.check()?;
                 if k + 1 == text_end {
                     sink.flush_lane(Lane::Text);
                 }
@@ -546,7 +563,7 @@ pub fn pack(inputs: &[PathBuf], output: &Path, opts: &PackOptions) -> Result<Pac
     out.write_all(&footer.to_bytes())?;
     out.sync_all()?;
     drop(out);
-    std::fs::rename(&tmp_path, output)?;
+    std::fs::rename(tmp_path, output)?;
     phase("index written, synced");
 
     let mut t: Vec<_> = tstats.into_iter().collect();
