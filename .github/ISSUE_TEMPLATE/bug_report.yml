@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in Zipling isn't working as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting this. Bug reports are public, so please don't attach personal files or include personal information.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is the problem?
+      options:
+        - The app
+        - Compression or extraction (Arca engine)
+        - Command-line tool
+        - Website
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.1
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Zipling version or commit
+      placeholder: 0.1.0, or the commit you built from
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Error messages, screenshots, or the size and kind of files involved.

@@ -7,35 +7,30 @@
   <meta name="description" content="Zipling is a new archive manager for macOS. Its Arca engine makes archives smaller than 7-Zip's best setting, up to five times faster, and restores every byte exactly. Coming soon.">
   <meta name="theme-color" content="#0B0D18" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#FBFBFD" media="(prefers-color-scheme: light)">
+  <link rel="canonical" href="https://enigmaticzee.github.io/zipling/">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Zipling — smaller archives for your Mac">
-  <meta property="og:description" content="Smaller archives. Faster. Every byte intact. Coming soon for Mac.">
+  <meta property="og:description" content="Zipling is a new archive manager for macOS. Its Arca engine makes archives smaller than 7-Zip's best setting, up to five times faster, and restores every byte exactly. Coming soon.">
   <meta property="og:image" content="https://enigmaticzee.github.io/zipling/assets/og.jpg">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="assets/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add("js")</script>
+  <script src="data.js" defer></script>
   <script src="main.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
-
+  <div class="progress" aria-hidden="true"></div>
   <header class="nav" id="top">
     <div class="nav-inner">
-      <a class="brand" href="#top" aria-label="Zipling home">
+      <a class="brand" href="index.html" aria-label="Zipling home">
         <img src="assets/icon-512.png" alt="" width="30" height="30">
         <span>Zipling</span>
       </a>
-      <nav aria-label="Sections">
-        <a href="#performance">Performance</a>
-        <a href="#engine">How it works</a>
-        <a href="#app">The app</a>
-        <a href="#faq">FAQ</a>
-      </nav>
-      <a class="nav-gh" href="https://github.com/EnigmaticZee/zipling" aria-label="Zipling on GitHub">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        <span>GitHub</span>
-      </a>
+      <nav aria-label="Site"><a href="benchmarks.html">Benchmarks</a><a href="compare.html">Compare</a><a href="index.html#engine">How it works</a><a href="index.html#faq">FAQ</a></nav>
+      <a class="nav-gh" href="https://github.com/EnigmaticZee/zipling" aria-label="Zipling on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
     </div>
   </header>
 
@@ -51,32 +46,32 @@
         <h1>Smaller. Faster.<br><span class="grad">Every byte intact.</span></h1>
         <p class="lede">Zipling is a new archive manager for macOS. Its <strong>Arca</strong> engine understands what is inside your folders: photos, documents, apps and code. It makes archives smaller than 7-Zip's best setting, up to five times faster, and restores every byte exactly.</p>
         <div class="cta">
-          <a class="btn btn-primary" href="https://github.com/EnigmaticZee/zipling">Follow along on GitHub <span aria-hidden="true">→</span></a>
-          <a class="btn btn-ghost" href="#performance">See the benchmarks</a>
+          <a class="btn btn-primary" href="https://github.com/EnigmaticZee/zipling">Follow along on GitHub <span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn btn-ghost" href="benchmarks.html">See the benchmarks</a>
         </div>
         <p class="fine">Not available to download yet · For Apple silicon Macs</p>
       </div>
       <figure class="hero-shot reveal">
-        <img src="assets/app-archive.jpg" alt="A Zipling archive window: 13 files, 23.7 MB packed to 7.5 MB (68% smaller), with each file's savings and method (Lepton for JPEGs, Unpacked + zstd for PDFs and PNGs, ARM64 + zstd for an app) and an inspector explaining how the archive got smaller." width="2360" height="1300" loading="eager">
+        <img src="assets/app-archive.jpg" alt="A Zipling archive window: 13 files, 23.7 MB packed to 7.5 MB (68% smaller), with each file's savings and method (Lepton for JPEGs, Unpacked + zstd for PDFs and PNGs, ARM64 + zstd for an app) and an inspector explaining how the archive got smaller." width="2360" height="1300">
       </figure>
     </section>
 
     <!-- Proof -->
-    <section class="stats" aria-label="Highlights">
-      <div class="stat reveal">
-        <p class="stat-num">5<span>×</span></p>
+    <section class="stats" aria-label="Highlights" data-stagger>
+      <div class="stat">
+        <p class="stat-num"><span data-count="5">5</span><span class="unit">×</span></p>
         <p class="stat-label">faster to compress than 7-Zip Ultra, and 5% smaller<sup>1</sup></p>
       </div>
-      <div class="stat reveal">
-        <p class="stat-num">17<span>%</span></p>
+      <div class="stat">
+        <p class="stat-num"><span data-count="17">17</span><span class="unit">%</span></p>
         <p class="stat-label">smaller than 7-Zip Ultra at Zipling's Max setting<sup>1</sup></p>
       </div>
-      <div class="stat reveal">
-        <p class="stat-num">55<span>%</span></p>
+      <div class="stat">
+        <p class="stat-num"><span data-count="55">55</span><span class="unit">%</span></p>
         <p class="stat-label">smaller than 7-Zip Ultra on PDF and screenshot folders</p>
       </div>
-      <div class="stat reveal">
-        <p class="stat-num">100<span>%</span></p>
+      <div class="stat">
+        <p class="stat-num"><span data-count="100">100</span><span class="unit">%</span></p>
         <p class="stat-label">byte-identical. Every block is checked with BLAKE3</p>
       </div>
     </section>
@@ -88,60 +83,66 @@
         <h2>Benchmarks, not adjectives.</h2>
         <p class="sub">A 736 MB folder of documents, photos, apps and source code, compressed and extracted on a MacBook Pro (M1 Pro). Shorter bars are better.</p>
       </div>
-
       <div class="legend reveal" aria-hidden="true">
         <span><i class="sw sw-us"></i>Zipling</span>
         <span><i class="sw sw-them"></i>Other tools</span>
       </div>
-
-      <div class="charts">
-        <figure class="chart reveal" data-metric="size" data-unit="MB" aria-labelledby="c1">
-          <figcaption id="c1"><strong>Archive size</strong><span>MB</span></figcaption>
-          <div class="bars" role="list"></div>
-        </figure>
-        <figure class="chart reveal" data-metric="pack" data-unit="s" aria-labelledby="c2">
-          <figcaption id="c2"><strong>Time to compress</strong><span>seconds</span></figcaption>
-          <div class="bars" role="list"></div>
-        </figure>
-        <figure class="chart reveal" data-metric="unpack" data-unit="s" aria-labelledby="c3">
-          <figcaption id="c3"><strong>Time to extract</strong><span>seconds</span></figcaption>
-          <div class="bars" role="list"></div>
-        </figure>
+      <div class="charts reveal" id="home-charts"></div>
+      <div class="chart-links reveal">
+        <details class="table-view">
+          <summary>Show these numbers as a table</summary>
+          <table>
+            <thead><tr><th scope="col">Tool</th><th scope="col">Size</th><th scope="col">% of original</th><th scope="col">Compress</th><th scope="col">Extract</th></tr></thead>
+            <tbody id="bench-rows"></tbody>
+          </table>
+        </details>
+        <a class="more" href="benchmarks.html">All six benchmarks <span class="arrow" aria-hidden="true">→</span></a>
       </div>
-      <div class="tooltip" role="status" aria-live="polite" hidden></div>
 
-      <details class="table-view reveal">
-        <summary>Show these numbers as a table</summary>
-        <table>
-          <thead><tr><th scope="col">Tool</th><th scope="col">Size</th><th scope="col">% of original</th><th scope="col">Compress</th><th scope="col">Extract</th></tr></thead>
-          <tbody id="bench-rows"></tbody>
-        </table>
-      </details>
-
-      <div class="kinds">
-        <article class="kind reveal">
+      <div class="kinds" data-stagger>
+        <article class="kind">
           <p class="kind-num">−55%</p>
           <h3>PDFs &amp; screenshots</h3>
           <p>Smaller than 7-Zip Ultra. Even the default setting is 43% smaller, and faster than 7-Zip.</p>
         </article>
-        <article class="kind reveal">
+        <article class="kind">
           <p class="kind-num">−17%</p>
           <h3>Photos</h3>
           <p>JPEGs shrink without losing a single bit. Other tools manage 5–13% at best.</p>
         </article>
-        <article class="kind reveal">
+        <article class="kind">
           <p class="kind-num">−8%</p>
           <h3>Mac apps</h3>
           <p>Smaller than 7-Zip Ultra on universal app bundles, in 15% less time.</p>
         </article>
-        <article class="kind reveal">
+        <article class="kind">
           <p class="kind-num">1.7×</p>
           <h3>Faster extraction</h3>
           <p>The default setting extracts the mixed folder 1.7× faster than 7-Zip and 4× faster than Finder.</p>
         </article>
       </div>
 
-      <p class="footnote reveal"><sup>1</sup> Mixed folder, compared with <code>7z -mx9</code>. Every archive from every tool was extracted and compared byte for byte with the original. Times vary about ±10% between runs. Finder's Compress was measured in a separate session. <a href="https://github.com/EnigmaticZee/zipling/blob/main/docs/BENCHMARKS.md">Full methodology, every dataset, and where Zipling is still behind →</a></p>
+      <p class="footnote reveal"><sup>1</sup> Mixed folder, compared with <code>7z -mx9</code>. Every archive from every tool was extracted and compared byte for byte with the original. Times vary about ±10% between runs. Finder's Compress was measured in a separate session. <a href="benchmarks.html">Methodology, every dataset, and where Zipling is still behind →</a></p>
+    </section>
+
+    <!-- Compare -->
+    <section class="section" id="compare">
+      <div class="section-head reveal">
+        <p class="kicker">Compare</p>
+        <h2>Zipling and the rest.</h2>
+        <p class="sub">Other Mac archivers wrap your files in ZIP or 7z. Zipling also looks inside them, and shrinks photos, PDFs and apps in ways ZIP and 7z can't.</p>
+      </div>
+      <div class="cmp-legend reveal" aria-hidden="true">
+        <span><span class="mk mk-yes"><svg viewBox="0 0 20 20"><path d="M5.5 10.5l3 3 6-7"/></svg></span>Yes</span>
+        <span><span class="mk mk-part"><svg viewBox="0 0 20 20"><path d="M6 10h8"/></svg></span>Partly</span>
+        <span><span class="mk mk-no"></span>No</span>
+        <span><span class="mk mk-plan"><svg viewBox="0 0 20 20"><path d="M10 6v4.5l3 1.8"/></svg></span>Planned for Zipling 1.0</span>
+      </div>
+      <p class="cmp-hint">Swipe sideways to see the other apps <span aria-hidden="true">→</span></p>
+      <div class="cmp-wrap reveal" id="compare-teaser"></div>
+      <div class="chart-links reveal">
+        <a class="more" href="compare.html">Full comparison, including formats <span class="arrow" aria-hidden="true">→</span></a>
+      </div>
     </section>
 
     <!-- Engine -->
@@ -151,33 +152,33 @@
         <h2>It understands your files.</h2>
         <p class="sub">Most archivers treat everything as anonymous bytes. Arca looks at what each file is, undoes the compression already hiding inside it, and picks the right tool for every kind of data. Then it puts it all back, bit for bit.</p>
       </div>
-      <div class="cards">
-        <article class="card reveal">
+      <div class="cards" data-stagger>
+        <article class="card">
           <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-5 4 4 3-3 4 4"/></svg></div>
           <h3>Photos, re-encoded losslessly</h3>
           <p>JPEGs pass through Lepton, which stores the same image in about a quarter less space and rebuilds the original file exactly.</p>
         </article>
-        <article class="card reveal">
+        <article class="card">
           <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M14 3v5h5M8.5 13h7M8.5 16.5h5"/></svg></div>
           <h3>Documents, unpacked</h3>
           <p>PDFs, PNGs, Office files and ZIPs hide old Deflate compression. Arca reverses it exactly, compresses the raw data with modern codecs, and re-creates the original stream.</p>
         </article>
-        <article class="card reveal">
+        <article class="card">
           <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg></div>
           <h3>Apps, tuned for Apple silicon</h3>
           <p>ARM64 machine code is filtered so that similar instructions line up, which makes app bundles compress noticeably better.</p>
         </article>
-        <article class="card reveal">
+        <article class="card">
           <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="10" height="7" rx="2"/><rect x="11" y="13" width="10" height="7" rx="2"/><path d="M8 11v3a2 2 0 002 2h1"/></svg></div>
           <h3>Duplicates, stored once</h3>
           <p>Content-defined chunking finds data that repeats across your files and keeps a single copy.</p>
         </article>
-        <article class="card reveal">
+        <article class="card">
           <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg></div>
           <h3>Every core, all the time</h3>
           <p>Files stream through a parallel pipeline into independent blocks, so packing and extraction keep every core of your Mac busy.</p>
         </article>
-        <article class="card reveal">
+        <article class="card">
           <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div>
           <h3>Verified, end to end</h3>
           <p>Every transform is checked by rebuilding the original before it is kept, and every block carries a BLAKE3 hash that extraction verifies.</p>
@@ -206,7 +207,7 @@
 
       <div class="roadmap reveal">
         <h3>Coming in 1.0</h3>
-        <ul>
+        <ul data-stagger>
           <li><strong>Opens everything</strong>ZIP, 7z, RAR, TAR, GZ, XZ and more</li>
           <li><strong>Lives in Finder</strong>Quick Look previews and a Finder menu</li>
           <li><strong>Shares anywhere</strong>Standard ZIP and 7z when the other side doesn't have Zipling</li>
@@ -246,21 +247,29 @@
           <p>Arca is the compression engine inside Zipling, written in Rust for speed and memory safety. It combines format-aware transforms (Lepton for JPEG, preflate for Deflate streams, an ARM64 code filter), deduplication, and modern codecs (Zstandard, LZMA2, PPMd) in parallel blocks.</p>
         </details>
         <details>
+          <summary>I found a bug. Where do I report it?</summary>
+          <p>Please <a href="https://github.com/EnigmaticZee/zipling/issues/new?template=bug_report.yml">open a bug report on GitHub</a>. Include your macOS version and the steps that cause it, and leave out anything personal. Bug reports are public.</p>
+        </details>
+        <details>
           <summary>Which Macs will it run on?</summary>
           <p>Macs with Apple silicon.</p>
         </details>
       </div>
     </section>
+
   </main>
 
   <footer class="footer">
     <div class="footer-inner">
-      <div class="brand">
-        <img src="assets/icon-512.png" alt="" width="26" height="26">
-        <span>Zipling</span>
+      <div class="footer-brand">
+        <a class="brand" href="index.html"><img src="assets/icon-512.png" alt="" width="26" height="26"><span>Zipling</span></a>
+        <p>Smaller archives for your Mac.<br>© 2026 Observant Systems</p>
       </div>
-      <p>© 2026 Observant Systems</p>
-      <p><a href="https://github.com/EnigmaticZee/zipling">GitHub</a> · <a href="https://github.com/EnigmaticZee/zipling/blob/main/docs/BENCHMARKS.md">Benchmarks</a></p>
+      <nav class="footer-cols" aria-label="Footer">
+        <div><h3>Product</h3><a href="benchmarks.html">Benchmarks</a><a href="compare.html">Compare</a><a href="index.html#engine">How it works</a><a href="index.html#faq">FAQ</a></div>
+        <div><h3>Project</h3><a href="https://github.com/EnigmaticZee/zipling">GitHub</a><a href="https://github.com/EnigmaticZee/zipling/issues/new?template=bug_report.yml">Report a bug</a><a href="https://github.com/EnigmaticZee/zipling/issues">Known issues</a></div>
+        <div><h3>Legal</h3><a href="privacy.html">Privacy</a><a href="legal.html">Legal notice</a></div>
+      </nav>
     </div>
   </footer>
 </body>

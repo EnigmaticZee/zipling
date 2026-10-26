@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Benchmarks — Zipling</title>
+  <meta name="description" content="How Zipling's Arca engine compares with Finder, 7-Zip, zstd and xz on six datasets: archive size, compression time and extraction time, all verified lossless.">
+  <meta name="theme-color" content="#0B0D18" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#FBFBFD" media="(prefers-color-scheme: light)">
+  <link rel="canonical" href="https://enigmaticzee.github.io/zipling/benchmarks.html">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Benchmarks — Zipling">
+  <meta property="og:description" content="How Zipling's Arca engine compares with Finder, 7-Zip, zstd and xz on six datasets: archive size, compression time and extraction time, all verified lossless.">
+  <meta property="og:image" content="https://enigmaticzee.github.io/zipling/assets/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add("js")</script>
+  <script src="data.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="progress" aria-hidden="true"></div>
+  <header class="nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="Zipling home">
+        <img src="assets/icon-512.png" alt="" width="30" height="30">
+        <span>Zipling</span>
+      </a>
+      <nav aria-label="Site"><a href="benchmarks.html" aria-current="page">Benchmarks</a><a href="compare.html">Compare</a><a href="index.html#engine">How it works</a><a href="index.html#faq">FAQ</a></nav>
+      <a class="nav-gh" href="https://github.com/EnigmaticZee/zipling" aria-label="Zipling on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="page-hero-inner reveal">
+        <p class="kicker">Benchmarks</p>
+        <h1 class="page-title">Every number, measured.</h1>
+        <p class="sub">Six datasets, eight tools and settings, every archive extracted and compared byte for byte with the original. Pick a dataset to see how Zipling's Arca engine does against Finder, 7-Zip, zstd and xz.</p>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="tabs reveal" id="ds-tabs" role="tablist" aria-label="Dataset"></div>
+      <p class="ds-info reveal" id="ds-info"></p>
+      <div class="legend reveal" aria-hidden="true">
+        <span><i class="sw sw-us"></i>Zipling</span>
+        <span><i class="sw sw-them"></i>Other tools</span>
+        <span class="legend-note">† measured in a separate session; compare its times with care</span>
+      </div>
+      <div class="charts" id="bench-charts"></div>
+      <details class="table-view reveal">
+        <summary>Show this dataset as a table</summary>
+        <table>
+          <thead><tr><th scope="col">Tool</th><th scope="col">Size</th><th scope="col">% of original</th><th scope="col">Compress</th><th scope="col">Extract</th></tr></thead>
+          <tbody id="ds-rows"></tbody>
+        </table>
+      </details>
+    </section>
+
+    <section class="section">
+      <div class="section-head reveal">
+        <p class="kicker">Summary</p>
+        <h2>Against 7-Zip Ultra, set by set.</h2>
+        <p class="sub">7-Zip's strongest setting is the toughest common competitor, and the engine Keka and BetterZip use. Size change is Zipling's archive against 7-Zip's; speed compares Zipling's default setting with 7-Zip Ultra.</p>
+      </div>
+      <div class="vs-wrap reveal">
+        <table class="vs">
+          <thead><tr><th scope="col">Dataset</th><th scope="col">Size at Default</th><th scope="col">Size at Max</th><th scope="col">Compress (Default)</th><th scope="col">Extract (Default)</th></tr></thead>
+          <tbody id="vs-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="two-col">
+        <div class="reveal">
+          <p class="kicker">Method</p>
+          <h2 class="h2-sm">How we measured.</h2>
+          <ul class="ticks">
+            <li>Apple M1 Pro (8 performance + 2 efficiency cores, 32 GB), macOS 27, warm file cache.</li>
+            <li>Wall-clock time for every tool, and every round trip compared with <code>diff -r</code> against the source. All were identical.</li>
+            <li>Versions: 7-Zip 26.02 (<code>7z -mx9</code>), zstd 1.5.7, XZ Utils 5.8.4, and macOS's <code>ditto</code>, which is what Finder's Compress uses.</li>
+            <li>Zipling and 7-Zip were measured together on an idle machine. Rows marked † come from an earlier session, so compare their times with care.</li>
+            <li>Back-to-back runs vary by about ±10%, so treat small differences as ties.</li>
+            <li>Public and system data only. No personal files were read.</li>
+          </ul>
+        </div>
+        <div class="reveal">
+          <p class="kicker">Honesty</p>
+          <h2 class="h2-sm">Where Zipling is still behind.</h2>
+          <ul class="behind">
+            <li><strong>Max extraction of PDF and PNG folders</strong> is slower than 7-Zip (1.2 s against 0.8 s), for an archive 55% smaller. Re-creating a PNG that holds one huge image can't be split across cores.</li>
+            <li><strong>Max compression of PDFs and source code</strong> is slower than 7-Zip. It is within 5% on the mixed folder.</li>
+            <li><strong>The default setting on apps, code and generic data</strong> trades size for speed. It is 15–32% larger than 7-Zip Ultra there, but about 10× faster to compress. Max matches or beats 7-Zip on all of them.</li>
+            <li><strong>Ultra</strong> helps only prose-heavy data and extracts about 2× slower, so it stays opt-in.</li>
+          </ul>
+          <p class="fine">Full tables, raw data and the benchmark harness are in the <a href="https://github.com/EnigmaticZee/zipling/blob/main/docs/BENCHMARKS.md">repository</a>.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a class="brand" href="index.html"><img src="assets/icon-512.png" alt="" width="26" height="26"><span>Zipling</span></a>
+        <p>Smaller archives for your Mac.<br>© 2026 Observant Systems</p>
+      </div>
+      <nav class="footer-cols" aria-label="Footer">
+        <div><h3>Product</h3><a href="benchmarks.html">Benchmarks</a><a href="compare.html">Compare</a><a href="index.html#engine">How it works</a><a href="index.html#faq">FAQ</a></div>
+        <div><h3>Project</h3><a href="https://github.com/EnigmaticZee/zipling">GitHub</a><a href="https://github.com/EnigmaticZee/zipling/issues/new?template=bug_report.yml">Report a bug</a><a href="https://github.com/EnigmaticZee/zipling/issues">Known issues</a></div>
+        <div><h3>Legal</h3><a href="privacy.html">Privacy</a><a href="legal.html">Legal notice</a></div>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

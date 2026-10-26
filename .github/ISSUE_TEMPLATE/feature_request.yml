@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest something Zipling should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the task or problem, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could Zipling help?
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you do it today?
+      description: Another app, a workaround, or not at all.
