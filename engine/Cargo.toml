@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["arca-core", "arca-cli", "arca-ffi"]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,3 +12,8 @@ lto = "fat"
 codegen-units = 1
 panic = "unwind"
 debug = 1
+
+# liblzma with two speed patches that keep its output identical; see
+# vendor/liblzma-sys/ARCA-PATCHES.md.
+[patch.crates-io]
+liblzma-sys = { path = "vendor/liblzma-sys" }
