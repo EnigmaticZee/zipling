@@ -83,6 +83,7 @@ dependencies = [
  "crossbeam-channel",
  "fastcdc",
  "filetime",
+ "flate2",
  "lepton_jpeg",
  "libc",
  "liblzma",

@@ -1,5 +1,6 @@
-use arca_core::{pack, Archive, ExtractOptions, Level, PackOptions};
+use arca_core::{pack, Archive, EntryKind, ExtractOptions, Hooks, Level, PackOptions};
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 
@@ -101,6 +102,55 @@ fn full_roundtrip_preserves_everything() {
         let m2 = fs::metadata(out.join("tree/hardlink.txt")).unwrap();
         assert_eq!(m1.ino(), m2.ino(), "hard link must be restored as a hard link");
     }
+}
+
+/// Extraction runs as a dependency graph over blocks. Tiny blocks make objects
+/// span many of them, and one thread leaves room for only two decoded blocks.
+#[test]
+fn objects_spanning_many_blocks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("tree");
+    build_tree(&src);
+    // A gzip member, expanded by the Deflate transform into many blocks' worth of text.
+    let text: Vec<u8> = (0..100_000).flat_map(|i| format!("line {i} of some log output\n").into_bytes()).collect();
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::new(6));
+    gz.write_all(&text).unwrap();
+    write(&src.join("logs/app.log.gz"), &gz.finish().unwrap());
+
+    let mut opts = PackOptions::preset(Level::Balanced);
+    opts.block_size = 128 << 10;
+    opts.text_block_size = 128 << 10;
+    opts.adaptive_below = 0;
+    let archive = tmp.path().join("a.arca");
+    let stats = pack(std::slice::from_ref(&src), &archive, &opts).unwrap();
+    assert!(stats.transforms.iter().any(|(name, t)| *name == "deflate" && t.files == 1), "{:?}", stats.transforms);
+
+    let a = Archive::open(&archive).unwrap();
+    let gz_entry = a.index.entries.iter().find(|e| e.path == "tree/logs/app.log.gz").unwrap();
+    let EntryKind::File { object, .. } = gz_entry.kind else { panic!("not a file") };
+    let mut blocks: Vec<u32> = a.index.objects[object as usize].chunks.iter().map(|&c| a.index.chunks[c as usize].block).collect();
+    blocks.dedup();
+    assert!(blocks.len() >= 3, "transformed object should span blocks, got {blocks:?}");
+
+    for threads in [1, 3] {
+        a.verify(threads).unwrap();
+        let out = tmp.path().join(format!("out-{threads}"));
+        a.extract(&out, &ExtractOptions { threads, ..Default::default() }).unwrap();
+        assert_same(&src, &out.join("tree"));
+    }
+}
+
+#[test]
+fn extraction_can_be_cancelled() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("tree");
+    build_tree(&src);
+    let archive = tmp.path().join("a.arca");
+    pack(&[src], &archive, &PackOptions::preset(Level::Fast)).unwrap();
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let opts = ExtractOptions { hooks: Hooks { cancel: Some(cancel), progress: None }, ..Default::default() };
+    let err = Archive::open(&archive).unwrap().extract(&tmp.path().join("out"), &opts).unwrap_err();
+    assert!(format!("{err:#}").contains("cancelled"), "{err:#}");
 }
 
 #[test]
