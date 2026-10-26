@@ -7,15 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		04B201B41321D6E6D58DCB85 /* SafeExtraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44026925804C36FD11C4F34 /* SafeExtraction.swift */; };
 		1E539D6943F63594C6539D12 /* ArchiveModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249A99818FB109E4FEF63B7D /* ArchiveModel.swift */; };
 		1FE2A56D802B61A9DA158642 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02404CD5FB1C33B07BB46276 /* AppRouter.swift */; };
 		277E29A3C7A4D5AC71551DDD /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C92CA9AA75990B281652EEE /* InspectorView.swift */; };
+		5C1C4E35D26EA20F232807AE /* SevenZip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BBA70006A9F65B528BFD28D /* SevenZip.swift */; };
 		762E2C253B1FE81BB071B71B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FBA440D2BEC0487EF21E075 /* Models.swift */; };
 		7DC1C405406117CAEA407B52 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D7A258CCA7D372D94B0D66 /* Formatting.swift */; };
 		88D1C28DE1EBBF4012E4C89A /* ArchiveWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E2C578020156E8B4B447A4 /* ArchiveWindow.swift */; };
 		8D21D0279756DF18B2F62E80 /* ZiplingApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1BB582DA2C3461693427A9 /* ZiplingApp.swift */; };
+		981560AD3325DA0DC552C9D6 /* FormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DB987455D8803124F6CB2F9 /* FormatTests.swift */; };
 		A13550513D68069532046631 /* ZiplingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B33F289736EB5FDFF14FA885 /* ZiplingTests.swift */; };
 		BE2D05AC466F0D40B6F0F824 /* Job.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B1CADA860B2A2F44C2F740 /* Job.swift */; };
+		C04D984EC3BC097F757837ED /* Archives.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75AA753AA85817BA0DE17C25 /* Archives.swift */; };
 		CC075058E7BA2FFAECDE2504 /* CompressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FB800CAEFFC703215743489 /* CompressView.swift */; };
 		CC98815DBE0927140C0EBEFC /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 861C913B63EE06413120185A /* AppIcon.icon */; };
 		CE2DBD73E00FE175B0D336D8 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8189F5251B5C516F3BEA98F7 /* HomeView.swift */; };
@@ -36,15 +40,19 @@
 /* Begin PBXFileReference section */
 		02404CD5FB1C33B07BB46276 /* AppRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
 		0C92CA9AA75990B281652EEE /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
+		0DB987455D8803124F6CB2F9 /* FormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatTests.swift; sourceTree = "<group>"; };
 		1911BC0B062C2920D4A5207C /* Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engine.swift; sourceTree = "<group>"; };
 		249A99818FB109E4FEF63B7D /* ArchiveModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveModel.swift; sourceTree = "<group>"; };
 		2FBA440D2BEC0487EF21E075 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		3BBA70006A9F65B528BFD28D /* SevenZip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SevenZip.swift; sourceTree = "<group>"; };
 		48D7A258CCA7D372D94B0D66 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		4A44530024C3C07A5E9480BC /* ZiplingTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZiplingTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4FB800CAEFFC703215743489 /* CompressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressView.swift; sourceTree = "<group>"; };
+		75AA753AA85817BA0DE17C25 /* Archives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Archives.swift; sourceTree = "<group>"; };
 		8189F5251B5C516F3BEA98F7 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		84B1CADA860B2A2F44C2F740 /* Job.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Job.swift; sourceTree = "<group>"; };
 		861C913B63EE06413120185A /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		A44026925804C36FD11C4F34 /* SafeExtraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeExtraction.swift; sourceTree = "<group>"; };
 		AB16AC7784B577A28E612204 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B33F289736EB5FDFF14FA885 /* ZiplingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZiplingTests.swift; sourceTree = "<group>"; };
 		D3E2C578020156E8B4B447A4 /* ArchiveWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveWindow.swift; sourceTree = "<group>"; };
@@ -68,6 +76,7 @@
 			children = (
 				D7B86FDB9BBD2A10FC70E72F /* Info.plist */,
 				0FE1E962D46BC80BAC46368E /* App */,
+				E15EF21523DC8BEDED87798E /* Archives */,
 				B387538E6ACE0577FEF1ED90 /* Engine */,
 				E921809CCDEC68D00A2D6A6A /* Resources */,
 				E9E0D8308F22F68D9573B92A /* Support */,
@@ -79,6 +88,7 @@
 		35DB7C39B22BD56427E83BFE /* ZiplingTests */ = {
 			isa = PBXGroup;
 			children = (
+				0DB987455D8803124F6CB2F9 /* FormatTests.swift */,
 				B33F289736EB5FDFF14FA885 /* ZiplingTests.swift */,
 			);
 			path = ZiplingTests;
@@ -123,6 +133,16 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		E15EF21523DC8BEDED87798E /* Archives */ = {
+			isa = PBXGroup;
+			children = (
+				75AA753AA85817BA0DE17C25 /* Archives.swift */,
+				A44026925804C36FD11C4F34 /* SafeExtraction.swift */,
+				3BBA70006A9F65B528BFD28D /* SevenZip.swift */,
+			);
+			path = Archives;
+			sourceTree = "<group>";
+		};
 		E921809CCDEC68D00A2D6A6A /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -151,6 +171,7 @@
 				9DA16035360D5CA67D1919E5 /* Build Rust engine */,
 				E14605EA201CF7E0B79E3649 /* Sources */,
 				A1C292233000F80E98F095BE /* Resources */,
+				731D54E2B889DAEF2DC2CA9E /* Embed 7-Zip helper */,
 			);
 			buildRules = (
 			);
@@ -231,6 +252,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		731D54E2B889DAEF2DC2CA9E /* Embed 7-Zip helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed 7-Zip helper";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The unmodified 7-Zip helper reads every non-Zipling format, in its own process.\n# tools/7zip/build.sh builds it from the pinned official source (run it once).\nHELPER=\"$SRCROOT/../tools/7zip/bin/7zz\"\nDEST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nif [ -x \"$HELPER\" ]; then\n  mkdir -p \"$DEST\"\n  cp -f \"$HELPER\" \"$DEST/7zz\"\n  codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"$DEST/7zz\"\nelif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  echo \"error: tools/7zip/bin/7zz is missing. Run tools/7zip/build.sh once.\"\n  exit 1\nelse\n  echo \"warning: the 7-Zip helper isn't built yet, so this debug build uses Homebrew's 7zz. Run tools/7zip/build.sh.\"\nfi\n";
+		};
 		9DA16035360D5CA67D1919E5 /* Build Rust engine */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -257,6 +297,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				981560AD3325DA0DC552C9D6 /* FormatTests.swift in Sources */,
 				A13550513D68069532046631 /* ZiplingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -268,6 +309,7 @@
 				1FE2A56D802B61A9DA158642 /* AppRouter.swift in Sources */,
 				1E539D6943F63594C6539D12 /* ArchiveModel.swift in Sources */,
 				88D1C28DE1EBBF4012E4C89A /* ArchiveWindow.swift in Sources */,
+				C04D984EC3BC097F757837ED /* Archives.swift in Sources */,
 				CC075058E7BA2FFAECDE2504 /* CompressView.swift in Sources */,
 				F5307E9ECEA9AF78F9DFB4BE /* Engine.swift in Sources */,
 				7DC1C405406117CAEA407B52 /* Formatting.swift in Sources */,
@@ -275,6 +317,8 @@
 				277E29A3C7A4D5AC71551DDD /* InspectorView.swift in Sources */,
 				BE2D05AC466F0D40B6F0F824 /* Job.swift in Sources */,
 				762E2C253B1FE81BB071B71B /* Models.swift in Sources */,
+				04B201B41321D6E6D58DCB85 /* SafeExtraction.swift in Sources */,
+				5C1C4E35D26EA20F232807AE /* SevenZip.swift in Sources */,
 				8D21D0279756DF18B2F62E80 /* ZiplingApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

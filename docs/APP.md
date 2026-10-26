@@ -62,12 +62,17 @@ Done (first slice):
 - [x] Browser window: Finder-style table (icons, sort, search, breadcrumbs, Saved meter, method), inspector, extract selected/all, verify, double-click to open a file
 - [x] Safe extraction: staging folder, Finder-style names ("docs 2"), nothing overwritten, nothing left on cancel
 - [x] App icon; app tests through the real engine (`ZiplingTests`)
+- [x] Every other format through the unmodified 7-Zip helper (`tools/7zip`), run as a separate process: ZIP, 7z, TAR (+ gz/bz2/xz/zst, opened as their tar), DMG (HFS+ and APFS), ISO, WIM, split archives (`.001`) and ~50 more
+- [x] Encrypted archives: the password goes to the helper on stdin (never the command line), and a wrong one asks again
+- [x] Nested archives: double-click an archive inside an archive to browse it, with breadcrumbs (`Backup.dmg › photos.7z`); Back leaves it
+- [x] Safe extraction for every format: paths cleaned the way 7-Zip writes them, entries 7-Zip refuses (writes through links) reported instead of failing, links pointing outside removed, quarantine copied from the archive to every item, `__MACOSX`/`._` metadata merged back (extended attributes only, never ACLs), a free-space check up front
 
 Next:
 
 - [ ] Switch to the official `rustup` toolchain (Homebrew's Rust standard library targets macOS 27 only) and build a universal (arm64 + x86_64) engine
-- [ ] Drag items out to Finder (file promises); Quick Look on inner files; `.zlg` document icon
-- [ ] XPC helper + libarchive (zip, 7z, rar, tar.*, iso, xar, cab, lha, cpio, deb, rpm) behind an `ArchiveProvider` protocol
-- [ ] Nested-archive VFS, job queue window, Dock progress
+- [ ] Drag items out to Finder (file promises); Quick Look on inner files
+- [ ] Classic Mac and long-tail formats (StuffIt, BinHex, Compact Pro…) and filename-encoding repair through The Unarchiver's `unar`/`lsar`
+- [ ] A RAR sample in the tests (7-Zip reads RAR, but nothing here can write one)
+- [ ] Job queue window, Dock progress
 - [ ] Quick Look extension, Finder context menu, Share extension
 - [ ] Developer ID signing, hardened runtime, notarisation, Sparkle

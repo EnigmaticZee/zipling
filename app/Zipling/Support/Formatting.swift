@@ -37,8 +37,17 @@ enum Method {
         case "lepton": "Lepton"
         case "deflate": "Unpacked + \(shortCodec(codec))"
         case "arm64": "ARM64 + \(shortCodec(codec))"
+        case "foreign": foreignName(codec)
         default: codecName(codec)
         }
+    }
+
+    /// Methods named by other formats, as 7-Zip reports them ("LZMA2:24",
+    /// "AES-256 Deflate", "LZMA:24 BCJ"): parameters dropped, steps joined.
+    static func foreignName(_ method: String) -> String {
+        let steps = method.split(separator: " ").map { $0.split(separator: ":").first.map(String.init) ?? String($0) }
+        guard !steps.isEmpty else { return "—" }
+        return steps.map { $0 == "Copy" ? "Stored" : $0 }.joined(separator: " + ")
     }
 
     static func shortCodec(_ codec: String) -> String {
@@ -59,6 +68,7 @@ enum Method {
         case "lepton": "This JPEG was re-encoded losslessly with Lepton. It comes back bit for bit identical, about a fifth smaller."
         case "deflate": "This file's internal Deflate compression (ZIP, Office, PNG or PDF) was undone, so a much stronger codec could see the real data. It is rebuilt exactly on extraction."
         case "arm64": "The Apple silicon code in this app binary was rearranged so repeated calls look alike and compress better. Reversed exactly on extraction."
+        case "foreign": "Stored the way the app that made this archive chose."
         default: "Compressed as-is."
         }
     }

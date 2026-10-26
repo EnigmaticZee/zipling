@@ -11,6 +11,10 @@ design/icon/out/
 design/icon/icons/
 __pycache__/
 
+# 7-Zip helper: downloaded source and the built binary (tools/7zip/build.sh)
+tools/7zip/cache/
+tools/7zip/bin/
+
 # Private research (not published)
 research_notes/
 reports/

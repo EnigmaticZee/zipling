@@ -18,6 +18,8 @@ final class Job {
     private(set) var total: UInt64 = 0
     private let started = Date()
     @ObservationIgnored let task = EngineTask()
+    /// Stops helper processes (7-Zip); `task` stops the Arca engine.
+    @ObservationIgnored let cancelToken = CancelToken()
 
     init(title: String) {
         self.title = title
@@ -52,7 +54,10 @@ final class Job {
         self.total = total
     }
 
-    func cancel() { task.cancel() }
+    func cancel() {
+        task.cancel()
+        cancelToken.cancel()
+    }
 
     func finish(_ error: Error?) {
         switch error {

@@ -33,13 +33,38 @@ private struct ArchiveSummary: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 6)
 
-        Facts(rows: [
-            ("Files", listing.files.formatted()),
-            ("Folders", listing.dirs.formatted()),
-            ("Blocks", listing.blocks.formatted()),
-            ("Created", listing.createdDate.formatted(date: .abbreviated, time: .shortened)),
-        ])
+        if listing.isZipling {
+            Facts(rows: [
+                ("Files", listing.files.formatted()),
+                ("Folders", listing.dirs.formatted()),
+                ("Blocks", listing.blocks.formatted()),
+                ("Created", listing.createdDate.formatted(date: .abbreviated, time: .shortened)),
+            ])
+            zipling
+        } else {
+            Facts(rows: [
+                ("Format", (listing.format ?? "Archive").uppercased()),
+                ("Method", listing.method.map { Method.foreignName($0) } ?? "—"),
+                ("Solid", listing.solid == true ? "Yes" : "No"),
+                ("Encrypted", listing.encrypted == true ? "Yes" : "No"),
+                ("Files", listing.files.formatted()),
+                ("Folders", listing.dirs.formatted()),
+                ("Modified", listing.createdDate.formatted(date: .abbreviated, time: .shortened)),
+            ])
+            InspectorSection("Integrity") {
+                Text("Decode everything and check the archive's own checksums, without writing anything.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button {
+                    model.verify()
+                } label: {
+                    Label("Verify Now", systemImage: "checkmark.shield")
+                }
+            }
+        }
+    }
 
+    @ViewBuilder private var zipling: some View {
         InspectorSection("How it got smaller") {
             ForEach(breakdown, id: \.title) { row in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -114,8 +139,8 @@ private struct ItemDetails: View {
 
         Facts(rows: [
             ("Size", Format.bytes(item.size)),
-            ("Packed", "≈ " + Format.bytes(item.packed)),
-            ("Saved", Format.percent(item.saved)),
+            ("Packed", item.packedKnown ? "≈ " + Format.bytes(item.packed) : "—"),
+            ("Saved", item.packedKnown ? Format.percent(item.saved) : "—"),
         ] + (item.isFolder
             ? [("Items", item.childCount.formatted())]
             : [("Method", Method.label(transform: item.transform, codec: item.codec))])

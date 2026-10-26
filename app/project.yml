@@ -34,6 +34,47 @@ targets:
             LSItemContentTypes: [com.observantsystems.zipling-archive]
             # macOS draws the .zlg icon: a page badged with the app icon and the label below.
             CFBundleTypeIconSystemGenerated: true
+          - CFBundleTypeName: Archive
+            CFBundleTypeRole: Viewer
+            # Opens every other archive, without taking over as the default app.
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.archive
+              - public.zip-archive
+              - org.7-zip.7-zip-archive
+              - public.tar-archive
+              - org.gnu.gnu-zip-archive
+              - org.gnu.gnu-zip-tar-archive
+              - public.bzip2-archive
+              - public.tar-bzip2-archive
+              - org.tukaani.xz-archive
+              - org.tukaani.tar-xz-archive
+              - public.z-archive
+              - com.microsoft.cab
+              - public.iso-image
+              - com.apple.disk-image-udif
+              - com.apple.xar-archive
+              - com.apple.installer-package-archive
+              - public.cpio-archive
+              - com.sun.java-archive
+              - com.apple.xip-archive
+              - com.stuffit.archive.sit
+              - com.rarlab.rar-archive
+              - com.observantsystems.zipling.zstd
+              - com.observantsystems.zipling.lz4
+              - com.observantsystems.zipling.lzma
+              - com.observantsystems.zipling.wim
+              - com.observantsystems.zipling.rpm
+              - com.observantsystems.zipling.deb
+              - com.observantsystems.zipling.arj
+              - com.observantsystems.zipling.lha
+              - com.observantsystems.zipling.apk
+              - com.observantsystems.zipling.cbz
+              - com.observantsystems.zipling.chm
+              - com.observantsystems.zipling.msi
+              - com.observantsystems.zipling.virtual-disk
+              - com.observantsystems.zipling.squashfs
+              - com.observantsystems.zipling.split-part
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.observantsystems.zipling-archive
             UTTypeDescription: Zipling Archive
@@ -43,6 +84,87 @@ targets:
             UTTypeIcons:
               UTTypeIconBadgeName: AppIcon
               UTTypeIconText: ZLG
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.rarlab.rar-archive
+            UTTypeDescription: RAR archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [rar, cbr]
+          - UTTypeIdentifier: com.observantsystems.zipling.zstd
+            UTTypeDescription: Zstandard archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [zst, tzst]
+          - UTTypeIdentifier: com.observantsystems.zipling.lz4
+            UTTypeDescription: LZ4 archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [lz4, tlz4]
+          - UTTypeIdentifier: com.observantsystems.zipling.lzma
+            UTTypeDescription: LZMA archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [lzma, tlz]
+          - UTTypeIdentifier: com.observantsystems.zipling.wim
+            UTTypeDescription: Windows Imaging archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [wim, swm, esd]
+          - UTTypeIdentifier: com.observantsystems.zipling.rpm
+            UTTypeDescription: RPM package
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [rpm]
+          - UTTypeIdentifier: com.observantsystems.zipling.deb
+            UTTypeDescription: Debian package
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [deb]
+          - UTTypeIdentifier: com.observantsystems.zipling.arj
+            UTTypeDescription: ARJ archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [arj]
+          - UTTypeIdentifier: com.observantsystems.zipling.lha
+            UTTypeDescription: LHA archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [lha, lzh]
+          - UTTypeIdentifier: com.observantsystems.zipling.apk
+            UTTypeDescription: Android package
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [apk]
+          - UTTypeIdentifier: com.observantsystems.zipling.cbz
+            UTTypeDescription: Comic book archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [cbz, cb7]
+          - UTTypeIdentifier: com.observantsystems.zipling.chm
+            UTTypeDescription: Compiled HTML help
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [chm]
+          - UTTypeIdentifier: com.observantsystems.zipling.msi
+            UTTypeDescription: Windows Installer package
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [msi]
+          - UTTypeIdentifier: com.observantsystems.zipling.virtual-disk
+            UTTypeDescription: Virtual disk image
+            UTTypeConformsTo: [public.data, public.archive, public.disk-image]
+            UTTypeTagSpecification:
+              public.filename-extension: [vhd, vhdx, vmdk, vdi, qcow2]
+          - UTTypeIdentifier: com.observantsystems.zipling.squashfs
+            UTTypeDescription: SquashFS image
+            UTTypeConformsTo: [public.data, public.archive, public.disk-image]
+            UTTypeTagSpecification:
+              public.filename-extension: [squashfs, sfs]
+          - UTTypeIdentifier: com.observantsystems.zipling.split-part
+            UTTypeDescription: Split archive part
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [001]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.zipling
@@ -73,6 +195,25 @@ targets:
           # A separate target dir: Xcode's environment (deployment target, SDK)
           # differs from the CLI's, and sharing one dir would rebuild every time.
           CARGO_TARGET_DIR="$SRCROOT/../engine/target/xcode" cargo build --release -p arca-ffi
+
+    postBuildScripts:
+      - name: Embed 7-Zip helper
+        basedOnDependencyAnalysis: false
+        script: |
+          # The unmodified 7-Zip helper reads every non-Zipling format, in its own process.
+          # tools/7zip/build.sh builds it from the pinned official source (run it once).
+          HELPER="$SRCROOT/../tools/7zip/bin/7zz"
+          DEST="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
+          if [ -x "$HELPER" ]; then
+            mkdir -p "$DEST"
+            cp -f "$HELPER" "$DEST/7zz"
+            codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --timestamp=none "$DEST/7zz"
+          elif [ "$CONFIGURATION" = "Release" ]; then
+            echo "error: tools/7zip/bin/7zz is missing. Run tools/7zip/build.sh once."
+            exit 1
+          else
+            echo "warning: the 7-Zip helper isn't built yet, so this debug build uses Homebrew's 7zz. Run tools/7zip/build.sh."
+          fi
 
   ZiplingTests:
     type: bundle.unit-test

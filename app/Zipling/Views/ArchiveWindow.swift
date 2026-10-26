@@ -29,6 +29,13 @@ struct ArchiveWindow: View {
         .navigationTitle(model.name)
         .frame(minWidth: 760, minHeight: 420)
         .task { await model.load() }
+        .onDisappear { model.close() }
+        .sheet(item: $model.passwordRequest) { request in
+            PasswordSheet(request: request) { model.passwordRequest = nil }
+        }
+        .alert(model.alert ?? "", isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } })) {
+            Button("OK") { model.alert = nil }
+        }
     }
 }
 
@@ -40,7 +47,11 @@ struct BrowserView: View {
         table
             .safeAreaInset(edge: .top, spacing: 0) { PathBar(model: model) }
             .overlay {
-                if model.visibleItems.isEmpty {
+                if let nested = model.openingNested {
+                    ProgressView("Opening “\(nested)”…")
+                        .padding(20)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                } else if model.visibleItems.isEmpty {
                     if model.search.isEmpty {
                         ContentUnavailableView("Empty Folder", systemImage: "folder")
                     } else {
@@ -64,7 +75,8 @@ struct BrowserView: View {
 
     private var subtitle: String {
         guard let l = model.listing else { return "" }
-        return "\(Format.count(l.files, "file")) · \(Format.bytes(l.archiveBytes)) · \(Format.percent(l.saved)) smaller"
+        let kind = l.format.map { "\($0.uppercased()) · " } ?? ""
+        return kind + "\(Format.count(l.files, "file")) · \(Format.bytes(l.archiveBytes)) · \(Format.percent(l.saved)) smaller"
     }
 
     private var table: some View {
@@ -75,6 +87,12 @@ struct BrowserView: View {
                         .resizable()
                         .frame(width: 18, height: 18)
                     Text(item.name).lineLimit(1).truncationMode(.middle)
+                    if item.encrypted {
+                        Image(systemName: "lock.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help("Encrypted")
+                    }
                     if !model.search.isEmpty, !item.parent.isEmpty {
                         Text(item.parent)
                             .font(.caption)
@@ -95,8 +113,14 @@ struct BrowserView: View {
             .width(min: 70, ideal: 86)
 
             TableColumn("Saved", value: \.packed) { item in
-                SavedBar(fraction: item.saved)
-                    .help("≈ \(Format.bytes(item.packed)) packed")
+                if item.packedKnown {
+                    SavedBar(fraction: item.saved)
+                        .help("≈ \(Format.bytes(item.packed)) packed")
+                } else {
+                    Text("—")
+                        .foregroundStyle(.tertiary)
+                        .help("This archive format doesn't record each file's packed size")
+                }
             }
             .width(min: 70, ideal: 90)
 
@@ -119,7 +143,12 @@ struct BrowserView: View {
         .contextMenu(forSelectionType: Item.ID.self) { ids in
             Button(ids.isEmpty ? "Extract All…" : "Extract…") { model.extractInteractively(ids) }
             if ids.count == 1, let id = ids.first, let item = model.item(id), !item.isFolder {
-                Button("Open") { model.activate(ids) }
+                if item.isArchive {
+                    Button("Open Inside Zipling") { model.openNested(item) }
+                    Button("Open With Default App") { model.openWithDefaultApp(item) }
+                } else {
+                    Button("Open") { model.activate(ids) }
+                }
             }
         } primaryAction: { ids in
             model.activate(ids)
@@ -131,7 +160,7 @@ struct BrowserView: View {
             Button { model.goUp() } label: {
                 Label("Back", systemImage: "chevron.backward")
             }
-            .disabled(model.folder.isEmpty && model.search.isEmpty)
+            .disabled(!model.canGoUp)
             .keyboardShortcut(.upArrow, modifiers: .command)
         }
         ToolbarItemGroup(placement: .primaryAction) {
@@ -142,7 +171,7 @@ struct BrowserView: View {
             Button { model.verify() } label: {
                 Label("Verify", systemImage: "checkmark.shield")
             }
-            .help("Decode everything and check every hash, writing nothing")
+            .help("Decode everything and check every checksum, writing nothing")
             Button { showInspector.toggle() } label: {
                 Label("Inspector", systemImage: "sidebar.trailing")
             }
@@ -156,7 +185,16 @@ private struct PathBar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            crumb(model.name, path: "", icon: "shippingbox")
+            // Archives opened one inside another: Backup.dmg › photos.7z › …
+            ForEach(Array(model.levelNames.enumerated().dropLast()), id: \.offset) { index, name in
+                Button { model.leaveTo(level: index) } label: {
+                    Label(name, systemImage: "shippingbox")
+                }
+                .buttonStyle(.plain)
+                .lineLimit(1)
+                Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
+            }
+            crumb(model.levelNames.last ?? model.name, path: "", icon: "shippingbox")
             ForEach(model.crumbs, id: \.path) { c in
                 Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
                 crumb(c.name, path: c.path, icon: nil)
@@ -256,5 +294,43 @@ struct JobSheet: View {
             Spacer()
             Button("OK", action: dismiss).keyboardShortcut(.defaultAction)
         }
+    }
+}
+
+/// Asks for an archive's password; a wrong one keeps the sheet up with a message.
+private struct PasswordSheet: View {
+    let request: PasswordRequest
+    let dismiss: () -> Void
+    @State private var password = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("“\(request.archiveName)” is encrypted", systemImage: "lock.fill")
+                .font(.title3.weight(.semibold))
+            Text(request.wrong ? "That password didn't work. Try again." : "Enter its password to continue.")
+                .foregroundStyle(request.wrong ? .red : .secondary)
+            SecureField("Password", text: $password)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(submit)
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    dismiss()
+                    request.giveUp()
+                }
+                .keyboardShortcut(.cancelAction)
+                Button("Unlock", action: submit)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(password.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 400)
+    }
+
+    private func submit() {
+        guard !password.isEmpty else { return }
+        dismiss()
+        request.retry(password)
     }
 }

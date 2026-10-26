@@ -1,6 +1,7 @@
 import Foundation
 
-/// An archive's table of contents, as reported by `arca_list`.
+/// An archive's table of contents: from `arca_list` for Zipling archives, or from the
+/// 7-Zip helper for every other format (which also fills the optional fields).
 struct Listing: Decodable, Sendable {
     let archiveBytes: UInt64
     let created: Int64
@@ -9,7 +10,15 @@ struct Listing: Decodable, Sendable {
     let totalSize: UInt64
     let blocks: Int
     let entries: [ArchiveEntry]
+    /// The format as 7-Zip names it ("zip", "7z", "Rar5"…); nil for Zipling archives.
+    var format: String?
+    /// The archive-wide method, such as "LZMA2:24" (7-Zip formats only).
+    var method: String?
+    var solid: Bool?
+    /// True when some entries (or the names themselves) are encrypted.
+    var encrypted: Bool?
 
+    var isZipling: Bool { format == nil }
     var createdDate: Date { Date(timeIntervalSince1970: TimeInterval(created)) }
 
     /// Fraction of the original size saved (0.68 = 68% smaller).
@@ -28,6 +37,9 @@ struct ArchiveEntry: Decodable, Sendable, Hashable {
     let codec: String
     let packed: UInt64
     let target: String?
+    /// False when the format doesn't record a per-file packed size (solid 7z, tar).
+    var packedKnown: Bool?
+    var encrypted: Bool?
 
     var isDirectory: Bool { kind == "dir" }
     var name: String { path.split(separator: "/").last.map(String.init) ?? path }
@@ -70,4 +82,6 @@ struct ExtractResult: Decodable, Sendable {
     let files: UInt64
     let bytes: UInt64
     let seconds: Double
+    /// Entries left out because writing them would have been unsafe.
+    var skipped: [String]?
 }

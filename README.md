@@ -6,6 +6,7 @@ A macOS archive manager built around Arca, a new compression engine. Its own arc
 
 * `app/`: the macOS app (SwiftUI). `project.yml` is the XcodeGen spec, and `Zipling/Resources/AppIcon.icon` is the Icon Composer app icon.
 * `engine/`: the Arca engine in Rust (`arca-core`), its C API for the app (`arca-ffi`), and the `arca` CLI. It provides the Zipling format (`.zlg`), format-aware lossless transforms, deduplication and parallel solid blocks.
+* `tools/7zip/`: builds the unmodified 7-Zip helper that reads every other format.
 * `site/`: the landing page, a static site deployed to GitHub Pages by `.github/workflows/pages.yml`.
 * `design/icon/`: the app icon's generator (`zpull.py --style metal indigo`) and its review sheets.
 * `docs/DESIGN.md`: how the engine works, the on-disk format, and the safety model.
@@ -15,7 +16,7 @@ A macOS archive manager built around Arca, a new compression engine. Its own arc
 
 ## Build and run the app
 
-Requires Xcode, Rust (`brew install rust`) and XcodeGen (`brew install xcodegen`). Xcode builds the Rust engine automatically as a build phase.
+Requires Xcode, Rust (`brew install rust`) and XcodeGen (`brew install xcodegen`). Xcode builds the Rust engine automatically as a build phase. Other archive formats go through the 7-Zip helper, built once from its pinned official source with `tools/7zip/build.sh` (see `tools/7zip/README.md`); debug builds fall back to Homebrew's `7zz`.
 
 ```bash
 cd app && xcodegen generate && open Zipling.xcodeproj

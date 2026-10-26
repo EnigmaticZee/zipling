@@ -192,12 +192,13 @@
         <div class="app-copy reveal">
           <p class="kicker">The app</p>
           <h2>See where every byte went.</h2>
-          <p class="sub">Zipling is a native Mac app built in SwiftUI. Open an archive and it shows, file by file, how much was saved and how.</p>
+          <p class="sub">Zipling is a native Mac app built in SwiftUI. It opens the archives you already have, and for its own it shows, file by file, how much was saved and how.</p>
           <ul class="ticks">
+            <li>Opens ZIP, 7z, TAR, DMG, ISO, split and password-protected archives</li>
+            <li>Archives inside archives open in place, with breadcrumbs</li>
             <li>Savings and method for every file, at a glance</li>
-            <li>"How it got smaller", explained in plain words</li>
-            <li>One-click verification of the whole archive</li>
-            <li>Drop files in to compress, open an archive to browse</li>
+            <li>One-click verification of any archive</li>
+            <li>Safe extraction: nothing escapes the folder, and downloaded files stay marked for Gatekeeper</li>
           </ul>
         </div>
         <figure class="app-shot reveal">
@@ -208,11 +209,14 @@
       <div class="roadmap reveal">
         <h3>Coming in 1.0</h3>
         <ul data-stagger>
-          <li><strong>Opens everything</strong>ZIP, 7z, RAR, TAR, GZ, XZ and more</li>
-          <li><strong>Lives in Finder</strong>Quick Look previews and a Finder menu</li>
-          <li><strong>Shares anywhere</strong>Standard ZIP and 7z when the other side doesn't have Zipling</li>
-          <li><strong>Locks it up</strong>Encryption and split archives</li>
+          <li><strong>Previews everything</strong>Quick Look any file inside an archive, without extracting it</li>
+          <li><strong>Lives in Finder</strong>Quick Look for archives and a Finder menu</li>
+          <li><strong>Shares anywhere</strong>Creates standard ZIP and 7z when the other side doesn't have Zipling</li>
+          <li><strong>Edits in place</strong>Add, replace, delete and rename files inside archives</li>
+          <li><strong>Locks it up</strong>Encrypted and split archives</li>
           <li><strong>Survives damage</strong>Recovery records that repair broken archives</li>
+          <li><strong>Opens even more</strong>RAR, StuffIt and classic Mac formats</li>
+          <li><strong>Mounts like a disk</strong>Browse an archive in Finder as if it were a folder</li>
           <li><strong>Feels native</strong>Light and dark mode, keyboard and VoiceOver support</li>
         </ul>
         <p class="fine">Planned features. They are in development, not finished.</p>
@@ -237,6 +241,10 @@
         <details>
           <summary>Is it really lossless?</summary>
           <p>Yes. Every transform is reversible, and Zipling proves it: it rebuilds each original during compression before keeping the smaller form, and checks a BLAKE3 hash of every block when extracting. In the benchmarks every archive was extracted and compared byte for byte with the source.</p>
+        </details>
+        <details>
+          <summary>Which formats can Zipling open?</summary>
+          <p>Today: ZIP, 7z, TAR (including .tar.gz, .tar.bz2, .tar.xz and .tar.zst), DMG, ISO, WIM, archives split into parts, and password-protected archives, plus dozens more through the 7-Zip engine. RAR and classic Mac formats such as StuffIt are coming.</p>
         </details>
         <details>
           <summary>Can people without Zipling open my archives?</summary>

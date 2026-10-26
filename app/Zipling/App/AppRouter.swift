@@ -50,9 +50,10 @@ final class AppRouter {
 
     func chooseArchive() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.ziplingArchive]
+        panel.allowedContentTypes = [.ziplingArchive, .archive, .diskImage, .zip, .gzip, .bz2]
+            + Archives.archiveExtensions.compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = true
-        panel.message = "Choose a Zipling archive to open"
+        panel.message = "Choose an archive to open"
         if panel.runModal() == .OK { open(panel.urls) }
     }
 
@@ -68,8 +69,12 @@ final class AppRouter {
         }
     }
 
+    /// Archives open in a browser window; folders and other files go to Compress.
     private static func isArchive(_ url: URL) -> Bool {
-        url.pathExtension.lowercased() == "zlg"
+        if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true { return false }
+        if Archives.looksLikeArchive(url.lastPathComponent) || Archives.isZipling(url) { return true }
+        guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType else { return false }
+        return type.conforms(to: .archive) || type.conforms(to: .diskImage)
     }
 }
 
