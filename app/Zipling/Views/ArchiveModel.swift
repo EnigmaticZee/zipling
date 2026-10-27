@@ -134,6 +134,13 @@ final class ArchiveModel {
             levels = [await Self.makeLevel(name: url.lastPathComponent, archive: archive)]
             state = .ready
             levelChanged(folder: "")
+            #if DEBUG
+            // Website screenshots: `open -a Zipling Backup.zlg --args -ShowItem Photos/Beach.jpg`.
+            if let path = UserDefaults.standard.string(forKey: "ShowItem"), let item = levels[0].byID[path] {
+                show(folder: item.parent)
+                selection = [path]
+            }
+            #endif
         } catch let p as PasswordRequired {
             askPassword(for: url.lastPathComponent, wrong: p.wrong) { [weak self] password in
                 Task { await self?.load(password: password) }
