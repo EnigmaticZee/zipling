@@ -194,10 +194,13 @@
           <h2>See where every byte went.</h2>
           <p class="sub">Zipling is a native Mac app built in SwiftUI. It opens the archives you already have, and for its own it shows, file by file, how much was saved and how.</p>
           <ul class="ticks">
-            <li>Opens ZIP, 7z, TAR, DMG, ISO, split and password-protected archives</li>
-            <li>Archives inside archives open in place, with breadcrumbs</li>
-            <li>Savings and method for every file, at a glance</li>
-            <li>One-click verification of any archive</li>
+            <li>Opens ZIP, 7z, RAR, TAR, DMG, ISO, StuffIt and classic Mac formats, split and password-protected archives</li>
+            <li>Fixes garbled names from old Windows and Japanese or Chinese ZIPs</li>
+            <li>Archives inside archives open in place, and search looks inside them too</li>
+            <li>Quick Look and drag out any file without extracting the rest</li>
+            <li>Makes Zipling, ZIP, 7z and TAR archives, encrypted and split, and edits them in place</li>
+            <li>Extract Here keeps things tidy, in the background, with progress on the Dock</li>
+            <li>Lives in Finder: Quick Look for archives, right-click menu, menu-bar drop zone</li>
             <li>Safe extraction: nothing escapes the folder, and downloaded files stay marked for Gatekeeper</li>
           </ul>
         </div>
@@ -209,15 +212,12 @@
       <div class="roadmap reveal">
         <h3>Coming in 1.0</h3>
         <ul data-stagger>
-          <li><strong>Previews everything</strong>Quick Look any file inside an archive, without extracting it</li>
-          <li><strong>Lives in Finder</strong>Quick Look for archives and a Finder menu</li>
-          <li><strong>Shares anywhere</strong>Creates standard ZIP and 7z when the other side doesn't have Zipling</li>
-          <li><strong>Edits in place</strong>Add, replace, delete and rename files inside archives</li>
-          <li><strong>Locks it up</strong>Encrypted and split archives</li>
-          <li><strong>Survives damage</strong>Recovery records that repair broken archives</li>
-          <li><strong>Opens even more</strong>RAR, StuffIt and classic Mac formats</li>
           <li><strong>Mounts like a disk</strong>Browse an archive in Finder as if it were a folder</li>
-          <li><strong>Feels native</strong>Light and dark mode, keyboard and VoiceOver support</li>
+          <li><strong>Survives damage</strong>Recovery records that repair broken archives</li>
+          <li><strong>Locks Zipling archives</strong>Passwords and split parts for the .zlg format too</li>
+          <li><strong>Feels native</strong>A fresh design, full keyboard and VoiceOver support</li>
+          <li><strong>Runs on every Mac</strong>Intel Macs too, signed and notarised</li>
+          <li><strong>Speaks your language</strong>Translated into more languages</li>
         </ul>
         <p class="fine">Planned features. They are in development, not finished.</p>
       </div>
@@ -244,11 +244,11 @@
         </details>
         <details>
           <summary>Which formats can Zipling open?</summary>
-          <p>Today: ZIP, 7z, TAR (including .tar.gz, .tar.bz2, .tar.xz and .tar.zst), DMG, ISO, WIM, archives split into parts, and password-protected archives, plus dozens more through the 7-Zip engine. RAR and classic Mac formats such as StuffIt are coming.</p>
+          <p>ZIP, 7z, RAR, TAR (including .tar.gz, .tar.bz2, .tar.xz and .tar.zst), DMG, ISO, WIM, archives split into parts, and password-protected archives, plus dozens more through the 7-Zip engine. Classic Mac formats such as StuffIt, BinHex and MacBinary open through The Unarchiver's engine, which also repairs file names written in old Windows, Japanese, Chinese and Korean encodings.</p>
         </details>
         <details>
           <summary>Can people without Zipling open my archives?</summary>
-          <p>Zipling's own <code>.zlg</code> format is for when you want the smallest archive. When you share with someone who doesn't have Zipling, it will also create standard ZIP and 7z archives that open anywhere.</p>
+          <p>Zipling's own <code>.zlg</code> format is for when you want the smallest archive. When you share with someone who doesn't have Zipling, it creates standard ZIP, 7z and TAR archives that open anywhere, with AES-256 encryption and split parts if you want them.</p>
         </details>
         <details>
           <summary>What is Arca?</summary>
