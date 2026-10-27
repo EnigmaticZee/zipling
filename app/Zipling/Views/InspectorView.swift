@@ -8,7 +8,7 @@ struct InspectorView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if let item = model.selectedItem {
-                    ItemDetails(item: item)
+                    ItemDetails(model: model, item: item)
                 } else if let listing = model.listing {
                     ArchiveSummary(model: model, listing: listing)
                 }
@@ -51,6 +51,22 @@ private struct ArchiveSummary: View {
                 ("Folders", listing.dirs.formatted()),
                 ("Modified", listing.createdDate.formatted(date: .abbreviated, time: .shortened)),
             ])
+            if model.canChangeEncoding {
+                InspectorSection("File names") {
+                    Picker("Encoding", selection: Binding(
+                        get: { model.chosenEncoding }, set: { model.reopen(encoding: $0) })) {
+                        Text("Automatic").tag(String?.none)
+                        Divider()
+                        ForEach(Unar.encodings, id: \.0) { name, label in
+                            Text(label).tag(Optional(name))
+                        }
+                    }
+                    .labelsHidden()
+                    Text(encodingNote)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
             InspectorSection("Integrity") {
                 Text("Decode everything and check the archive's own checksums, without writing anything.")
                     .font(.callout)
@@ -62,6 +78,14 @@ private struct ArchiveSummary: View {
                 }
             }
         }
+    }
+
+    private var encodingNote: String {
+        if let detected = model.detectedEncoding {
+            return "Detected \(Unar.label(detected)). If names look wrong, pick the language the archive was made in."
+        }
+        if model.chosenEncoding != nil { return "Names are read with the encoding you picked." }
+        return "Names are shown as stored. If they look wrong, pick the language the archive was made in."
     }
 
     @ViewBuilder private var zipling: some View {
@@ -119,13 +143,19 @@ private struct ArchiveSummary: View {
 }
 
 private struct ItemDetails: View {
+    let model: ArchiveModel
     let item: Item
+    private var locked: Bool { item.encrypted && !model.hasPassword }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Image(nsImage: FileIcons.icon(forName: item.name, isFolder: item.isFolder))
-                .resizable()
-                .frame(width: 64, height: 64)
+            if item.isFolder || locked {
+                Image(nsImage: FileIcons.icon(forName: item.name, isFolder: item.isFolder))
+                    .resizable()
+                    .frame(width: 64, height: 64)
+            } else {
+                PreviewPane(model: model, item: item)
+            }
             Text(item.name)
                 .font(.title3.weight(.semibold))
                 .textSelection(.enabled)
@@ -145,6 +175,14 @@ private struct ItemDetails: View {
             ? [("Items", item.childCount.formatted())]
             : [("Method", Method.label(transform: item.transform, codec: item.codec))])
           + [("Modified", item.modified.formatted(date: .abbreviated, time: .shortened))])
+
+        if locked && !item.isFolder {
+            Button {
+                model.unlock {}
+            } label: {
+                Label("Unlock to Preview", systemImage: "lock.open")
+            }
+        }
 
         if !item.isFolder {
             InspectorSection("How it's stored") {

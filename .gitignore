@@ -14,6 +14,8 @@ __pycache__/
 # 7-Zip helper: downloaded source and the built binary (tools/7zip/build.sh)
 tools/7zip/cache/
 tools/7zip/bin/
+tools/unar/cache/
+tools/unar/bin/
 
 # Private research (not published)
 research_notes/

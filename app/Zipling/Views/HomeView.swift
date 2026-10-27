@@ -4,12 +4,16 @@ import SwiftUI
 struct HomeView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var router = AppRouter.shared
+    @State private var jobs = JobCenter.shared
     @State private var targeted = false
 
     var body: some View {
         @Bindable var router = router
         VStack(alignment: .leading, spacing: 24) {
             dropZone
+            if !jobs.jobs.isEmpty {
+                ActivityList(center: jobs)
+            }
             if !router.recents.isEmpty {
                 RecentList(urls: Array(router.recents.prefix(5))) { router.open([$0]) }
             }
@@ -45,7 +49,7 @@ struct HomeView: View {
             }
             Text("Drop files to compress")
                 .font(.title2.weight(.semibold))
-            Text("Or drop a .zlg archive to open it.")
+            Text("Or drop an archive to open it.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {
@@ -60,6 +64,12 @@ struct HomeView: View {
                 } label: {
                     Label("Open Archive…", systemImage: "folder")
                 }
+                Button {
+                    router.chooseArchivesToExtract()
+                } label: {
+                    Label("Extract…", systemImage: "arrow.down.doc")
+                }
+                .help("Extract one or more archives, each next to itself")
             }
             .controlSize(.large)
             .padding(.top, 6)
@@ -78,6 +88,33 @@ struct HomeView: View {
                 )
         }
         .animation(.snappy(duration: 0.2), value: targeted)
+    }
+}
+
+/// Everything extracting, compressing or checking right now, and what just finished.
+private struct ActivityList: View {
+    let center: JobCenter
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Activity")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if center.jobs.contains(where: { !$0.isRunning }) {
+                    Button("Clear") { center.clearFinished() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+            }
+            .padding(.horizontal, 8)
+            ForEach(center.jobs.prefix(5)) { job in
+                JobRow(job: job) { center.dismiss(job) }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+            }
+        }
     }
 }
 

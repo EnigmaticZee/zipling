@@ -4,7 +4,7 @@ import Observation
 /// One long-running engine operation, observed by the UI.
 @MainActor
 @Observable
-final class Job {
+final class Job: Identifiable {
     enum Phase {
         case running
         case finished
@@ -12,8 +12,13 @@ final class Job {
         case cancelled
     }
 
+    let id = UUID()
     let title: String
     private(set) var phase: Phase = .running
+    /// What happened, in a sentence, once it's finished.
+    private(set) var outcome: String?
+    /// What it made, for Show in Finder.
+    private(set) var placed: [URL] = []
     private(set) var done: UInt64 = 0
     private(set) var total: UInt64 = 0
     private let started = Date()
@@ -23,6 +28,19 @@ final class Job {
 
     init(title: String) {
         self.title = title
+    }
+
+    /// The title once it's over: "Extracted “Photos.zip”" for "Extracting “Photos.zip”…".
+    var finishedTitle: String {
+        guard case .finished = phase else { return title }
+        let verbs = ["Extracting": "Extracted", "Compressing": "Compressed", "Verifying": "Verified",
+                     "Adding": "Added", "Updating": "Updated", "Deleting": "Deleted", "Renaming": "Renamed"]
+        var text = title.hasSuffix("…") ? String(title.dropLast()) : title
+        for (doing, done) in verbs where text.hasPrefix(doing) {
+            text = done + text.dropFirst(doing.count)
+            break
+        }
+        return text
     }
 
     var fraction: Double { total == 0 ? 0 : min(1, Double(done) / Double(total)) }
@@ -59,11 +77,14 @@ final class Job {
         cancelToken.cancel()
     }
 
-    func finish(_ error: Error?) {
+    func finish(_ error: Error?, outcome: String? = nil, placed: [URL] = []) {
+        self.outcome = outcome
+        self.placed = placed
         switch error {
         case nil: phase = .finished
         case let e as EngineError where e.isCancellation: phase = .cancelled
         case let e?: phase = .failed(e.localizedDescription)
         }
+        JobCenter.shared.finished(self)
     }
 }

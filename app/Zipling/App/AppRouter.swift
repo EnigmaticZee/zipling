@@ -50,11 +50,39 @@ final class AppRouter {
 
     func chooseArchive() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.ziplingArchive, .archive, .diskImage, .zip, .gzip, .bz2]
-            + Archives.archiveExtensions.compactMap { UTType(filenameExtension: $0) }
+        panel.allowedContentTypes = Self.archiveTypes
         panel.allowsMultipleSelection = true
         panel.message = "Choose an archive to open"
         if panel.runModal() == .OK { open(panel.urls) }
+    }
+
+    /// Files and folders to compress, from Finder, the Dock or the menu bar.
+    func compress(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        NSApp.activate()
+        openWindow?(id: Self.homeWindow)
+        compressRequest = CompressRequest(items: urls)
+    }
+
+    func showHome() {
+        openWindow?(id: Self.homeWindow)
+    }
+
+    /// Extract Here for each of several archives, in the background.
+    func extractHere(_ urls: [URL]) {
+        let archives = urls.filter(Self.isArchive)
+        guard !archives.isEmpty else { return }
+        openWindow?(id: Self.homeWindow)
+        Task { await BatchExtraction.run(archives) }
+    }
+
+    func chooseArchivesToExtract() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = Self.archiveTypes
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Extract"
+        panel.message = "Choose archives to extract. Each one comes out next to itself."
+        if panel.runModal() == .OK { extractHere(panel.urls) }
     }
 
     func chooseFilesToCompress() {
@@ -69,8 +97,11 @@ final class AppRouter {
         }
     }
 
+    private static let archiveTypes: [UTType] = [.ziplingArchive, .archive, .diskImage, .zip, .gzip, .bz2]
+        + Archives.archiveExtensions.compactMap { UTType(filenameExtension: $0) }
+
     /// Archives open in a browser window; folders and other files go to Compress.
-    private static func isArchive(_ url: URL) -> Bool {
+    static func isArchive(_ url: URL) -> Bool {
         if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true { return false }
         if Archives.looksLikeArchive(url.lastPathComponent) || Archives.isZipling(url) { return true }
         guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType else { return false }

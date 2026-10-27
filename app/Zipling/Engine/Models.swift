@@ -40,6 +40,10 @@ struct ArchiveEntry: Decodable, Sendable, Hashable {
     /// False when the format doesn't record a per-file packed size (solid 7z, tar).
     var packedKnown: Bool?
     var encrypted: Bool?
+    /// The entry's position as The Unarchiver numbers it (used to extract by index).
+    var index: Int?
+    /// The index of its resource fork, which The Unarchiver lists as a separate entry.
+    var forkIndex: Int?
 
     var isDirectory: Bool { kind == "dir" }
     var name: String { path.split(separator: "/").last.map(String.init) ?? path }

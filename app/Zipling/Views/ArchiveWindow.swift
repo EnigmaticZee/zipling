@@ -1,4 +1,10 @@
+import QuickLook
 import SwiftUI
+
+extension FocusedValues {
+    /// The archive window in front, for the menu bar's commands.
+    @Entry var archiveModel: ArchiveModel?
+}
 
 /// A window showing one archive.
 struct ArchiveWindow: View {
@@ -27,9 +33,10 @@ struct ArchiveWindow: View {
             }
         }
         .navigationTitle(model.name)
-        .frame(minWidth: 760, minHeight: 420)
+        .frame(minWidth: 860, minHeight: 440)
         .task { await model.load() }
         .onDisappear { model.close() }
+        .focusedSceneValue(\.archiveModel, model)
         .sheet(item: $model.passwordRequest) { request in
             PasswordSheet(request: request) { model.passwordRequest = nil }
         }
@@ -41,36 +48,61 @@ struct ArchiveWindow: View {
 
 struct BrowserView: View {
     @Bindable var model: ArchiveModel
-    @State private var showInspector = true
+    @AppStorage("showInspector") private var showInspector = true
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
-        table
-            .safeAreaInset(edge: .top, spacing: 0) { PathBar(model: model) }
-            .overlay {
-                if let nested = model.openingNested {
-                    ProgressView("Opening “\(nested)”…")
-                        .padding(20)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                } else if model.visibleItems.isEmpty {
-                    if model.search.isEmpty {
-                        ContentUnavailableView("Empty Folder", systemImage: "folder")
-                    } else {
-                        ContentUnavailableView.search(text: model.search)
+        NavigationSplitView {
+            FolderTree(model: model)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 320)
+        } detail: {
+            table
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    VStack(spacing: 0) {
+                        PathBar(model: model)
+                        ForEach(model.changedOutside) { file in ChangedBanner(model: model, file: file) }
                     }
                 }
-            }
-            .searchable(text: $model.search, placement: .toolbar, prompt: "Search archive")
-            .navigationSubtitle(subtitle)
-            .toolbar { toolbar }
-            .inspector(isPresented: $showInspector) {
-                InspectorView(model: model)
-                    .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
-            }
-            .sheet(isPresented: Binding(get: { model.job != nil }, set: { if !$0 { model.dismissJob() } })) {
-                if let job = model.job {
-                    JobSheet(job: job, outcome: model.jobOutcome) { model.dismissJob() }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if !model.jobs.isEmpty { ActivityBar(model: model) }
                 }
+                .overlay {
+                    if let nested = model.openingNested {
+                        ProgressView("Opening “\(nested)”…")
+                            .padding(20)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    } else if model.visibleItems.isEmpty {
+                        if model.search.isEmpty {
+                            ContentUnavailableView("Empty Folder", systemImage: "folder")
+                        } else if model.searchingInside == nil {
+                            ContentUnavailableView.search(text: model.search)
+                        }
+                    }
+                }
+                .inspector(isPresented: $showInspector) {
+                    InspectorView(model: model)
+                        .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
+                }
+        }
+        .searchable(text: $model.search, placement: .toolbar, prompt: "Search archive")
+        .searchFocused($searchFocused)
+        .searchScopes($model.searchInside, activation: .onSearchPresentation) {
+            if hasArchivesInside {
+                Text("This Archive").tag(false)
+                Text("Archives Inside Too").tag(true)
             }
+        }
+        .onChange(of: model.searchFocusRequest) { searchFocused = true }
+        .navigationSubtitle(subtitle)
+        .toolbar { toolbar }
+        .quickLookPreview($model.quickLookURL, in: model.quickLookURLs)
+        .sheet(item: $model.renaming) { item in
+            RenameSheet(model: model, item: item)
+        }
+    }
+
+    private var hasArchivesInside: Bool {
+        model.levels.last?.everything.contains(where: \.isArchive) ?? false
     }
 
     private var subtitle: String {
@@ -80,7 +112,7 @@ struct BrowserView: View {
     }
 
     private var table: some View {
-        Table(model.visibleItems, selection: $model.selection, sortOrder: $model.sortOrder) {
+        Table(of: Item.self, selection: $model.selection, sortOrder: $model.sortOrder) {
             TableColumn("Name", value: \.name, comparator: .localizedStandard) { item in
                 HStack(spacing: 7) {
                     Image(nsImage: FileIcons.icon(forName: item.name, isFolder: item.isFolder))
@@ -93,12 +125,15 @@ struct BrowserView: View {
                             .foregroundStyle(.secondary)
                             .help("Encrypted")
                     }
-                    if !model.search.isEmpty, !item.parent.isEmpty {
-                        Text(item.parent)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                            .truncationMode(.head)
+                    if !model.search.isEmpty {
+                        let location = model.location(of: item)
+                        if !location.isEmpty {
+                            Text(location)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                        }
                     }
                 }
             }
@@ -139,19 +174,74 @@ struct BrowserView: View {
                     .lineLimit(1)
             }
             .width(min: 168, ideal: 176)
+        } rows: {
+            ForEach(model.visibleItems) { item in
+                TableRow(item)
+                    .itemProvider { model.dragProvider(for: item) }
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard model.canEdit else { return false }
+            model.add(urls)
+            return true
         }
         .contextMenu(forSelectionType: Item.ID.self) { ids in
-            Button(ids.isEmpty ? "Extract All…" : "Extract…") { model.extractInteractively(ids) }
-            if ids.count == 1, let id = ids.first, let item = model.item(id), !item.isFolder {
-                if item.isArchive {
-                    Button("Open Inside Zipling") { model.openNested(item) }
-                    Button("Open With Default App") { model.openWithDefaultApp(item) }
-                } else {
-                    Button("Open") { model.activate(ids) }
-                }
-            }
+            menu(for: ids)
         } primaryAction: { ids in
             model.activate(ids)
+        }
+        // Finder's keys: space for Quick Look, typing selects by name.
+        .onKeyPress(.space) {
+            model.toggleQuickLook()
+            return .handled
+        }
+        .onKeyPress(phases: .down) { press in
+            guard press.modifiers.subtracting(.shift).isEmpty else { return .ignored }
+            return model.typeSelect(press.characters) ? .handled : .ignored
+        }
+    }
+
+    @ViewBuilder private func menu(for ids: Set<Item.ID>) -> some View {
+        if ids.count == 1, let id = ids.first, let item = model.item(id) {
+            if item.inArchive != nil {
+                Button("Show in “\((item.inArchive! as NSString).lastPathComponent)”") { model.reveal(item) }
+            } else if item.isFolder {
+                Button("Open") { model.enter(item) }
+            } else if item.isArchive {
+                Button("Open Inside Zipling") { model.openNested(item) }
+                Button("Open With Default App") { model.openWithDefaultApp(item) }
+            } else {
+                Button("Open") { model.activate(ids) }
+            }
+            if !item.isFolder {
+                Button("Quick Look") {
+                    model.selection = ids
+                    model.toggleQuickLook()
+                }
+                if item.inArchive == nil, !item.isArchive {
+                    Button("Edit in Its App") { model.editInApp(item) }
+                        .disabled(!model.canEdit)
+                }
+            }
+            Divider()
+        }
+        if !ids.isEmpty {
+            Button("Share…") { model.share(ids) }
+        }
+        Button(ids.isEmpty ? "Extract All…" : "Extract…") { model.extractInteractively(ids) }
+        if ids.isEmpty {
+            Button("Extract Here") { model.extractHere() }
+        }
+        if model.canEdit {
+            Divider()
+            if ids.count == 1, let id = ids.first, let item = model.item(id), item.inArchive == nil {
+                Button("Rename…") { model.renaming = item }
+            }
+            if !ids.isEmpty {
+                Button("Delete from Archive…", role: .destructive) { model.delete(ids) }
+            }
+            Button("Add Files…") { model.chooseFilesToAdd() }
+            Button("New Folder") { model.newFolder() }
         }
     }
 
@@ -161,20 +251,35 @@ struct BrowserView: View {
                 Label("Back", systemImage: "chevron.backward")
             }
             .disabled(!model.canGoUp)
-            .keyboardShortcut(.upArrow, modifiers: .command)
+            .help("Back to the enclosing folder or archive")
         }
         ToolbarItemGroup(placement: .primaryAction) {
-            Button { model.extractInteractively(model.selection) } label: {
-                Label(model.selection.isEmpty ? "Extract All" : "Extract", systemImage: "arrow.down.doc")
+            Button { model.chooseFilesToAdd() } label: {
+                Label("Add", systemImage: "plus")
             }
-            .help(model.selection.isEmpty ? "Extract everything" : "Extract the selected items")
+            .disabled(!model.canEdit)
+            .help(model.editProblem ?? "Add files and folders to the archive")
+            Menu {
+                Button("Extract Here") { model.extractHere() }
+                Button("Extract To…") { model.extractInteractively(model.selection) }
+            } label: {
+                Label(model.selection.isEmpty ? "Extract All" : "Extract", systemImage: "arrow.down.doc")
+            } primaryAction: {
+                if model.selection.isEmpty { model.extractHere() } else { model.extractInteractively(model.selection) }
+            }
+            .help(model.selection.isEmpty ? "Extract everything next to the archive" : "Extract the selected items")
             Button { model.verify() } label: {
                 Label("Verify", systemImage: "checkmark.shield")
             }
             .help("Decode everything and check every checksum, writing nothing")
+            ShareLink(item: model.url) {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            .help("Share this archive")
             Button { showInspector.toggle() } label: {
                 Label("Inspector", systemImage: "sidebar.trailing")
             }
+            .keyboardShortcut("i", modifiers: [.command, .option])
         }
     }
 }
@@ -200,8 +305,14 @@ private struct PathBar: View {
                 crumb(c.name, path: c.path, icon: nil)
             }
             Spacer()
-            Text(Format.count(UInt64(model.visibleItems.count), "item"))
+            if let progress = model.searchingInside, !model.search.isEmpty {
+                ProgressView().controlSize(.mini)
+                Text("Looking inside \(progress.done + 1) of \(progress.total) archives…")
+                    .foregroundStyle(.secondary)
+            }
+            Text(Format.count(UInt64(model.visibleItems.count), model.search.isEmpty ? "item" : "match"))
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
         .font(.callout)
         .padding(.horizontal, 12)
@@ -212,9 +323,7 @@ private struct PathBar: View {
 
     private func crumb(_ name: String, path: String, icon: String?) -> some View {
         Button {
-            model.search = ""
-            model.folder = path
-            model.selection = []
+            model.show(folder: path)
         } label: {
             if let icon {
                 Label(name, systemImage: icon)
@@ -250,49 +359,74 @@ private struct SavedBar: View {
     }
 }
 
-/// Progress, then the outcome, of an extraction or verification.
-struct JobSheet: View {
+/// Extractions and checks running in this window, which keep going while you browse.
+private struct ActivityBar: View {
+    let model: ArchiveModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            ForEach(model.jobs.prefix(3), id: \.id) { job in
+                JobRow(job: job) { model.dismiss(job) }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+        }
+        .background(.bar)
+    }
+}
+
+/// One job's progress, then its outcome.
+struct JobRow: View {
     let job: Job
-    let outcome: String?
     let dismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            switch job.phase {
-            case .running:
-                JobProgressView(job: job)
-                HStack {
-                    Spacer()
-                    Button("Cancel", role: .cancel) { job.cancel() }
-                        .keyboardShortcut(.cancelAction)
+        HStack(alignment: .center, spacing: 10) {
+            icon
+                .font(.title3)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(job.finishedTitle).lineLimit(1)
+                switch job.phase {
+                case .running:
+                    ProgressView(value: job.fraction).progressViewStyle(.linear)
+                    Text(job.detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                case .finished:
+                    if let outcome = job.outcome {
+                        Text(outcome).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                case .cancelled:
+                    Text("Cancelled. Nothing was left behind.").font(.caption).foregroundStyle(.secondary)
+                case .failed(let message):
+                    Text(message).font(.caption).foregroundStyle(.red).lineLimit(3).textSelection(.enabled)
                 }
-            case .finished:
-                Label("Done", systemImage: "checkmark.circle.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.green)
-                if let outcome { Text(outcome).foregroundStyle(.secondary) }
-                closeButton
-            case .cancelled:
-                Label("Cancelled", systemImage: "xmark.circle")
-                    .font(.title3.weight(.semibold))
-                Text("Nothing was left behind.").foregroundStyle(.secondary)
-                closeButton
-            case .failed(let message):
-                Label("Something went wrong", systemImage: "exclamationmark.octagon.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.red)
-                Text(message).textSelection(.enabled)
-                closeButton
+            }
+            Spacer(minLength: 8)
+            if job.isRunning {
+                Button("Stop", systemImage: "xmark.circle.fill") { job.cancel() }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("Stop")
+            } else {
+                if !job.placed.isEmpty {
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(job.placed) }
+                        .controlSize(.small)
+                }
+                Button("Dismiss", systemImage: "xmark") { dismiss() }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("Dismiss")
             }
         }
-        .padding(24)
-        .frame(width: 440)
     }
 
-    private var closeButton: some View {
-        HStack {
-            Spacer()
-            Button("OK", action: dismiss).keyboardShortcut(.defaultAction)
+    @ViewBuilder private var icon: some View {
+        switch job.phase {
+        case .running: Image(systemName: "arrow.down.circle").foregroundStyle(.tint)
+        case .finished: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .cancelled: Image(systemName: "xmark.circle").foregroundStyle(.secondary)
+        case .failed: Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
         }
     }
 }
@@ -332,5 +466,62 @@ private struct PasswordSheet: View {
         guard !password.isEmpty else { return }
         dismiss()
         request.retry(password)
+    }
+}
+
+/// A file opened from the archive was saved in its app: put it back?
+private struct ChangedBanner: View {
+    let model: ArchiveModel
+    let file: ArchiveModel.EditedFile
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil.circle.fill").foregroundStyle(.tint)
+            Text("“\(file.name)” was changed in another app.")
+            Spacer()
+            Button("Ignore") { model.ignoreChanges(file) }
+            Button("Update in Archive") { model.saveBack(file) }
+                .buttonStyle(.borderedProminent)
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.tint.opacity(0.08))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+}
+
+private struct RenameSheet: View {
+    let model: ArchiveModel
+    let item: Item
+    @State private var name = ""
+    @State private var problem: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Rename “\(item.name)”").font(.headline)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(submit)
+            if let problem {
+                Text(problem).font(.callout).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Rename", action: submit)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 360)
+        .onAppear { name = item.name }
+    }
+
+    private func submit() {
+        problem = model.rename(item, to: name)
+        if problem == nil { dismiss() }
     }
 }

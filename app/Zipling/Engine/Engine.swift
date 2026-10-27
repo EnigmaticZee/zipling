@@ -39,7 +39,7 @@ final class ProgressRelay: Sendable {
     }
 }
 
-enum Level: String, CaseIterable, Identifiable, Sendable {
+enum Level: String, CaseIterable, Identifiable, Codable, Sendable {
     case fast, balanced, max, ultra
     var id: String { rawValue }
 }

@@ -101,16 +101,21 @@ enum FileIcons {
 enum Placement {
     /// `folder/name`, or `folder/name 2`, `name 3`... if taken (the way Finder does it).
     static func unique(_ name: String, in folder: URL) -> URL {
-        let fm = FileManager.default
         var candidate = folder.appending(path: name)
-        guard fm.fileExists(atPath: candidate.path) else { return candidate }
+        guard exists(candidate) else { return candidate }
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         for n in 2... {
             let next = ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
             candidate = folder.appending(path: next)
-            if !fm.fileExists(atPath: candidate.path) { return candidate }
+            if !exists(candidate) { return candidate }
         }
         return candidate
+    }
+
+    /// Whether anything is at `url`, a symbolic link included (even one whose target is gone).
+    static func exists(_ url: URL) -> Bool {
+        var info = stat()
+        return lstat(url.path, &info) == 0
     }
 }

@@ -64,34 +64,45 @@ enum SevenZip {
     /// HFS+ or APFS volume, which 7-Zip opens too), then after "----------" one
     /// blank-line-separated block of "Key = Value" lines per entry.
     static func parseListing(_ text: String, archive: URL) -> Listing {
+        // A hundred thousand entries are close to two million lines, so this scans
+        // bytes and keeps only the fields it uses.
         var headers: [[String: String]] = []
         var blocks: [[String: String]] = []
         var current: [String: String] = [:]
         var section = 0  // 0 before the first "--", 1 a layer's header, 2 entries
         var skipping = false  // the "----" partition block between two layers
-        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(raw)
-            if section < 2 && line == "--" {
-                section = 1
-                skipping = false
-                headers.append([:])
-                continue
+        var text = text
+        text.withUTF8 { bytes in
+            var start = 0
+            while start <= bytes.count {
+                var end = start
+                while end < bytes.count, bytes[end] != 0x0A { end += 1 }
+                let line = UnsafeBufferPointer(rebasing: bytes[start..<end])
+                start = end + 1
+                if section < 2, line.count == 2, line[0] == 0x2D, line[1] == 0x2D {  // "--"
+                    section = 1
+                    skipping = false
+                    headers.append([:])
+                    continue
+                }
+                if section < 2, line.count == 4, line.allSatisfy({ $0 == 0x2D }) { skipping = true; continue }  // "----"
+                if line.count == 10, line.allSatisfy({ $0 == 0x2D }) { section = 2; continue }  // "----------"
+                guard section > 0, !skipping else { continue }
+                if line.isEmpty {
+                    if section == 2, !current.isEmpty { blocks.append(current) }
+                    current = [:]
+                    continue
+                }
+                // "Key = Value"; keys with empty values print as "Key = " or "Key =".
+                var eq = 0
+                while eq + 1 < line.count, !(line[eq] == 0x20 && line[eq + 1] == 0x3D) { eq += 1 }
+                guard eq + 1 < line.count else { continue }
+                let key = String(decoding: UnsafeBufferPointer(rebasing: line[..<eq]), as: UTF8.self)
+                if section == 2, !entryKeys.contains(key) { continue }
+                let valueStart = min(line.count, eq + 3)
+                let value = String(decoding: UnsafeBufferPointer(rebasing: line[valueStart...]), as: UTF8.self)
+                if section == 1 { headers[headers.count - 1][key] = value } else { current[key] = value }
             }
-            if section < 2 && line == "----" { skipping = true; continue }
-            if line == "----------" { section = 2; continue }
-            guard section > 0, !skipping else { continue }
-            if line.isEmpty {
-                if section == 2, !current.isEmpty { blocks.append(current) }
-                current = [:]
-                continue
-            }
-            guard let eq = line.range(of: " = ") else {
-                // Keys with empty values print as "Key = " and keep their trailing space.
-                if section == 2, line.hasSuffix(" =") { current[String(line.dropLast(2))] = "" }
-                continue
-            }
-            let key = String(line[..<eq.lowerBound]), value = String(line[eq.upperBound...])
-            if section == 1 { headers[headers.count - 1][key] = value } else { current[key] = value }
         }
         if section == 2, !current.isEmpty { blocks.append(current) }
         let outer = headers.first ?? [:], inner = headers.last ?? [:]
@@ -169,17 +180,40 @@ enum SevenZip {
         return (chars[0], bits)
     }
 
-    private static let dateParser: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return f
-    }()
+    /// The entry fields the listing uses; 7-Zip prints a dozen more per entry.
+    private static let entryKeys: Set<String> = [
+        "Path", "Folder", "Size", "Packed Size", "Modified", "Attributes", "Mode", "Symbolic Link", "Method", "Encrypted",
+    ]
 
     /// 7-Zip prints local time as "2026-10-26 18:39:52.6631284".
+    /// "2024-05-01 13:45:10.1234567" in local time, as 7-Zip prints it. Parsed by hand:
+    /// a DateFormatter is far too slow for a hundred thousand entries.
     static func timestamp(_ text: String?) -> Int64 {
-        guard let text, text.count >= 19, let date = dateParser.date(from: String(text.prefix(19))) else { return 0 }
-        return Int64(date.timeIntervalSince1970)
+        guard let text else { return 0 }
+        let digits = Array(text.utf8.prefix(19))
+        guard digits.count == 19 else { return 0 }
+        func number(_ range: Range<Int>) -> Int? {
+            var n = 0
+            for i in range {
+                let d = Int(digits[i]) - 48
+                guard (0...9).contains(d) else { return nil }
+                n = n * 10 + d
+            }
+            return n
+        }
+        guard let year = number(0..<4), let month = number(5..<7), let day = number(8..<10),
+              let hour = number(11..<13), let minute = number(14..<16), let second = number(17..<19),
+              (1...12).contains(month), (1...31).contains(day) else { return 0 }
+        // Days since 1970 for the civil date (Howard Hinnant's algorithm).
+        let y = month <= 2 ? year - 1 : year
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        let days = era * 146_097 + doe - 719_468
+        let local = Int64(days) * 86_400 + Int64(hour * 3600 + minute * 60 + second)
+        let offset = TimeZone.current.secondsFromGMT(for: Date(timeIntervalSince1970: TimeInterval(local)))
+        return local - Int64(offset)
     }
 
     // MARK: Extracting and testing
@@ -290,7 +324,19 @@ enum SevenZip {
         guard let exe = executable else {
             throw EngineError(message: "Zipling's 7-Zip helper is missing. Please reinstall Zipling.")
         }
-        let run = HelperRun(executable: exe, arguments: arguments, progress: progress)
+        return try await run(arguments: arguments, executable: exe, password: password, cancel: cancel, progress: progress)
+    }
+
+    /// Runs any helper tool. `progress` receives "NN%" readings from stdout,
+    /// `lines` each complete stdout line and `stderrLines` each stderr line.
+    static func run(
+        arguments: [String], executable: URL, password: String?, cancel: CancelToken?,
+        progress: (@Sendable (Double) -> Void)? = nil, lines: (@Sendable (String) -> Void)? = nil,
+        stderrLines: (@Sendable (String) -> Void)? = nil, workingDirectory: URL? = nil
+    ) async throws -> Output {
+        let run = HelperRun(executable: executable, arguments: arguments, progress: progress, lines: lines,
+                            stderrLines: stderrLines)
+        if let workingDirectory { run.setWorkingDirectory(workingDirectory) }
         cancel?.onCancel { run.terminate() }
         return try await run.start(password: password)
     }
@@ -301,11 +347,17 @@ enum SevenZip {
 private final class HelperRun: @unchecked Sendable {
     private let process = Process()
     private let progress: (@Sendable (Double) -> Void)?
+    private let lines: (@Sendable (String) -> Void)?
+    private let stderrLines: (@Sendable (String) -> Void)?
     private let lock = NSLock()
     private var out = Data(), err = Data()
     private var lastFraction = -1.0
+    private var lineBuffer = "", errorLineBuffer = ""
 
-    init(executable: URL, arguments: [String], progress: (@Sendable (Double) -> Void)?) {
+    init(executable: URL, arguments: [String], progress: (@Sendable (Double) -> Void)?,
+         lines: (@Sendable (String) -> Void)? = nil, stderrLines: (@Sendable (String) -> Void)? = nil) {
+        self.lines = lines
+        self.stderrLines = stderrLines
         process.executableURL = executable
         process.arguments = arguments
         var env = ProcessInfo.processInfo.environment
@@ -313,6 +365,10 @@ private final class HelperRun: @unchecked Sendable {
         env["LANG"] = "en_US.UTF-8"
         process.environment = env
         self.progress = progress
+    }
+
+    func setWorkingDirectory(_ url: URL) {
+        process.currentDirectoryURL = url
     }
 
     func terminate() {
@@ -351,7 +407,8 @@ private final class HelperRun: @unchecked Sendable {
                 return
             }
             let input = stdin.fileHandleForWriting
-            if let password { try? input.write(contentsOf: Data((password + "\n").utf8)) }
+            // Updating an encrypted archive asks twice: to read it, then to encrypt what's new.
+            if let password { try? input.write(contentsOf: Data(String(repeating: password + "\n", count: 3).utf8)) }
             try? input.close()
         }
     }
@@ -372,7 +429,18 @@ private final class HelperRun: @unchecked Sendable {
         }
         let report = fraction.flatMap { $0 > lastFraction ? $0 : nil }
         if let report { lastFraction = report }
+        var complete: [String] = []
+        if toStdout ? lines != nil : stderrLines != nil {
+            var buffer = toStdout ? lineBuffer : errorLineBuffer
+            buffer += String(decoding: data, as: UTF8.self)
+            while let newline = buffer.firstIndex(of: "\n") {
+                complete.append(String(buffer[..<newline]))
+                buffer = String(buffer[buffer.index(after: newline)...])
+            }
+            if toStdout { lineBuffer = buffer } else { errorLineBuffer = buffer }
+        }
         lock.unlock()
         if let report { progress?(report) }
+        complete.forEach { toStdout ? lines?($0) : stderrLines?($0) }
     }
 }

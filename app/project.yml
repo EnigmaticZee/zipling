@@ -75,6 +75,29 @@ targets:
               - com.observantsystems.zipling.virtual-disk
               - com.observantsystems.zipling.squashfs
               - com.observantsystems.zipling.split-part
+          - CFBundleTypeName: Files and Folders
+            CFBundleTypeRole: Viewer
+            # Never the default app for these: this lets any file or folder be dropped
+            # on the Dock icon to compress it.
+            LSHandlerRank: None
+            LSItemContentTypes: [public.item, public.folder]
+        # Finder's right-click menu (Quick Actions and Services).
+        NSServices:
+          - NSMenuItem: { default: Compress with Zipling }
+            NSMessage: compressFiles
+            NSPortName: Zipling
+            NSRequiredContext: {}
+            NSSendFileTypes: [public.item, public.folder]
+          - NSMenuItem: { default: Extract Here with Zipling }
+            NSMessage: extractFiles
+            NSPortName: Zipling
+            NSRequiredContext: {}
+            NSSendFileTypes: [public.archive, public.disk-image, com.observantsystems.zipling-archive]
+          - NSMenuItem: { default: Open in Zipling }
+            NSMessage: openFiles
+            NSPortName: Zipling
+            NSRequiredContext: {}
+            NSSendFileTypes: [public.archive, public.disk-image, com.observantsystems.zipling-archive]
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.observantsystems.zipling-archive
             UTTypeDescription: Zipling Archive
@@ -184,18 +207,12 @@ targets:
         # cargo writes outside the project's derived data.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         DEAD_CODE_STRIPPING: YES
+    dependencies:
+      - target: ArcaEngine
+      # Embedded in Contents/PlugIns.
+      - target: ZiplingQuickLook
     scheme:
       testTargets: [ZiplingTests]
-    preBuildScripts:
-      - name: Build Rust engine
-        basedOnDependencyAnalysis: false
-        script: |
-          export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
-          cd "$SRCROOT/../engine"
-          # A separate target dir: Xcode's environment (deployment target, SDK)
-          # differs from the CLI's, and sharing one dir would rebuild every time.
-          CARGO_TARGET_DIR="$SRCROOT/../engine/target/xcode" cargo build --release -p arca-ffi
-
     postBuildScripts:
       - name: Embed 7-Zip helper
         basedOnDependencyAnalysis: false
@@ -214,6 +231,66 @@ targets:
           else
             echo "warning: the 7-Zip helper isn't built yet, so this debug build uses Homebrew's 7zz. Run tools/7zip/build.sh."
           fi
+      - name: Embed The Unarchiver's tools
+        basedOnDependencyAnalysis: false
+        script: |
+          # lsar and unar read classic Mac formats and legacy file-name encodings, in
+          # their own processes. tools/unar/build.sh builds them from pinned source.
+          DEST="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers"
+          for TOOL in lsar unar; do
+            HELPER="$SRCROOT/../tools/unar/bin/$TOOL"
+            if [ -x "$HELPER" ]; then
+              mkdir -p "$DEST"
+              cp -f "$HELPER" "$DEST/$TOOL"
+              codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --timestamp=none "$DEST/$TOOL"
+            elif [ "$CONFIGURATION" = "Release" ]; then
+              echo "error: tools/unar/bin/$TOOL is missing. Run tools/unar/build.sh once."
+              exit 1
+            else
+              echo "warning: The Unarchiver's $TOOL isn't built yet, so this debug build uses Homebrew's. Run tools/unar/build.sh."
+            fi
+          done
+
+  ZiplingQuickLook:
+    type: app-extension
+    platform: macOS
+    dependencies:
+      - target: ArcaEngine
+    sources:
+      - path: ZiplingQuickLook
+      # Lists .zlg archives in-process, and reads ZIP directories without a helper.
+      - path: Zipling/Engine/Engine.swift
+      - path: Zipling/Engine/Models.swift
+      - path: Zipling/Archives/ZipDirectory.swift
+    info:
+      path: ZiplingQuickLook/Info.plist
+      properties:
+        CFBundleDisplayName: Zipling Quick Look
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: "© 2026 Observant Systems"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.quicklook.preview
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewProvider
+          NSExtensionAttributes:
+            QLIsDataBasedPreview: true
+            QLSupportsSearchableItems: false
+            QLSupportedContentTypes: [com.observantsystems.zipling-archive, public.zip-archive]
+    entitlements:
+      path: ZiplingQuickLook/ZiplingQuickLook.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-only: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.zipling.quicklook
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/../engine/arca-ffi/include
+        LIBRARY_SEARCH_PATHS: $(SRCROOT)/../engine/target/xcode/release
+        OTHER_LDFLAGS: [-larca_ffi, -liconv]
+        ARCHS: arm64
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        DEAD_CODE_STRIPPING: YES
 
   ZiplingTests:
     type: bundle.unit-test
@@ -232,3 +309,21 @@ targets:
         ARCHS: arm64
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
+
+aggregateTargets:
+  # The Rust engine, linked by the app and its Quick Look extension.
+  ArcaEngine:
+    settings:
+      base:
+        # The same environment the app builds in, so cargo doesn't rebuild for nothing.
+        SDKROOT: macosx
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+    buildScripts:
+      - name: Build Rust engine
+        basedOnDependencyAnalysis: false
+        script: |
+          export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+          cd "$SRCROOT/../engine"
+          # A separate target dir: Xcode's environment (deployment target, SDK)
+          # differs from the CLI's, and sharing one dir would rebuild every time.
+          CARGO_TARGET_DIR="$SRCROOT/../engine/target/xcode" cargo build --release -p arca-ffi

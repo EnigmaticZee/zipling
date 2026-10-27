@@ -6,7 +6,8 @@ A macOS archive manager built around Arca, a new compression engine. Its own arc
 
 * `app/`: the macOS app (SwiftUI). `project.yml` is the XcodeGen spec, and `Zipling/Resources/AppIcon.icon` is the Icon Composer app icon.
 * `engine/`: the Arca engine in Rust (`arca-core`), its C API for the app (`arca-ffi`), and the `arca` CLI. It provides the Zipling format (`.zlg`), format-aware lossless transforms, deduplication and parallel solid blocks.
-* `tools/7zip/`: builds the unmodified 7-Zip helper that reads every other format.
+* `tools/7zip/`: builds the unmodified 7-Zip helper that reads and writes every other format.
+* `tools/unar/`: builds The Unarchiver's unmodified `lsar` and `unar`, for classic Mac formats and legacy file-name encodings.
 * `site/`: the landing page, a static site deployed to GitHub Pages by `.github/workflows/pages.yml`.
 * `design/icon/`: the app icon's generator (`zpull.py --style metal indigo`) and its review sheets.
 * `docs/DESIGN.md`: how the engine works, the on-disk format, and the safety model.
@@ -16,7 +17,7 @@ A macOS archive manager built around Arca, a new compression engine. Its own arc
 
 ## Build and run the app
 
-Requires Xcode, Rust (`brew install rust`) and XcodeGen (`brew install xcodegen`). Xcode builds the Rust engine automatically as a build phase. Other archive formats go through the 7-Zip helper, built once from its pinned official source with `tools/7zip/build.sh` (see `tools/7zip/README.md`); debug builds fall back to Homebrew's `7zz`.
+Requires Xcode, Rust (`brew install rust`) and XcodeGen (`brew install xcodegen`). Xcode builds the Rust engine automatically as a build phase. Other archive formats go through two helpers, each built once from pinned official source: 7-Zip with `tools/7zip/build.sh` and The Unarchiver's tools with `tools/unar/build.sh` (see their READMEs). Debug builds fall back to Homebrew's `7zz` and `unar` (`brew install sevenzip unar`).
 
 ```bash
 cd app && xcodegen generate && open Zipling.xcodeproj
@@ -25,8 +26,10 @@ cd app && xcodegen generate && open Zipling.xcodeproj
 Or build and test from the command line:
 
 ```bash
-cd app && xcodebuild -scheme Zipling -derivedDataPath build/DerivedData test
+cd app && xcodebuild -scheme Zipling test
 ```
+
+Keep the build folder outside `~/Documents` (Xcode's default is fine): the tests run inside the app, and macOS asks before an app reads Documents.
 
 ## Try the engine from the command line
 

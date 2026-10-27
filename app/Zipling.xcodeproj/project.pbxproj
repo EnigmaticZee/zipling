@@ -6,25 +6,61 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXAggregateTarget section */
+		89992BD4AF52F3D9598725DD /* ArcaEngine */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = F36479204DF2C9B4B8CBC85D /* Build configuration list for PBXAggregateTarget "ArcaEngine" */;
+			buildPhases = (
+				F05682BBD46EBFE9F33849C1 /* Build Rust engine */,
+			);
+			dependencies = (
+			);
+			name = ArcaEngine;
+			packageProductDependencies = (
+			);
+			productName = ArcaEngine;
+		};
+/* End PBXAggregateTarget section */
+
 /* Begin PBXBuildFile section */
+		02ACD5C4DB7D8696C7B3088B /* PreviewProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B736C5C244CF550ED2F89514 /* PreviewProvider.swift */; };
+		03BEE56406AA72E3E4735839 /* FolderTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF04B217BEE6EF381C396938 /* FolderTree.swift */; };
 		04B201B41321D6E6D58DCB85 /* SafeExtraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44026925804C36FD11C4F34 /* SafeExtraction.swift */; };
+		0E68899DF115A3577DD73CD1 /* ZipDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 584D196A6394A0F4A09353E6 /* ZipDirectory.swift */; };
+		175C0D62D269278678700328 /* Extraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D3691B69428F2F21E86951 /* Extraction.swift */; };
+		1E37AFB16925A9840C5DF1A1 /* Creation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C54D7F84271E387898A078FB /* Creation.swift */; };
 		1E539D6943F63594C6539D12 /* ArchiveModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249A99818FB109E4FEF63B7D /* ArchiveModel.swift */; };
 		1FE2A56D802B61A9DA158642 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02404CD5FB1C33B07BB46276 /* AppRouter.swift */; };
+		2088A6187399786101511032 /* QuickLookPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A915CB470180FEB435BD1CE /* QuickLookPreview.swift */; };
 		277E29A3C7A4D5AC71551DDD /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C92CA9AA75990B281652EEE /* InspectorView.swift */; };
+		2E52CFB9C2AAE6C23E3930AF /* Fixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C82DFE6D711CE07CDD8FC55 /* Fixtures.swift */; };
+		43269DC8470FDF9AA7BA521B /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF3EE5FA5D76F51C5A4CFDB /* Preferences.swift */; };
+		4506312A76E4F9E9024F3D80 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C5CB22279D61736F1E38E7 /* SettingsView.swift */; };
+		4CCFB3C908A490E9CBE0E7F4 /* CreateEditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF0379D5579C5EDC9C23B61F /* CreateEditTests.swift */; };
 		5C1C4E35D26EA20F232807AE /* SevenZip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BBA70006A9F65B528BFD28D /* SevenZip.swift */; };
 		762E2C253B1FE81BB071B71B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FBA440D2BEC0487EF21E075 /* Models.swift */; };
 		7DC1C405406117CAEA407B52 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D7A258CCA7D372D94B0D66 /* Formatting.swift */; };
+		7EC5E64C2DEA7F95BF226CB4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FBA440D2BEC0487EF21E075 /* Models.swift */; };
+		80350A10B451C238570E4C57 /* ZiplingQuickLook.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EC1BF343F3C9574C9762A4F0 /* ZiplingQuickLook.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		86A995B0225EA18D0B6F20B9 /* BrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD418D92DA3378C46C632BE /* BrowserTests.swift */; };
 		88D1C28DE1EBBF4012E4C89A /* ArchiveWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E2C578020156E8B4B447A4 /* ArchiveWindow.swift */; };
+		8AF759B8F4BB5C5C49C73FC0 /* InteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9347ADC8815A08685A743C9A /* InteractionTests.swift */; };
 		8D21D0279756DF18B2F62E80 /* ZiplingApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1BB582DA2C3461693427A9 /* ZiplingApp.swift */; };
+		93E440CD2F1DD6D58BBE7BFC /* SystemIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83183AB7790939F03C1C7776 /* SystemIntegration.swift */; };
 		981560AD3325DA0DC552C9D6 /* FormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DB987455D8803124F6CB2F9 /* FormatTests.swift */; };
+		983259C76C21CBE1C35E1986 /* Unar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5040B6DD466E8508F5CE4194 /* Unar.swift */; };
 		A13550513D68069532046631 /* ZiplingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B33F289736EB5FDFF14FA885 /* ZiplingTests.swift */; };
+		A3E0ED99BB0D954B9F5B0151 /* Editing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 201E2DDEEB281C195D949673 /* Editing.swift */; };
 		BE2D05AC466F0D40B6F0F824 /* Job.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B1CADA860B2A2F44C2F740 /* Job.swift */; };
 		C04D984EC3BC097F757837ED /* Archives.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75AA753AA85817BA0DE17C25 /* Archives.swift */; };
 		CC075058E7BA2FFAECDE2504 /* CompressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FB800CAEFFC703215743489 /* CompressView.swift */; };
 		CC98815DBE0927140C0EBEFC /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 861C913B63EE06413120185A /* AppIcon.icon */; };
 		CE2DBD73E00FE175B0D336D8 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8189F5251B5C516F3BEA98F7 /* HomeView.swift */; };
+		E211CF280FD9E2F645FE3282 /* JobCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691E002AB967A422368B0095 /* JobCenter.swift */; };
 		EC69F1B31323891ACE074B92 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB16AC7784B577A28E612204 /* Assets.xcassets */; };
+		F079C5700B3919C1F135ACE1 /* ZipDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 584D196A6394A0F4A09353E6 /* ZipDirectory.swift */; };
 		F5307E9ECEA9AF78F9DFB4BE /* Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1911BC0B062C2920D4A5207C /* Engine.swift */; };
+		FA0C930B6A5D6AD1EFE9B776 /* Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1911BC0B062C2920D4A5207C /* Engine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,29 +71,83 @@
 			remoteGlobalIDString = 66B8215606C368780592EEE7;
 			remoteInfo = Zipling;
 		};
+		92B31C8681EAE3B1E315239D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 80A675A74356447C3B24E67B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 55676CA019D313EC224788D9;
+			remoteInfo = ZiplingQuickLook;
+		};
+		9BD9E00CE15A791B59CBC600 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 80A675A74356447C3B24E67B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 89992BD4AF52F3D9598725DD;
+			remoteInfo = ArcaEngine;
+		};
+		E3997FAC07D72F119BA2DF28 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 80A675A74356447C3B24E67B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 89992BD4AF52F3D9598725DD;
+			remoteInfo = ArcaEngine;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		38C0BEA49D372A2B1AD49993 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				80350A10B451C238570E4C57 /* ZiplingQuickLook.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		02404CD5FB1C33B07BB46276 /* AppRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
 		0C92CA9AA75990B281652EEE /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		0DB987455D8803124F6CB2F9 /* FormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatTests.swift; sourceTree = "<group>"; };
 		1911BC0B062C2920D4A5207C /* Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engine.swift; sourceTree = "<group>"; };
+		1D24DDCA001E4A6156708461 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		201E2DDEEB281C195D949673 /* Editing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editing.swift; sourceTree = "<group>"; };
 		249A99818FB109E4FEF63B7D /* ArchiveModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveModel.swift; sourceTree = "<group>"; };
 		2FBA440D2BEC0487EF21E075 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		3BBA70006A9F65B528BFD28D /* SevenZip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SevenZip.swift; sourceTree = "<group>"; };
 		48D7A258CCA7D372D94B0D66 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		4A44530024C3C07A5E9480BC /* ZiplingTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZiplingTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4FB800CAEFFC703215743489 /* CompressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressView.swift; sourceTree = "<group>"; };
+		5040B6DD466E8508F5CE4194 /* Unar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Unar.swift; sourceTree = "<group>"; };
+		584D196A6394A0F4A09353E6 /* ZipDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipDirectory.swift; sourceTree = "<group>"; };
+		5CF3EE5FA5D76F51C5A4CFDB /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
+		691E002AB967A422368B0095 /* JobCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobCenter.swift; sourceTree = "<group>"; };
 		75AA753AA85817BA0DE17C25 /* Archives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Archives.swift; sourceTree = "<group>"; };
+		7A915CB470180FEB435BD1CE /* QuickLookPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookPreview.swift; sourceTree = "<group>"; };
+		7C82DFE6D711CE07CDD8FC55 /* Fixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fixtures.swift; sourceTree = "<group>"; };
 		8189F5251B5C516F3BEA98F7 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		83183AB7790939F03C1C7776 /* SystemIntegration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemIntegration.swift; sourceTree = "<group>"; };
 		84B1CADA860B2A2F44C2F740 /* Job.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Job.swift; sourceTree = "<group>"; };
 		861C913B63EE06413120185A /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		9347ADC8815A08685A743C9A /* InteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionTests.swift; sourceTree = "<group>"; };
 		A44026925804C36FD11C4F34 /* SafeExtraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeExtraction.swift; sourceTree = "<group>"; };
+		A7C5CB22279D61736F1E38E7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AB16AC7784B577A28E612204 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		ACE13A8D7C084E7693C3FDDF /* ZiplingQuickLook.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ZiplingQuickLook.entitlements; sourceTree = "<group>"; };
+		AF0379D5579C5EDC9C23B61F /* CreateEditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateEditTests.swift; sourceTree = "<group>"; };
 		B33F289736EB5FDFF14FA885 /* ZiplingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZiplingTests.swift; sourceTree = "<group>"; };
+		B736C5C244CF550ED2F89514 /* PreviewProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewProvider.swift; sourceTree = "<group>"; };
+		C54D7F84271E387898A078FB /* Creation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Creation.swift; sourceTree = "<group>"; };
+		C7D3691B69428F2F21E86951 /* Extraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extraction.swift; sourceTree = "<group>"; };
 		D3E2C578020156E8B4B447A4 /* ArchiveWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveWindow.swift; sourceTree = "<group>"; };
 		D7B86FDB9BBD2A10FC70E72F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DE1BB582DA2C3461693427A9 /* ZiplingApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZiplingApp.swift; sourceTree = "<group>"; };
+		DF04B217BEE6EF381C396938 /* FolderTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTree.swift; sourceTree = "<group>"; };
+		EC1BF343F3C9574C9762A4F0 /* ZiplingQuickLook.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ZiplingQuickLook.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		EFD418D92DA3378C46C632BE /* BrowserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserTests.swift; sourceTree = "<group>"; };
 		FAB099033A0D559F1DC81B78 /* Zipling.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Zipling.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -66,6 +156,7 @@
 			isa = PBXGroup;
 			children = (
 				02404CD5FB1C33B07BB46276 /* AppRouter.swift */,
+				83183AB7790939F03C1C7776 /* SystemIntegration.swift */,
 				DE1BB582DA2C3461693427A9 /* ZiplingApp.swift */,
 			);
 			path = App;
@@ -88,7 +179,11 @@
 		35DB7C39B22BD56427E83BFE /* ZiplingTests */ = {
 			isa = PBXGroup;
 			children = (
+				EFD418D92DA3378C46C632BE /* BrowserTests.swift */,
+				AF0379D5579C5EDC9C23B61F /* CreateEditTests.swift */,
+				7C82DFE6D711CE07CDD8FC55 /* Fixtures.swift */,
 				0DB987455D8803124F6CB2F9 /* FormatTests.swift */,
+				9347ADC8815A08685A743C9A /* InteractionTests.swift */,
 				B33F289736EB5FDFF14FA885 /* ZiplingTests.swift */,
 			);
 			path = ZiplingTests;
@@ -98,6 +193,7 @@
 			isa = PBXGroup;
 			children = (
 				24B35348505015F1F98D95AE /* Zipling */,
+				CAC59475BE0DC2F6D6AA8F43 /* ZiplingQuickLook */,
 				35DB7C39B22BD56427E83BFE /* ZiplingTests */,
 				DF4B7C670DCCABA30588ECFA /* Products */,
 			);
@@ -112,14 +208,27 @@
 			path = Engine;
 			sourceTree = "<group>";
 		};
+		CAC59475BE0DC2F6D6AA8F43 /* ZiplingQuickLook */ = {
+			isa = PBXGroup;
+			children = (
+				1D24DDCA001E4A6156708461 /* Info.plist */,
+				B736C5C244CF550ED2F89514 /* PreviewProvider.swift */,
+				ACE13A8D7C084E7693C3FDDF /* ZiplingQuickLook.entitlements */,
+			);
+			path = ZiplingQuickLook;
+			sourceTree = "<group>";
+		};
 		D0E95692B53AB2522DB2385C /* Views */ = {
 			isa = PBXGroup;
 			children = (
 				249A99818FB109E4FEF63B7D /* ArchiveModel.swift */,
 				D3E2C578020156E8B4B447A4 /* ArchiveWindow.swift */,
 				4FB800CAEFFC703215743489 /* CompressView.swift */,
+				DF04B217BEE6EF381C396938 /* FolderTree.swift */,
 				8189F5251B5C516F3BEA98F7 /* HomeView.swift */,
 				0C92CA9AA75990B281652EEE /* InspectorView.swift */,
+				7A915CB470180FEB435BD1CE /* QuickLookPreview.swift */,
+				A7C5CB22279D61736F1E38E7 /* SettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -128,6 +237,7 @@
 			isa = PBXGroup;
 			children = (
 				FAB099033A0D559F1DC81B78 /* Zipling.app */,
+				EC1BF343F3C9574C9762A4F0 /* ZiplingQuickLook.appex */,
 				4A44530024C3C07A5E9480BC /* ZiplingTests.xctest */,
 			);
 			name = Products;
@@ -137,8 +247,13 @@
 			isa = PBXGroup;
 			children = (
 				75AA753AA85817BA0DE17C25 /* Archives.swift */,
+				C54D7F84271E387898A078FB /* Creation.swift */,
+				201E2DDEEB281C195D949673 /* Editing.swift */,
+				C7D3691B69428F2F21E86951 /* Extraction.swift */,
 				A44026925804C36FD11C4F34 /* SafeExtraction.swift */,
 				3BBA70006A9F65B528BFD28D /* SevenZip.swift */,
+				5040B6DD466E8508F5CE4194 /* Unar.swift */,
+				584D196A6394A0F4A09353E6 /* ZipDirectory.swift */,
 			);
 			path = Archives;
 			sourceTree = "<group>";
@@ -157,6 +272,8 @@
 			children = (
 				48D7A258CCA7D372D94B0D66 /* Formatting.swift */,
 				84B1CADA860B2A2F44C2F740 /* Job.swift */,
+				691E002AB967A422368B0095 /* JobCenter.swift */,
+				5CF3EE5FA5D76F51C5A4CFDB /* Preferences.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -164,18 +281,39 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		66B8215606C368780592EEE7 /* Zipling */ = {
+		55676CA019D313EC224788D9 /* ZiplingQuickLook */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = FE4516350DF1332CF00F5796 /* Build configuration list for PBXNativeTarget "Zipling" */;
+			buildConfigurationList = 582E5532D1B4E4B2C2007750 /* Build configuration list for PBXNativeTarget "ZiplingQuickLook" */;
 			buildPhases = (
-				9DA16035360D5CA67D1919E5 /* Build Rust engine */,
-				E14605EA201CF7E0B79E3649 /* Sources */,
-				A1C292233000F80E98F095BE /* Resources */,
-				731D54E2B889DAEF2DC2CA9E /* Embed 7-Zip helper */,
+				138388701AA3810FDC6F85F9 /* Sources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				573AC5F6B37822B5B6C2A636 /* PBXTargetDependency */,
+			);
+			name = ZiplingQuickLook;
+			packageProductDependencies = (
+			);
+			productName = ZiplingQuickLook;
+			productReference = EC1BF343F3C9574C9762A4F0 /* ZiplingQuickLook.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		66B8215606C368780592EEE7 /* Zipling */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE4516350DF1332CF00F5796 /* Build configuration list for PBXNativeTarget "Zipling" */;
+			buildPhases = (
+				E14605EA201CF7E0B79E3649 /* Sources */,
+				A1C292233000F80E98F095BE /* Resources */,
+				38C0BEA49D372A2B1AD49993 /* Embed Foundation Extensions */,
+				731D54E2B889DAEF2DC2CA9E /* Embed 7-Zip helper */,
+				BA0A7BFD18B953476D1E9F9E /* Embed The Unarchiver's tools */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0E8348E642FA1F495D629B65 /* PBXTargetDependency */,
+				BB7EE0AE9D2EC7AC07D27B96 /* PBXTargetDependency */,
 			);
 			name = Zipling;
 			packageProductDependencies = (
@@ -211,6 +349,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					55676CA019D313EC224788D9 = {
+						ProvisioningStyle = Manual;
+					};
 					66B8215606C368780592EEE7 = {
 						ProvisioningStyle = Manual;
 					};
@@ -234,7 +375,9 @@
 			projectRoot = "";
 			targets = (
 				66B8215606C368780592EEE7 /* Zipling */,
+				55676CA019D313EC224788D9 /* ZiplingQuickLook */,
 				7DAE62F9470FF4E9C45A67EB /* ZiplingTests */,
+				89992BD4AF52F3D9598725DD /* ArcaEngine */,
 			);
 		};
 /* End PBXProject section */
@@ -271,7 +414,26 @@
 			shellPath = /bin/sh;
 			shellScript = "# The unmodified 7-Zip helper reads every non-Zipling format, in its own process.\n# tools/7zip/build.sh builds it from the pinned official source (run it once).\nHELPER=\"$SRCROOT/../tools/7zip/bin/7zz\"\nDEST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nif [ -x \"$HELPER\" ]; then\n  mkdir -p \"$DEST\"\n  cp -f \"$HELPER\" \"$DEST/7zz\"\n  codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"$DEST/7zz\"\nelif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  echo \"error: tools/7zip/bin/7zz is missing. Run tools/7zip/build.sh once.\"\n  exit 1\nelse\n  echo \"warning: the 7-Zip helper isn't built yet, so this debug build uses Homebrew's 7zz. Run tools/7zip/build.sh.\"\nfi\n";
 		};
-		9DA16035360D5CA67D1919E5 /* Build Rust engine */ = {
+		BA0A7BFD18B953476D1E9F9E /* Embed The Unarchiver's tools */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed The Unarchiver's tools";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# lsar and unar read classic Mac formats and legacy file-name encodings, in\n# their own processes. tools/unar/build.sh builds them from pinned source.\nDEST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nfor TOOL in lsar unar; do\n  HELPER=\"$SRCROOT/../tools/unar/bin/$TOOL\"\n  if [ -x \"$HELPER\" ]; then\n    mkdir -p \"$DEST\"\n    cp -f \"$HELPER\" \"$DEST/$TOOL\"\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"$DEST/$TOOL\"\n  elif [ \"$CONFIGURATION\" = \"Release\" ]; then\n    echo \"error: tools/unar/bin/$TOOL is missing. Run tools/unar/build.sh once.\"\n    exit 1\n  else\n    echo \"warning: The Unarchiver's $TOOL isn't built yet, so this debug build uses Homebrew's. Run tools/unar/build.sh.\"\n  fi\ndone\n";
+		};
+		F05682BBD46EBFE9F33849C1 /* Build Rust engine */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -293,11 +455,26 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		138388701AA3810FDC6F85F9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FA0C930B6A5D6AD1EFE9B776 /* Engine.swift in Sources */,
+				7EC5E64C2DEA7F95BF226CB4 /* Models.swift in Sources */,
+				02ACD5C4DB7D8696C7B3088B /* PreviewProvider.swift in Sources */,
+				0E68899DF115A3577DD73CD1 /* ZipDirectory.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DD4C8FE5FABF3E4FAE57D3E4 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				86A995B0225EA18D0B6F20B9 /* BrowserTests.swift in Sources */,
+				4CCFB3C908A490E9CBE0E7F4 /* CreateEditTests.swift in Sources */,
+				2E52CFB9C2AAE6C23E3930AF /* Fixtures.swift in Sources */,
 				981560AD3325DA0DC552C9D6 /* FormatTests.swift in Sources */,
+				8AF759B8F4BB5C5C49C73FC0 /* InteractionTests.swift in Sources */,
 				A13550513D68069532046631 /* ZiplingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -311,14 +488,25 @@
 				88D1C28DE1EBBF4012E4C89A /* ArchiveWindow.swift in Sources */,
 				C04D984EC3BC097F757837ED /* Archives.swift in Sources */,
 				CC075058E7BA2FFAECDE2504 /* CompressView.swift in Sources */,
+				1E37AFB16925A9840C5DF1A1 /* Creation.swift in Sources */,
+				A3E0ED99BB0D954B9F5B0151 /* Editing.swift in Sources */,
 				F5307E9ECEA9AF78F9DFB4BE /* Engine.swift in Sources */,
+				175C0D62D269278678700328 /* Extraction.swift in Sources */,
+				03BEE56406AA72E3E4735839 /* FolderTree.swift in Sources */,
 				7DC1C405406117CAEA407B52 /* Formatting.swift in Sources */,
 				CE2DBD73E00FE175B0D336D8 /* HomeView.swift in Sources */,
 				277E29A3C7A4D5AC71551DDD /* InspectorView.swift in Sources */,
 				BE2D05AC466F0D40B6F0F824 /* Job.swift in Sources */,
+				E211CF280FD9E2F645FE3282 /* JobCenter.swift in Sources */,
 				762E2C253B1FE81BB071B71B /* Models.swift in Sources */,
+				43269DC8470FDF9AA7BA521B /* Preferences.swift in Sources */,
+				2088A6187399786101511032 /* QuickLookPreview.swift in Sources */,
 				04B201B41321D6E6D58DCB85 /* SafeExtraction.swift in Sources */,
+				4506312A76E4F9E9024F3D80 /* SettingsView.swift in Sources */,
 				5C1C4E35D26EA20F232807AE /* SevenZip.swift in Sources */,
+				93E440CD2F1DD6D58BBE7BFC /* SystemIntegration.swift in Sources */,
+				983259C76C21CBE1C35E1986 /* Unar.swift in Sources */,
+				F079C5700B3919C1F135ACE1 /* ZipDirectory.swift in Sources */,
 				8D21D0279756DF18B2F62E80 /* ZiplingApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -326,6 +514,21 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		0E8348E642FA1F495D629B65 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 89992BD4AF52F3D9598725DD /* ArcaEngine */;
+			targetProxy = E3997FAC07D72F119BA2DF28 /* PBXContainerItemProxy */;
+		};
+		573AC5F6B37822B5B6C2A636 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 89992BD4AF52F3D9598725DD /* ArcaEngine */;
+			targetProxy = 9BD9E00CE15A791B59CBC600 /* PBXContainerItemProxy */;
+		};
+		BB7EE0AE9D2EC7AC07D27B96 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 55676CA019D313EC224788D9 /* ZiplingQuickLook */;
+			targetProxy = 92B31C8681EAE3B1E315239D /* PBXContainerItemProxy */;
+		};
 		D3194D4D173C2E3018D34C74 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 66B8215606C368780592EEE7 /* Zipling */;
@@ -354,6 +557,32 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Zipling.app/Contents/MacOS/Zipling";
 			};
 			name = Release;
+		};
+		194B9E8BD313AC627C80E815 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = ZiplingQuickLook/ZiplingQuickLook.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				INFOPLIST_FILE = ZiplingQuickLook/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/target/xcode/release";
+				OTHER_LDFLAGS = (
+					"-larca_ffi",
+					"-liconv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.observantsystems.zipling.quicklook;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../engine/arca-ffi/include";
+			};
+			name = Debug;
 		};
 		326EDE5436B3929A06C00C03 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -410,6 +639,48 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		73C0A3095F6ABA9B76FE33B1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = ZiplingQuickLook/ZiplingQuickLook.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				INFOPLIST_FILE = ZiplingQuickLook/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/target/xcode/release";
+				OTHER_LDFLAGS = (
+					"-larca_ffi",
+					"-liconv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.observantsystems.zipling.quicklook;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../engine/arca-ffi/include";
+			};
+			name = Release;
+		};
+		75D1466D507E02CE8F2CB7BF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		7F528BFFB3BCC4EF4DABED7D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
 			};
 			name = Release;
 		};
@@ -560,6 +831,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		582E5532D1B4E4B2C2007750 /* Build configuration list for PBXNativeTarget "ZiplingQuickLook" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				194B9E8BD313AC627C80E815 /* Debug */,
+				73C0A3095F6ABA9B76FE33B1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		6B6A770189295178CEA80C67 /* Build configuration list for PBXProject "Zipling" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -574,6 +854,15 @@
 			buildConfigurations = (
 				D3682103BF1AFD2BC7D30064 /* Debug */,
 				012392D875DECB4A53A5C91B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F36479204DF2C9B4B8CBC85D /* Build configuration list for PBXAggregateTarget "ArcaEngine" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				75D1466D507E02CE8F2CB7BF /* Debug */,
+				7F528BFFB3BCC4EF4DABED7D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

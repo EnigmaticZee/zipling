@@ -76,6 +76,7 @@ struct FormatTests {
         #expect(listing.entries.contains { $0.path.hasSuffix("Résumé.txt") }, "\(kind): accented names survive")
         #expect(!listing.entries.contains { $0.path.contains("HFS+ Private") || $0.path.hasPrefix("._") })
         if kind.hasPrefix("tar.") { #expect(listing.format == kind, "a .\(kind) opens as its tar") }
+        if kind == "zip" { #expect(opened.backend == .sevenZip, "Unicode names need no second reader") }
 
         let out = root.appending(path: "out")
         try await extractAll(opened, into: out)
@@ -83,6 +84,141 @@ struct FormatTests {
 
         let verified = try await Archives.verify(opened, task: EngineTask(), cancel: CancelToken()) { _, _ in }
         #expect(verified.files == listing.files)
+    }
+
+    /// RAR can't be created on a Mac, so these are samples from libarchive's test suite.
+    @Test(arguments: ["rar4-basic.rar", "rar5-symlinks.rar"])
+    func readsRar(_ name: String) async throws {
+        let root = try makeTree()
+        let fixture = root.appending(path: name)
+        try (name == "rar4-basic.rar" ? Fixtures.rar4Basic : Fixtures.rar5Symlinks).write(to: fixture)
+        let dest = root.appending(path: "dest")
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        let model = ArchiveModel(url: fixture)
+        await model.load()
+        #expect(model.listing?.format?.lowercased().hasPrefix("rar") == true, "\(name) opens as RAR")
+        model.extract([], to: dest, then: .nothing)
+        try await waitForJob(model)
+        if name == "rar4-basic.rar" {
+            #expect(try String(contentsOf: dest.appending(path: "testdir/test.txt"), encoding: .utf8).isEmpty == false)
+            var isDir: ObjCBool = false
+            #expect(fm.fileExists(atPath: dest.appending(path: "testemptydir").path, isDirectory: &isDir) && isDir.boolValue,
+                    "empty folders come back")
+        } else {
+            // Links that point inside the archive survive the safety pass.
+            #expect(try fm.destinationOfSymbolicLink(atPath: dest.appending(path: "symlink.txt").path) == "file.txt")
+            #expect(try fm.destinationOfSymbolicLink(atPath: dest.appending(path: "dirlink").path) == "dir")
+        }
+    }
+
+    /// Old Windows zip tools wrote names in the PC's code page, with no marker saying
+    /// which. 7-Zip shows them as garbage; Zipling detects the encoding.
+    @Test(arguments: ["ja", "zh", "dos"])
+    func legacyNamesAreDecoded(_ language: String) async throws {
+        func cf(_ e: CFStringEncodings) -> String.Encoding {
+            String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(e.rawValue)))
+        }
+        let (encoding, unarName, names): (String.Encoding, String, [String]) = switch language {
+        case "ja": (.shiftJIS, "Shift_JIS", ["資料/会議の議事録.txt", "写真/夏休みの思い出.txt", "請求書と見積書.txt"])
+        case "zh": (cf(.GB_18030_2000), "GB18030", ["文档/会议记录和总结.txt", "照片/暑假旅行的回忆.txt", "发票和报价单.txt"])
+        // Too little text to detect: ZIP's default, the DOS code page, applies.
+        default: (cf(.dosLatinUS), "IBM437", ["Übersicht für März.txt", "Größe/Straße.txt", "Café.txt"])
+        }
+        let root = try makeTree()
+        let zip = root.appending(path: "legacy.zip")
+        try legacyZip(names, encoding: encoding).write(to: zip)
+
+        let opened = try await Archives.open(zip, password: nil, scratch: root.appending(path: "scratch"))
+        #expect(opened.backend == .unar, "read with The Unarchiver")
+        #expect(Set(opened.listing.entries.filter { !$0.isDirectory }.map(\.path)) == Set(names))
+
+        let out = root.appending(path: "out")
+        try await extractAll(opened, into: out)
+        for name in names {
+            #expect(try String(contentsOf: out.appending(path: name), encoding: .utf8) == "contents of \(name)")
+        }
+        if language == "dos" { #expect(opened.encoding == "IBM437") }
+        let one = root.appending(path: "one")
+        _ = try await Archives.extract(opened, to: one, only: [names[1]], task: EngineTask(), cancel: CancelToken()) { _, _ in }
+        #expect(fm.fileExists(atPath: one.appending(path: names[1]).path), "a single file by index")
+        #expect(!fm.fileExists(atPath: one.appending(path: names[2]).path))
+
+        let picked = try await Archives.open(zip, password: nil, scratch: root.appending(path: "scratch"), encoding: unarName)
+        #expect(picked.encodingChosen && Set(picked.listing.entries.map(\.path)).isSuperset(of: names))
+    }
+
+    /// A stored ZIP whose names are raw bytes in `encoding` with the UTF-8 flag off.
+    private func legacyZip(_ names: [String], encoding: String.Encoding) throws -> Data {
+        var local = Data(), central = Data()
+        func le<T: FixedWidthInteger>(_ value: T, _ out: inout Data) {
+            withUnsafeBytes(of: value.littleEndian) { out.append(contentsOf: $0) }
+        }
+        for name in names {
+            let raw = try #require(name.data(using: encoding)), data = Data("contents of \(name)".utf8)
+            let crc = crc32(data), offset = UInt32(local.count), size = UInt32(data.count)
+            le(UInt32(0x04034b50), &local); le(UInt16(20), &local); le(UInt16(0), &local); le(UInt16(0), &local)
+            le(UInt16(0), &local); le(UInt16(0x21), &local); le(crc, &local); le(size, &local); le(size, &local)
+            le(UInt16(raw.count), &local); le(UInt16(0), &local)
+            local.append(raw); local.append(data)
+            le(UInt32(0x02014b50), &central); le(UInt16(20), &central); le(UInt16(20), &central)
+            le(UInt16(0), &central); le(UInt16(0), &central); le(UInt16(0), &central); le(UInt16(0x21), &central)
+            le(crc, &central); le(size, &central); le(size, &central); le(UInt16(raw.count), &central)
+            for _ in 0..<4 { le(UInt16(0), &central) }
+            le(UInt32(0x20), &central); le(offset, &central)
+            central.append(raw)
+        }
+        var end = Data()
+        le(UInt32(0x06054b50), &end); le(UInt32(0), &end)
+        le(UInt16(names.count), &end); le(UInt16(names.count), &end)
+        le(UInt32(central.count), &end); le(UInt32(local.count), &end); le(UInt16(0), &end)
+        return local + central + end
+    }
+
+    private func crc32(_ data: Data) -> UInt32 {
+        var crc: UInt32 = 0xffff_ffff
+        for byte in data {
+            crc ^= UInt32(byte)
+            for _ in 0..<8 { crc = crc & 1 == 1 ? (crc >> 1) ^ 0xedb8_8320 : crc >> 1 }
+        }
+        return ~crc
+    }
+
+    /// MacBinary, a classic Mac format 7-Zip doesn't read: the file comes back with its
+    /// resource fork and Finder type, including when it's extracted on its own.
+    @Test func classicMacBinary() async throws {
+        let root = try makeTree()
+        let data = Data(String(repeating: "Hello from 1994\r", count: 10).utf8), fork = Data("resource bytes".utf8)
+        var header = Data(count: 128)
+        let name = Data("Read Me".utf8)
+        header[1] = UInt8(name.count)
+        header.replaceSubrange(2..<(2 + name.count), with: name)
+        header.replaceSubrange(65..<73, with: Data("TEXTttxt".utf8))
+        func be32(_ v: UInt32, at i: Int) { withUnsafeBytes(of: v.bigEndian) { header.replaceSubrange(i..<(i + 4), with: $0) } }
+        be32(UInt32(data.count), at: 83); be32(UInt32(fork.count), at: 87)
+        be32(3_000_000_000, at: 91); be32(3_000_000_000, at: 95)
+        header[122] = 129; header[123] = 129
+        var crc: UInt16 = 0  // CRC-16/XMODEM of the first 124 bytes
+        for byte in header.prefix(124) {
+            crc ^= UInt16(byte) << 8
+            for _ in 0..<8 { crc = crc & 0x8000 != 0 ? (crc << 1) ^ 0x1021 : crc << 1 }
+        }
+        header[124] = UInt8(crc >> 8); header[125] = UInt8(crc & 0xff)
+        let pad = { (d: Data) in d + Data(count: (128 - d.count % 128) % 128) }
+        let file = root.appending(path: "Read Me.bin")
+        try (header + pad(data) + pad(fork)).write(to: file)
+
+        let model = ArchiveModel(url: file)
+        await model.load()
+        #expect(model.listing?.format == "MacBinary")
+        #expect(model.listing?.entries.map(\.path) == ["Read Me"], "the fork isn't listed as its own file")
+        let dest = root.appending(path: "dest")
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        model.extract(["Read Me"], to: dest, then: .nothing)
+        try await waitForJob(model)
+        let out = dest.appending(path: "Read Me")
+        #expect(try Data(contentsOf: out) == data)
+        #expect(SafeExtraction.xattr("com.apple.ResourceFork", of: out.path) == fork)
+        #expect(SafeExtraction.xattr("com.apple.FinderInfo", of: out.path)?.prefix(8) == Data("TEXTttxt".utf8))
     }
 
     @Test func zstandardTar() async throws {

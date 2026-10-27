@@ -67,12 +67,20 @@ Done (first slice):
 - [x] Nested archives: double-click an archive inside an archive to browse it, with breadcrumbs (`Backup.dmg › photos.7z`); Back leaves it
 - [x] Safe extraction for every format: paths cleaned the way 7-Zip writes them, entries 7-Zip refuses (writes through links) reported instead of failing, links pointing outside removed, quarantine copied from the archive to every item, `__MACOSX`/`._` metadata merged back (extended attributes only, never ACLs), a free-space check up front
 
+- [x] Classic Mac and long-tail formats (StuffIt, BinHex, MacBinary, Compact Pro…) through The Unarchiver's unmodified `lsar`/`unar` (`tools/unar`), resource forks and Finder info included
+- [x] File-name repair: ZIPs whose raw names are in a legacy code page (read from the central directory, since 7-Zip drops those bytes) are read with detected encodings (Shift-JIS, GB18030, Big5, CP437 as ZIP's fallback…), and the inspector lets you pick another
+- [x] RAR 4 and RAR 5 samples in the tests (embedded, from libarchive's suite)
+- [x] Browse: folder tree sidebar, Quick Look on inner files (space, ⌘Y; follows the selection), a live preview pane, search inside nested archives, Finder keys (type-to-select, ⌘↑, ⌘↓, ⌘[, ⌘F), 100k entries open in ~1.5 s
+- [x] Get files out: drag out to Finder (extracted on drop), Extract Here (one item comes out as is, several go in a folder named after the archive), Keep Both / Replace (to the Trash) / Skip / Ask on conflicts, move to Trash only after a complete, checksummed extraction, background jobs with Dock progress, batch Extract Here
+- [x] Create: Zipling, ZIP (AES-256, UTF-8 names), 7z (hidden names), TAR.GZ, TAR.XZ; split presets; Mac clutter left out; saved presets; a suggestion based on what's being compressed; every archive read back before it's handed over
+- [x] Edit in place: add/replace (drop on the list), delete, rename, new folder; ZIP, 7z and TAR through 7-Zip, Zipling and compressed tars rebuilt; edit a file in its own app and put it back
+- [x] System: Finder right-click (Services), Quick Look extension for `.zlg` and ZIP, Share, Dock drops (Option to extract), menu-bar drop zone with progress, Settings
+
 Next:
 
 - [ ] Switch to the official `rustup` toolchain (Homebrew's Rust standard library targets macOS 27 only) and build a universal (arm64 + x86_64) engine
-- [ ] Drag items out to Finder (file promises); Quick Look on inner files
-- [ ] Classic Mac and long-tail formats (StuffIt, BinHex, Compact Pro…) and filename-encoding repair through The Unarchiver's `unar`/`lsar`
-- [ ] A RAR sample in the tests (7-Zip reads RAR, but nothing here can write one)
-- [ ] Job queue window, Dock progress
-- [ ] Quick Look extension, Finder context menu, Share extension
+- [ ] Run `tools/7zip/build.sh` and `tools/unar/build.sh` to bundle the helpers (Release builds require them)
+- [ ] Finder Sync extension (a top-level Zipling menu), once there's a Developer ID to sign it
+- [ ] Quick Look for 7z, RAR and TAR archives (the sandboxed extension can't run the helpers yet)
+- [ ] Mounting archives as disks (FSKit)
 - [ ] Developer ID signing, hardened runtime, notarisation, Sparkle

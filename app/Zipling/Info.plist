@@ -69,6 +69,19 @@
 				<string>com.observantsystems.zipling.split-part</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Files and Folders</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>None</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.item</string>
+				<string>public.folder</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
@@ -90,6 +103,65 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Observant Systems</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Compress with Zipling</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>compressFiles</string>
+			<key>NSPortName</key>
+			<string>Zipling</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+				<string>public.folder</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Extract Here with Zipling</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>extractFiles</string>
+			<key>NSPortName</key>
+			<string>Zipling</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.archive</string>
+				<string>public.disk-image</string>
+				<string>com.observantsystems.zipling-archive</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Open in Zipling</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>openFiles</string>
+			<key>NSPortName</key>
+			<string>Zipling</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.archive</string>
+				<string>public.disk-image</string>
+				<string>com.observantsystems.zipling-archive</string>
+			</array>
+		</dict>
+	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

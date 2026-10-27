@@ -2,11 +2,14 @@ import Foundation
 
 /// One archive opened for browsing, and which engine reads it.
 struct OpenedArchive: Sendable {
-    enum Backend: Sendable {
+    enum Backend: Sendable, Equatable {
         /// Zipling's own `.zlg` format, read by the Arca engine.
         case arca
-        /// Every other format, read by the 7-Zip helper.
+        /// Most other formats, read by the 7-Zip helper.
         case sevenZip
+        /// Classic Mac formats, and archives whose names need a legacy encoding,
+        /// read by The Unarchiver's tools.
+        case unar
     }
 
     /// What the backend reads: the archive itself, or the `.tar` inside a `.tar.gz`.
@@ -15,6 +18,10 @@ struct OpenedArchive: Sendable {
     let listing: Listing
     /// The password that opened it, reused for extraction and nested archives.
     var password: String?
+    /// The file-name encoding in use (The Unarchiver only): detected or chosen.
+    var encoding: String?
+    /// True when the encoding was picked by hand rather than detected.
+    var encodingChosen = false
 }
 
 /// The single entry point for reading archives of any format.
@@ -28,6 +35,18 @@ enum Archives {
         "msi", "squashfs", "vhd", "vhdx", "vmdk", "vdi", "qcow2", "001",
     ]
 
+    /// An archive's name without its archive extensions: "Photos" for Photos.tar.gz,
+    /// Photos.7z.001 or Photos.part1.rar.
+    static func baseName(_ name: String) -> String {
+        var base = name
+        if let m = base.lowercased().wholeMatch(of: /(.+)\.part\d+\.rar/) { base = String(base.prefix(m.1.count)) }
+        while case let ext = (base as NSString).pathExtension.lowercased(), !ext.isEmpty,
+              archiveExtensions.contains(ext) || ext.wholeMatch(of: /\d{3}/) != nil {
+            base = (base as NSString).deletingPathExtension
+        }
+        return base.isEmpty ? name : base
+    }
+
     static func looksLikeArchive(_ name: String) -> Bool {
         archiveExtensions.contains((name as NSString).pathExtension.lowercased())
     }
@@ -40,12 +59,31 @@ enum Archives {
     }
 
     /// Opens an archive. Throws `PasswordRequired` if it needs a password to list.
-    /// `scratch` is a private folder for unwrapped `.tar` files.
-    static func open(_ url: URL, password: String?, scratch: URL, cancel: CancelToken? = nil) async throws -> OpenedArchive {
+    /// `scratch` is a private folder for unwrapped `.tar` files. `encoding` forces a
+    /// file-name encoding (read with The Unarchiver).
+    static func open(
+        _ url: URL, password: String?, scratch: URL, encoding: String? = nil, cancel: CancelToken? = nil
+    ) async throws -> OpenedArchive {
         if isZipling(url) {
             return OpenedArchive(source: url, backend: .arca, listing: try await Engine.list(url))
         }
-        let listing = try await SevenZip.list(url, password: password, cancel: cancel)
+        if let encoding, Unar.isAvailable {
+            let found = try await Unar.list(url, password: password, encoding: encoding, cancel: cancel)
+            return OpenedArchive(source: url, backend: .unar, listing: found.listing, password: password,
+                                 encoding: encoding, encodingChosen: true)
+        }
+        let listing: Listing
+        do {
+            listing = try await SevenZip.list(url, password: password, cancel: cancel)
+        } catch let error as EngineError where Unar.isAvailable && !error.isCancellation {
+            // Formats 7-Zip doesn't know (StuffIt, BinHex, MacBinary, Compact Pro…).
+            guard let found = try? await Unar.list(url, password: password, encoding: nil, cancel: cancel) else { throw error }
+            return OpenedArchive(source: url, backend: .unar, listing: found.listing, password: password,
+                                 encoding: found.encoding)
+        }
+        if let better = await betterNames(url, listing: listing, password: password, cancel: cancel) {
+            return better
+        }
         // A .tar.gz, .tar.xz, .tbz2… is one .tar inside a compressed stream. Open the
         // tar so people see their files, not a single "name.tar".
         if let inner = wrappedTar(listing) {
@@ -66,6 +104,28 @@ enum Archives {
             return OpenedArchive(source: tar, backend: .sevenZip, listing: tarListing, password: password)
         }
         return OpenedArchive(source: url, backend: .sevenZip, listing: listing, password: password)
+    }
+
+    /// Formats whose file names carry no reliable encoding: Windows tools wrote them
+    /// in the PC's code page (Shift-JIS, GBK, CP437…), which 7-Zip shows as garbage.
+    static let legacyNameFormats: Set<String> = ["zip", "arj", "lzh", "cab"]
+
+    /// Names in a legacy code page are read with The Unarchiver instead, which detects
+    /// the encoding. When it can't tell, ZIP's own default applies: the DOS code page.
+    private static func betterNames(_ url: URL, listing: Listing, password: String?, cancel: CancelToken?) async -> OpenedArchive? {
+        let format = (listing.format ?? "").lowercased()
+        guard Unar.isAvailable, legacyNameFormats.contains(format),
+              format != "zip" || ZipDirectory.needsDecoding(url),
+              var found = try? await Unar.list(url, password: password, encoding: nil, cancel: cancel) else { return nil }
+        // Other formats: only when the names come out differently.
+        if format != "zip", Set(found.listing.entries.map(\.path)) == Set(listing.entries.map(\.path)) { return nil }
+        var encoding = found.encoding
+        if format == "zip", found.confidence < 0.2,
+           let dos = try? await Unar.list(url, password: password, encoding: "IBM437", cancel: cancel) {
+            found = dos
+            encoding = "IBM437"
+        }
+        return OpenedArchive(source: url, backend: .unar, listing: found.listing, password: password, encoding: encoding)
     }
 
     /// Opens an archive stored inside another one, by extracting just that entry to
@@ -89,6 +149,16 @@ enum Archives {
         switch archive.backend {
         case .arca:
             return try await Engine.extract(archive.source, to: dest, only: only, task: task, progress: progress)
+        case .unar:
+            let started = Date()
+            let indexes = only.isEmpty ? nil : archive.listing.entries.filter { e in
+                only.contains { e.path == $0 || e.path.hasPrefix($0 + "/") }
+            }.flatMap { [$0.index, $0.forkIndex].compactMap { $0 } }
+            try await Unar.extract(archive.source, to: dest, indexes: indexes, password: archive.password,
+                                   encoding: archive.encoding, totalFiles: files, cancel: cancel) { fraction in
+                progress(UInt64(Double(bytes) * fraction), bytes)
+            }
+            return ExtractResult(files: files, bytes: bytes, seconds: Date().timeIntervalSince(started))
         case .sevenZip:
             let started = Date()
             let skipped = try await SevenZip.extract(archive.source, to: dest, only: only, password: archive.password,
@@ -106,6 +176,12 @@ enum Archives {
         switch archive.backend {
         case .arca:
             return try await Engine.verify(archive.source, task: task, progress: progress)
+        case .unar:
+            let started = Date()
+            let l = archive.listing
+            try await Unar.test(archive.source, password: archive.password, encoding: archive.encoding, cancel: cancel)
+            progress(l.totalSize, l.totalSize)
+            return ExtractResult(files: l.files, bytes: l.totalSize, seconds: Date().timeIntervalSince(started))
         case .sevenZip:
             let started = Date()
             let l = archive.listing
@@ -134,6 +210,32 @@ enum Archives {
         if bytes > UInt64(free) {
             throw EngineError(message: "There isn't enough free space: this needs \(Format.bytes(bytes)), and \(Format.bytes(UInt64(free))) is available.")
         }
+    }
+
+    /// Every file of a split archive, or just the file: name.7z.001, .002…;
+    /// name.zip with name.z01…; name.part1.rar, part2…; name.rar with name.r00….
+    static func volumes(of url: URL) -> [URL] {
+        let folder = url.deletingLastPathComponent()
+        guard let key = volumeGroup(url.lastPathComponent),
+              let siblings = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return [url] }
+        let all = siblings.filter { volumeGroup($0) == key }.sorted().map { folder.appending(path: $0) }
+        return all.isEmpty ? [url] : all
+    }
+
+    /// Whether a name is one part of a split archive (name.7z.001, name.part1.rar).
+    static func isVolume(_ name: String) -> Bool {
+        guard let group = volumeGroup(name) else { return false }
+        return group.hasPrefix("num:") || group.hasPrefix("part:")
+    }
+
+    /// Names that belong to the same split archive share a group.
+    private static func volumeGroup(_ name: String) -> String? {
+        let lower = name.lowercased()
+        if let m = lower.wholeMatch(of: /(.+)\.part\d+\.rar/) { return "part:" + m.1 }
+        if let m = lower.wholeMatch(of: /(.+)\.(?:rar|r\d{2})/) { return "rar:" + m.1 }
+        if let m = lower.wholeMatch(of: /(.+)\.(?:zip|z\d{2})/) { return "zip:" + m.1 }
+        if let m = lower.wholeMatch(of: /(.+)\.\d{3}/) { return "num:" + m.1 }
+        return nil
     }
 
     /// Formats that compress one stream (usually a .tar) rather than holding files.
