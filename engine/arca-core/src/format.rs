@@ -388,7 +388,9 @@ impl Index {
     /// packed grouped by type, so most blocks hold one kind of data (transform and
     /// file type, within a codec), and those blocks give that kind's ratio. In a
     /// block where kinds meet, the kinds with a known ratio take their share at
-    /// it, and what's left goes to the others by length. Unpacked Deflate files
+    /// it, and what's left goes to the others by length, weighed by how sure each
+    /// side is: a few bytes of another kind beside a big file don't absorb the
+    /// noise in that file's ratio, they compress like the block. Unpacked Deflate files
     /// are also weighed by their original size, which tells a smooth screenshot
     /// from a detailed icon even when both are PNGs. Every block is accounted for
     /// exactly. Shared (deduplicated) chunks count fully for every object using them.
@@ -488,20 +490,27 @@ impl Index {
             }
             let fixed: f64 = members[b].iter().filter_map(|&c| rate(c).map(|q| q * self.chunks[c].len as f64)).sum();
             let unknown: f64 = members[b].iter().filter(|&&c| rate(c).is_none()).map(|&c| self.chunks[c].len as f64).sum();
-            let left = comp - fixed;
+            // The rest, guessed at the block's own ratio, and what's left over
+            // once both are counted. A learned ratio is good to about 2%, a guess
+            // to about 50%, so the leftover goes to whichever side is less sure:
+            // the rest, when it's a real part of the block; the known kinds, when
+            // it's a few bytes beside them and the leftover is their noise.
+            let guess = unknown * comp / total;
+            let (sure, unsure) = ((0.02 * fixed).powi(2), (0.5 * guess).powi(2));
+            let weight = if sure + unsure > 0.0 { unsure / (sure + unsure) } else { 0.0 };
+            let mut rest = guess + (comp - fixed - guess) * weight;
+            let mut known = comp - rest;
+            if rest < 0.0 || known < 0.0 {
+                // The ratios don't fit this block: scale everything to it.
+                let scale = comp / (fixed + guess).max(f64::MIN_POSITIVE);
+                rest = guess * scale;
+                known = fixed * scale;
+            }
             for &c in &members[b] {
                 let len = self.chunks[c].len as f64;
                 share[c] = match rate(c) {
-                    // Only known ratios: scale them so the block adds up.
-                    Some(q) if unknown == 0.0 => q * len * comp / fixed.max(f64::MIN_POSITIVE),
-                    // The known shares, and what's left for the rest by length.
-                    Some(q) if left >= 0.01 * unknown => q * len,
-                    None if left >= 0.01 * unknown => left * len / unknown,
-                    // The ratios don't fit this block: weigh everything and scale.
-                    q => {
-                        let weight = fixed + unknown * comp / total;
-                        q.unwrap_or(comp / total) * len * comp / weight
-                    }
+                    Some(q) => q * len * known / fixed.max(f64::MIN_POSITIVE),
+                    None => rest * len / unknown,
                 };
             }
         }
@@ -595,6 +604,25 @@ mod tests {
             blocks: vec![block(1000, 50), block(1400, 250)],
         };
         assert_eq!(idx.packed_estimates(), vec![100, 200]);
+    }
+
+    /// A note of a few bytes shares a block with a big text file, whose ratio
+    /// differs a little from block to block. What's left after the text's share
+    /// is that difference, not the note: the note compresses like the block
+    /// instead of coming out larger than it went in.
+    #[test]
+    fn a_few_bytes_beside_a_big_file_do_not_take_its_noise() {
+        let idx = Index {
+            created: 0,
+            entries: vec![file("Word list.txt", 0, 2000), file("Read me.md", 1, 10)],
+            objects: vec![object(Transform::None, vec![0, 1], 2000), object(Transform::None, vec![2], 10)],
+            chunks: vec![chunk(0, 0, 1000), chunk(1, 0, 1000), chunk(1, 1000, 10)],
+            // The text compresses to 30% in one block and 32% in the other.
+            blocks: vec![block(1000, 300), block(1010, 320)],
+        };
+        let est = idx.packed_estimates();
+        assert!(est[1] > 0 && est[1] < 10, "the note's estimate {} should be below its 10 bytes", est[1]);
+        assert_eq!(est.iter().sum::<u64>(), 620, "every compressed byte is accounted for once");
     }
 
     /// Two kinds that never fill a block on their own: the unpacked PDF is judged
