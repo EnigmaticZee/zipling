@@ -237,6 +237,109 @@ function countUps() {
   els.forEach((el) => io.observe(el));
 }
 
+// The hero reel: scenes advance on a clock that stops while the reel is hovered,
+// off screen, in a hidden tab or paused. CSS plays each scene's motion; numbers
+// marked data-to count here, in step with the same clock.
+function reel() {
+  const root = document.querySelector(".reel");
+  if (!root) return;
+  const scenes = [...root.querySelectorAll(".scene")];
+  const steps = root.querySelector(".reel-steps");
+  const toggle = root.querySelector(".reel-toggle");
+  const durations = [5200, 5800, 5800, 5000, 5400, 5400, 5200];
+
+  // Repair: an archive's blocks, a few of them damaged, and its recovery data.
+  const damaged = new Set([8, 9, 21, 33, 34, 50, 63]);
+  const grid = root.querySelector(".vis-repair .grid");
+  if (grid) grid.innerHTML = Array.from({ length: 72 }, (_, i) =>
+    `<i class="${damaged.has(i) ? "x" : ""}" style="--d:${0.1 + i * 0.008}s;--l:${56 + ((i * 37) % 13)}%"></i>`).join("");
+  const parity = root.querySelector(".vis-repair .parity");
+  if (parity) parity.innerHTML = Array.from({ length: 12 }, (_, i) => `<i style="--d:${0.45 + i * 0.02}s"></i>`).join("");
+
+  steps.innerHTML = scenes.map((s, i) =>
+    `<button type="button" class="step" aria-label="${i + 1} of ${scenes.length}: ${s.dataset.name}">` +
+    `<span class="label">${s.dataset.name}</span><span class="meter"><i></i></span></button>`).join("");
+  const buttons = [...steps.children];
+
+  const fit = () => {
+    root.querySelectorAll(".scene-vis").forEach((h) => h.style.setProperty("--k", h.clientWidth / 560));
+    root.querySelectorAll(".typed").forEach((t) => t.style.setProperty("--tw", `${t.scrollWidth}px`));
+  };
+  fit();
+  if ("ResizeObserver" in window) new ResizeObserver(fit).observe(root);
+
+  const live = !reduceMotion;
+  root.classList.toggle("live", live);
+  let current = 0, t = 0, last = 0;
+  let stopped = !live, hovered = false, offscreen = false;
+
+  const counters = (scene, at) => scene.querySelectorAll("[data-to]").forEach((el) => {
+    const to = parseFloat(el.dataset.to), from = parseFloat(el.dataset.from || 0), dec = +el.dataset.dec || 0;
+    const k = live ? Math.min(1, Math.max(0, (at - (+el.dataset.at || 0)) / (+el.dataset.dur || 1000))) : 1;
+    el.textContent = (from + (to - from) * (1 - Math.pow(1 - k, 3))).toFixed(dec);
+  });
+
+  function show(n) {
+    current = (n + scenes.length) % scenes.length;
+    t = 0;
+    scenes.forEach((s, i) => {
+      const on = i === current;
+      s.classList.remove("on");
+      s.inert = !on;
+      s.setAttribute("aria-hidden", String(!on));
+      s.setAttribute("aria-label", `${i + 1} of ${scenes.length}: ${s.dataset.name}`);
+    });
+    void scenes[current].offsetWidth; // restart its motion, even when it's the same scene
+    scenes[current].classList.add("on");
+    buttons.forEach((b, i) => {
+      b.setAttribute("aria-current", String(i === current));
+      b.querySelector("i").style.setProperty("--p", i < current || (!live && i === current) ? 1 : 0);
+    });
+    counters(scenes[current], 0);
+  }
+
+  function state() {
+    root.classList.toggle("paused", stopped || hovered || offscreen);
+    root.classList.toggle("stopped", stopped);
+    toggle.setAttribute("aria-label", stopped ? "Play the tour" : "Pause the tour");
+  }
+
+  function frame(now) {
+    const dt = Math.min(100, now - (last || now));
+    last = now;
+    if (!root.classList.contains("paused")) {
+      t += dt;
+      counters(scenes[current], t);
+      buttons[current].querySelector("i").style.setProperty("--p", Math.min(1, t / durations[current]));
+      if (t >= durations[current]) show(current + 1);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  buttons.forEach((b, i) => b.addEventListener("click", () => show(i)));
+  steps.addEventListener("keydown", (e) => {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    show(current + step);
+    buttons[current].focus();
+  });
+  show(0);
+  state();
+  if (!live) return;
+
+  toggle.hidden = false;
+  toggle.addEventListener("click", () => { stopped = !stopped; state(); });
+  if (matchMedia("(hover: hover)").matches) {
+    const stage = root.querySelector(".reel-stage");
+    stage.addEventListener("pointerenter", () => { hovered = true; state(); });
+    stage.addEventListener("pointerleave", () => { hovered = false; state(); });
+  }
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(([e]) => { offscreen = !e.isIntersecting; state(); }, { threshold: 0.2 }).observe(root);
+  }
+  requestAnimationFrame(frame);
+}
+
 function chrome() {
   const bar = document.querySelector(".nav");
   const progress = document.querySelector(".progress");
@@ -256,4 +359,5 @@ benchmarksPage();
 comparePage();
 reveals();
 countUps();
+reel();
 chrome();

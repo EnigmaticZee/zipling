@@ -51,9 +51,208 @@
         </div>
         <p class="fine">Not available to download yet · For Apple silicon Macs</p>
       </div>
-      <figure class="hero-shot reveal">
-        <img src="assets/app-archive.jpg" alt="A Zipling archive window for Mac Backup.zlg: 15 files, 17.4 MB packed to 8.6 MB (50% smaller). A folder tree is on the left, the list shows each item's savings and method (Lepton for a photo, Unpacked + zstd for a PDF, Zstandard for text), and the inspector explains how the archive got smaller, with buttons to verify it, convert it and add a recovery file." width="2480" height="1800">
-      </figure>
+      <!-- A short tour of what Zipling does: one feature per scene, on a loop. -->
+      <div class="reel" aria-roledescription="carousel" aria-label="What Zipling does">
+        <div class="reel-stage">
+
+          <section class="scene on" data-name="Photos" aria-roledescription="slide">
+            <div class="scene-copy">
+              <p class="scene-kicker">Lepton, lossless</p>
+              <h3 class="scene-title">Photos, about a quarter smaller.</h3>
+              <p class="scene-sub">Zipling re-encodes JPEGs instead of just zipping them, and every one comes back bit for bit identical. Other tools manage 5–13% at best.</p>
+            </div>
+            <div class="scene-vis" aria-hidden="true">
+              <div class="vis vis-photo">
+                <div class="photo a-up" style="--at:.1s">
+                  <svg viewBox="0 0 420 262" preserveAspectRatio="xMidYMid slice">
+                    <defs>
+                      <linearGradient id="rv-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2E2378"/><stop offset=".5" stop-color="#C9507E"/><stop offset="1" stop-color="#FFB46A"/></linearGradient>
+                      <linearGradient id="rv-sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E0716E"/><stop offset=".35" stop-color="#6A3A86"/><stop offset="1" stop-color="#1E1645"/></linearGradient>
+                      <radialGradient id="rv-sun"><stop offset="0" stop-color="#FFF1C4"/><stop offset=".45" stop-color="#FFC978"/><stop offset="1" stop-color="#FFC978" stop-opacity="0"/></radialGradient>
+                    </defs>
+                    <rect width="420" height="176" fill="url(#rv-sky)"/>
+                    <circle cx="228" cy="150" r="70" fill="url(#rv-sun)"/>
+                    <circle cx="228" cy="152" r="22" fill="#FFE7A8"/>
+                    <path d="M0 150C40 128 78 126 118 140S190 160 236 152 330 132 420 146V180H0Z" fill="#3A2160" opacity=".85"/>
+                    <rect y="170" width="420" height="92" fill="url(#rv-sea)"/>
+                    <g fill="#FFD9A0" opacity=".55"><rect x="196" y="182" width="64" height="2.5" rx="1"/><rect x="206" y="194" width="44" height="2" rx="1"/><rect x="214" y="206" width="28" height="2" rx="1"/><rect x="220" y="218" width="16" height="1.6" rx=".8"/></g>
+                    <g stroke="#2A1030" fill="none" stroke-linecap="round">
+                      <path d="M-10 118Q52 150 112 58Q208 152 304 58Q366 150 430 118" stroke-width="2.4"/>
+                      <path d="M8.6 124.8V152M17.8 126.1V152M27.0 126.0V152M36.2 124.6V152M45.4 121.7V152M54.5 117.4V152M63.7 111.8V152M72.8 104.7V152M81.9 96.2V152M90.9 86.4V152M100.0 75.2V152M126.4 71.0V152M140.8 82.0V152M155.2 90.8V152M169.6 97.5V152M184.0 102.1V152M198.4 104.5V152M212.8 104.9V152M227.2 103.1V152M241.6 99.2V152M256.0 93.2V152M270.4 85.1V152M284.8 74.9V152M313.3 71.1V152M322.6 82.8V152M332.0 93.1V152M341.4 102.0V152M350.8 109.6V152M360.2 115.7V152M369.7 120.4V152M379.1 123.8V152M388.6 125.7V152M398.1 126.2V152M407.7 125.4V152M417.2 123.2V152" stroke-width=".9" opacity=".8"/>
+                    </g>
+                    <g fill="#2A1030"><rect x="-10" y="150" width="440" height="5"/><rect x="107" y="52" width="10" height="128" rx="1.5"/><rect x="299" y="52" width="10" height="128" rx="1.5"/><rect x="104" y="74" width="16" height="3"/><rect x="104" y="104" width="16" height="3"/><rect x="296" y="74" width="16" height="3"/><rect x="296" y="104" width="16" height="3"/></g>
+                  </svg>
+                  <div class="blocks"></div>
+                  <div class="beam"></div>
+                </div>
+                <div class="file a-up" style="--at:.35s">
+                  <span class="ext">JPG</span>
+                  <span class="fname">Golden Gate at sunset.jpg</span>
+                  <span class="fsize"><s>2.1 MB</s> <b data-from="2.1" data-to="1.5" data-dec="1" data-at="700" data-dur="1500">1.5</b> MB</span>
+                </div>
+                <div class="chips">
+                  <span class="chip-ok a-pop" style="--at:2.1s">27% smaller</span>
+                  <span class="chip-soft a-pop" style="--at:2.4s"><svg viewBox="0 0 20 20"><path d="M5.5 10.5l3 3 6-7"/></svg>Comes back bit for bit identical</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="scene" data-name="Benchmarks" aria-roledescription="slide">
+            <div class="scene-copy">
+              <p class="scene-kicker">Benchmarks</p>
+              <h3 class="scene-title">Smaller than 7-Zip's best. Five times faster.</h3>
+              <p class="scene-sub">Measured on a 736 MB folder of photos, PDFs, apps and code, with every archive extracted and checked byte for byte.</p>
+            </div>
+            <div class="scene-vis" aria-hidden="true">
+              <div class="vis vis-bench">
+                <div class="panel a-up" style="--at:.1s">
+                  <p class="panel-head"><b>Archive size</b><span>smaller is better</span></p>
+                  <div class="race"><span class="who">7-Zip Ultra</span><span class="track"><i class="a-grow" style="--w:1;--at:.4s"></i></span><span class="val"><b data-to="233.4" data-dec="1" data-at="400" data-dur="1100">233.4</b> MB</span></div>
+                  <div class="race us"><span class="who">Zipling Max</span><span class="track"><i class="a-grow" style="--w:.826;--at:.6s"></i></span><span class="val"><b data-to="192.8" data-dec="1" data-at="600" data-dur="1100">192.8</b> MB</span></div>
+                  <span class="badge a-pop" style="--at:1.6s">17% smaller</span>
+                </div>
+                <div class="panel a-up" style="--at:.5s">
+                  <p class="panel-head"><b>Time to compress</b><span>shorter is better</span></p>
+                  <div class="race"><span class="who">7-Zip Ultra</span><span class="track"><i class="a-grow slow" style="--w:1;--at:.9s"></i></span><span class="val"><b data-to="49.3" data-dec="1" data-at="900" data-dur="2000">49.3</b> s</span></div>
+                  <div class="race us"><span class="who">Zipling Default</span><span class="track"><i class="a-grow" style="--w:.197;--at:.9s"></i></span><span class="val"><b data-to="9.7" data-dec="1" data-at="900" data-dur="500">9.7</b> s</span></div>
+                  <span class="badge a-pop" style="--at:2.3s">5× faster, and still 5% smaller</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="scene" data-name="Every byte" aria-roledescription="slide">
+            <div class="scene-copy">
+              <p class="scene-kicker">The archive browser</p>
+              <h3 class="scene-title">See where every byte went.</h3>
+              <p class="scene-sub">Every file shows what it saved and how. Browse archives inside archives, preview any file and drag out only what you need.</p>
+            </div>
+            <div class="scene-vis" aria-hidden="true">
+              <div class="vis vis-shot">
+                <div class="view"><div class="cam"><img class="shot" src="assets/app-archive.jpg" alt="" width="2480" height="1800" loading="lazy"></div></div>
+                <span class="callout c1" style="left:346px;top:194px"><i style="width:76px;height:26px"></i><em style="top:13px;height:83px"></em><b style="left:-46px;top:96px">Saved, file by file</b></span>
+                <span class="callout c2" style="left:414px;top:194px"><i style="width:52px;height:26px"></i><em style="top:13px;height:137px"></em><b style="left:-44px;top:150px">How: Lepton, unpacked PDFs, Zstandard</b></span>
+                <span class="callout c3" style="left:420px;top:150px"><i style="width:160px;height:160px"></i><em class="h" style="left:-98px;width:18px"></em><b class="to-left">50% smaller, every block checked</b></span>
+              </div>
+            </div>
+          </section>
+
+          <section class="scene" data-name="Formats" aria-roledescription="slide">
+            <div class="scene-copy">
+              <p class="scene-kicker">Every format</p>
+              <h3 class="scene-title">Opens the archives you already have.</h3>
+              <p class="scene-sub">ZIP, 7z, RAR, TAR, disk images and classic Mac formats, split or password-protected, with garbled names from old Windows ZIPs repaired.</p>
+            </div>
+            <div class="scene-vis" aria-hidden="true">
+              <div class="vis vis-formats">
+                <span class="ring r1"></span><span class="ring r2"></span>
+                <img class="core a-pop" src="assets/icon-512.png" alt="" width="128" height="128" style="--at:.05s">
+                <div class="orbit o1">
+                  <span class="slot" style="--a:0deg"><b class="a-in" style="--at:.30s"><i>ZIP</i></b></span>
+                  <span class="slot" style="--a:60deg"><b class="a-in" style="--at:.38s"><i>7z</i></b></span>
+                  <span class="slot" style="--a:120deg"><b class="a-in" style="--at:.46s"><i>RAR</i></b></span>
+                  <span class="slot" style="--a:180deg"><b class="a-in" style="--at:.54s"><i>TAR</i></b></span>
+                  <span class="slot" style="--a:240deg"><b class="a-in" style="--at:.62s"><i>DMG</i></b></span>
+                  <span class="slot" style="--a:300deg"><b class="a-in" style="--at:.70s"><i>ISO</i></b></span>
+                </div>
+                <div class="orbit o2">
+                  <span class="slot" style="--a:15deg"><b class="a-in" style="--at:.80s"><i>StuffIt</i></b></span>
+                  <span class="slot" style="--a:45deg"><b class="a-in" style="--at:.86s"><i>XZ</i></b></span>
+                  <span class="slot" style="--a:75deg"><b class="a-in" style="--at:.92s"><i>Zstandard</i></b></span>
+                  <span class="slot" style="--a:105deg"><b class="a-in" style="--at:.98s"><i>WIM</i></b></span>
+                  <span class="slot" style="--a:135deg"><b class="a-in" style="--at:1.04s"><i>CAB</i></b></span>
+                  <span class="slot" style="--a:165deg"><b class="a-in" style="--at:1.10s"><i>BinHex</i></b></span>
+                  <span class="slot" style="--a:195deg"><b class="a-in" style="--at:1.16s"><i>GZIP</i></b></span>
+                  <span class="slot" style="--a:225deg"><b class="a-in" style="--at:1.22s"><i>Split .001</i></b></span>
+                  <span class="slot" style="--a:255deg"><b class="a-in" style="--at:1.28s"><i>LZH</i></b></span>
+                  <span class="slot" style="--a:285deg"><b class="a-in" style="--at:1.34s"><i>AES-256</i></b></span>
+                  <span class="slot" style="--a:315deg"><b class="a-in" style="--at:1.40s"><i>BZIP2</i></b></span>
+                  <span class="slot" style="--a:345deg"><b class="a-in" style="--at:1.46s"><i>CPIO</i></b></span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="scene" data-name="Repair" aria-roledescription="slide">
+            <div class="scene-copy">
+              <p class="scene-kicker">Recovery files</p>
+              <h3 class="scene-title">Damaged archives, repaired.</h3>
+              <p class="scene-sub">A recovery file a tenth the size of the archive rebuilds what a failing disk or a broken download destroyed, byte for byte. It works with any archive.</p>
+            </div>
+            <div class="scene-vis" aria-hidden="true">
+              <div class="vis vis-repair">
+                <p class="row-head a-up" style="--at:.05s"><b>Project.zip</b>
+                  <span class="state bad">7 parts damaged</span><span class="state good">Repaired, byte for byte</span></p>
+                <div class="grid"></div>
+                <span class="sweep"></span>
+                <p class="row-head small a-up" style="--at:.4s"><b>Project.zip.recovery</b><span>10% of its size</span></p>
+                <div class="parity"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="scene" data-name="Shrink later" aria-roledescription="slide">
+            <div class="scene-copy">
+              <p class="scene-kicker">Shrink later</p>
+              <h3 class="scene-title">Fast now. Smaller later.</h3>
+              <p class="scene-sub">Zipling makes the archive in seconds, then re-packs it at Max while your Mac is idle and plugged in. It's swapped in only once it's checked.</p>
+            </div>
+            <div class="scene-vis" aria-hidden="true">
+              <div class="vis vis-shrink">
+                <div class="panel a-up" style="--at:.05s">
+                  <p class="panel-head"><b>Mac Backup.zlg</b><span class="tag t1">Fast · made in 1.4 s</span><span class="tag t2">Max · 33% smaller</span></p>
+                  <div class="archive"><i class="fill"></i></div>
+                  <p class="size"><b data-from="286.8" data-to="192.8" data-dec="1" data-at="2500" data-dur="1100">192.8</b> MB <span>from a 736 MB folder</span></p>
+                </div>
+                <div class="when">
+                  <span class="cond a-light" style="--at:.8s"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>Mac is idle</span>
+                  <span class="cond a-light" style="--at:1.2s"><svg viewBox="0 0 24 24"><path d="M13 2L5 13h6l-1 9 8-11h-6l1-9z"/></svg>Plugged in</span>
+                  <span class="cond a-light" style="--at:1.6s"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0114-5.3M20 12a8 8 0 01-14 5.3M18 3v4h-4M6 21v-4h4"/></svg>Re-packing at Max</span>
+                </div>
+                <p class="done a-pop" style="--at:3.5s"><svg viewBox="0 0 20 20"><path d="M5.5 10.5l3 3 6-7"/></svg>Same files, every block checked</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="scene" data-name="On your Mac" aria-roledescription="slide">
+            <div class="scene-copy">
+              <p class="scene-kicker">Made for macOS</p>
+              <h3 class="scene-title">Right at home on your Mac.</h3>
+              <p class="scene-sub">Spotlight finds files inside your archives, and Shortcuts, AppleScript and Folder Actions compress, extract and convert for you.</p>
+            </div>
+            <div class="scene-vis" aria-hidden="true">
+              <div class="vis vis-mac">
+                <div class="search a-up" style="--at:.05s">
+                  <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+                  <span class="typed">Baker Beach</span>
+                </div>
+                <div class="hit a-up" style="--at:1.5s">
+                  <span class="zip">ZIP</span>
+                  <span class="hit-text"><b>Project.zip</b><span>Has “Baker Beach.jpg” inside</span></span>
+                  <span class="hit-app">Zipling</span>
+                </div>
+                <div class="tools">
+                  <span class="a-pop" style="--at:2.1s">Shortcuts</span>
+                  <span class="a-pop" style="--at:2.25s">AppleScript</span>
+                  <span class="a-pop" style="--at:2.4s">Folder Actions</span>
+                  <span class="a-pop" style="--at:2.55s">Quick Look</span>
+                  <span class="a-pop" style="--at:2.7s">Right-click in Finder</span>
+                  <span class="a-pop" style="--at:2.85s">Menu bar drop zone</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+        <div class="reel-nav">
+          <div class="reel-steps" role="group" aria-label="Choose a feature"></div>
+          <button type="button" class="reel-toggle" aria-label="Pause the tour" hidden>
+            <svg class="i-pause" viewBox="0 0 20 20"><path d="M7 4.5v11M13 4.5v11"/></svg>
+            <svg class="i-play" viewBox="0 0 20 20"><path d="M7 4.8v10.4L15.5 10z"/></svg>
+          </button>
+        </div>
+      </div>
     </section>
 
     <!-- Proof -->
