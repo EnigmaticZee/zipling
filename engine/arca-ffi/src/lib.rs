@@ -132,6 +132,7 @@ pub unsafe extern "C" fn arca_list(archive_path: *const c_char) -> *mut c_char {
     respond(|| {
         let a = Archive::open(&PathBuf::from(arg(archive_path)?))?;
         let idx = &a.index;
+        let packed = idx.packed_estimates();
         let (mut files, mut dirs, mut total) = (0, 0, 0);
         let entries = idx
             .entries
@@ -155,7 +156,7 @@ pub unsafe extern "C" fn arca_list(archive_path: *const c_char) -> *mut c_char {
                         let o = &idx.objects[*object as usize];
                         out.size = *size;
                         out.transform = o.transform.name();
-                        out.packed = idx.packed_estimate(*object);
+                        out.packed = packed[*object as usize];
                         if let Some(&c) = o.chunks.first() {
                             out.codec = idx.blocks[idx.chunks[c as usize].block as usize].codec.name();
                         }

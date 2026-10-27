@@ -379,19 +379,133 @@ impl Index {
         Ok(idx)
     }
 
-    /// Approximate compressed bytes attributable to an object: each chunk's share
-    /// of its block's compressed size. Shared (deduplicated) chunks count fully
-    /// for every object that uses them.
-    pub fn packed_estimate(&self, object: u32) -> u64 {
-        let o = &self.objects[object as usize];
-        o.chunks
-            .iter()
-            .map(|&c| {
-                let ch = &self.chunks[c as usize];
-                let b = &self.blocks[ch.block as usize];
-                (ch.len as u128 * b.comp_len as u128 / b.raw_len.max(1) as u128) as u64
-            })
-            .sum()
+    /// Approximate compressed bytes attributable to each object, by object index.
+    ///
+    /// Blocks are compressed as a whole, so an object's share has to be estimated.
+    /// Splitting a block by raw length alone is badly wrong where different kinds
+    /// of data meet in one block: unpacked PNG pixels compress far better than app
+    /// code or PDF text, so the images would be blamed for the rest. Files are
+    /// packed grouped by type, so most blocks hold one kind of data (transform and
+    /// file type, within a codec), and those blocks give that kind's ratio. In a
+    /// block where kinds meet, the kinds with a known ratio take their share at
+    /// it, and what's left goes to the others by length. Unpacked Deflate files
+    /// are also weighed by their original size, which tells a smooth screenshot
+    /// from a detailed icon even when both are PNGs. Every block is accounted for
+    /// exactly. Shared (deduplicated) chunks count fully for every object using them.
+    pub fn packed_estimates(&self) -> Vec<u64> {
+        // A file's type is its extension, from the first file that uses the object.
+        let mut extension = vec![None::<String>; self.objects.len()];
+        for e in &self.entries {
+            if let EntryKind::File { object, .. } = e.kind {
+                let ext = &mut extension[object as usize];
+                if ext.is_none() {
+                    let name = e.path.rsplit('/').next().unwrap_or(&e.path);
+                    *ext = Some(name.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase()).unwrap_or_default());
+                }
+            }
+        }
+        // The kind and object of each chunk, from the first object that uses it.
+        let mut chunk_kind = vec![usize::MAX; self.chunks.len()];
+        let mut chunk_object = vec![usize::MAX; self.chunks.len()];
+        let mut kinds: std::collections::HashMap<(u8, u8, &str), usize> = std::collections::HashMap::new();
+        for (i, o) in self.objects.iter().enumerate() {
+            let transform = match o.transform {
+                Transform::None => 0,
+                Transform::Arm64 { .. } => 1,
+                Transform::Lepton => 2,
+                Transform::Deflate => 3,
+            };
+            let ext = extension[i].as_deref().unwrap_or("");
+            for &c in &o.chunks {
+                let c = c as usize;
+                if chunk_kind[c] == usize::MAX {
+                    let key = (self.blocks[self.chunks[c].block as usize].codec.tag(), transform, ext);
+                    let next = kinds.len();
+                    chunk_kind[c] = *kinds.entry(key).or_insert(next);
+                    chunk_object[c] = i;
+                }
+            }
+        }
+
+        // Ratios from blocks that one kind (nearly) fills.
+        let mut fill: Vec<Vec<(usize, f64)>> = vec![Vec::new(); self.blocks.len()];
+        let mut members: Vec<Vec<usize>> = vec![Vec::new(); self.blocks.len()];
+        for (c, ch) in self.chunks.iter().enumerate() {
+            let kind = chunk_kind[c];
+            if kind == usize::MAX {
+                continue;
+            }
+            let b = ch.block as usize;
+            members[b].push(c);
+            match fill[b].iter_mut().find(|(k, _)| *k == kind) {
+                Some((_, raw)) => *raw += ch.len as f64,
+                None => fill[b].push((kind, ch.len as f64)),
+            }
+        }
+        // How well an unpacked Deflate file's data compresses varies a lot even
+        // within one type (a smooth screenshot against a detailed icon), and its
+        // original Deflate size says by how much: the codecs here typically land
+        // near 0.6 of it. Blocks one kind fills calibrate that per kind.
+        let prior = |c: usize| -> Option<f64> {
+            let o = &self.objects[chunk_object[c]];
+            (matches!(o.transform, Transform::Deflate) && o.stored_len > 0)
+                .then(|| 0.6 * o.size as f64 / o.stored_len as f64)
+        };
+        let mut seen = vec![(0f64, 0f64, 0f64); kinds.len()];
+        for (b, (row, block)) in fill.iter().zip(&self.blocks).enumerate() {
+            let total: f64 = row.iter().map(|(_, r)| r).sum();
+            if let Some(&(kind, raw)) = row.iter().find(|(_, r)| *r >= 0.95 * total) {
+                if total > 0.0 {
+                    let comp = block.comp_len as f64 * raw / total;
+                    let expected: f64 = members[b]
+                        .iter()
+                        .filter(|&&c| chunk_kind[c] == kind)
+                        .map(|&c| prior(c).unwrap_or(0.0) * self.chunks[c].len as f64)
+                        .sum();
+                    seen[kind].0 += comp;
+                    seen[kind].1 += raw;
+                    seen[kind].2 += expected;
+                }
+            }
+        }
+        // A chunk's ratio: from its kind's own blocks, scaled per file by the prior
+        // where there is one; or the prior alone for a kind that never fills a block.
+        let rate = |c: usize| -> Option<f64> {
+            let (comp, raw, expected) = seen[chunk_kind[c]];
+            match prior(c) {
+                Some(p) if expected > 0.0 => Some(p * comp / expected),
+                Some(p) => Some(p),
+                None => (raw > 0.0).then(|| comp / raw),
+            }
+        };
+
+        let mut share = vec![0f64; self.chunks.len()];
+        for (b, block) in self.blocks.iter().enumerate() {
+            let comp = block.comp_len as f64;
+            let total: f64 = members[b].iter().map(|&c| self.chunks[c].len as f64).sum();
+            if total <= 0.0 {
+                continue;
+            }
+            let fixed: f64 = members[b].iter().filter_map(|&c| rate(c).map(|q| q * self.chunks[c].len as f64)).sum();
+            let unknown: f64 = members[b].iter().filter(|&&c| rate(c).is_none()).map(|&c| self.chunks[c].len as f64).sum();
+            let left = comp - fixed;
+            for &c in &members[b] {
+                let len = self.chunks[c].len as f64;
+                share[c] = match rate(c) {
+                    // Only known ratios: scale them so the block adds up.
+                    Some(q) if unknown == 0.0 => q * len * comp / fixed.max(f64::MIN_POSITIVE),
+                    // The known shares, and what's left for the rest by length.
+                    Some(q) if left >= 0.01 * unknown => q * len,
+                    None if left >= 0.01 * unknown => left * len / unknown,
+                    // The ratios don't fit this block: weigh everything and scale.
+                    q => {
+                        let weight = fixed + unknown * comp / total;
+                        q.unwrap_or(comp / total) * len * comp / weight
+                    }
+                };
+            }
+        }
+        self.objects.iter().map(|o| o.chunks.iter().map(|&c| share[c as usize]).sum::<f64>().round() as u64).collect()
     }
 
     /// Structural checks so later stages can index without bounds surprises.
@@ -420,5 +534,83 @@ impl Index {
             ensure!(c.offset + c.len <= b.raw_len, "chunk outside its block");
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn object(transform: Transform, chunks: Vec<u32>, stored_len: u64) -> Object {
+        Object { hash: None, size: stored_len, transform, stored_len, chunks }
+    }
+
+    fn block(raw_len: u64, comp_len: u64) -> BlockInfo {
+        BlockInfo { file_offset: 0, comp_len, raw_len, codec: Codec::Zstd, checksum: [0; 16], raw_hash: [0; 16] }
+    }
+
+    fn file(path: &str, object: u32, size: u64) -> Entry {
+        Entry { path: path.into(), kind: EntryKind::File { size, object }, mode: 0o644, mtime: (0, 0), xattrs: vec![] }
+    }
+
+    fn chunk(block: u32, offset: u64, len: u64) -> Chunk {
+        Chunk { block, offset, len }
+    }
+
+    /// Block 0 holds only app code (compresses to half), block 1 only PNG pixels
+    /// (to a tenth), block 2 a little of both. The mixed block must be split by
+    /// how each kind compresses, not by length.
+    #[test]
+    fn mixed_blocks_are_split_by_how_each_kind_compresses() {
+        let arm64 = || Transform::Arm64 { ranges: vec![] };
+        let idx = Index {
+            created: 0,
+            entries: vec![file("Tool", 0, 1000), file("a.png", 1, 1000), file("Tool2", 2, 500), file("b.png", 3, 500)],
+            objects: vec![
+                object(arm64(), vec![0], 1000),
+                object(Transform::Deflate, vec![1], 1000),
+                object(arm64(), vec![2], 500),
+                object(Transform::Deflate, vec![3], 500),
+            ],
+            chunks: vec![chunk(0, 0, 1000), chunk(1, 0, 1000), chunk(2, 0, 500), chunk(2, 500, 500)],
+            // The mixed block: 500 × 0.5 + 500 × 0.1 = 300.
+            blocks: vec![block(1000, 500), block(1000, 100), block(1000, 300)],
+        };
+        let est = idx.packed_estimates();
+        assert_eq!(&est[..2], &[500, 100], "single-kind blocks are exact");
+        assert_eq!(&est[2..], &[250, 50], "the mixed block is split by each kind's ratio");
+        assert_eq!(est.iter().sum::<u64>(), 900, "every compressed byte is accounted for once");
+    }
+
+    /// An asset catalog shares a block with PNG pixels and never fills one itself:
+    /// it gets what the pixels, at their known ratio, leave over.
+    #[test]
+    fn a_kind_without_its_own_block_gets_what_is_left() {
+        let idx = Index {
+            created: 0,
+            entries: vec![file("big.png", 0, 2000), file("Assets.car", 1, 400)],
+            objects: vec![object(Transform::Deflate, vec![0, 1], 2000), object(Transform::None, vec![2], 400)],
+            chunks: vec![chunk(0, 0, 1000), chunk(1, 0, 1000), chunk(1, 1000, 400)],
+            // Pixels compress to 5%, the catalog to 50%: 1000 × 0.05 + 400 × 0.5 = 250.
+            blocks: vec![block(1000, 50), block(1400, 250)],
+        };
+        assert_eq!(idx.packed_estimates(), vec![100, 200]);
+    }
+
+    /// Two kinds that never fill a block on their own: the unpacked PDF is judged
+    /// by its original Deflate size, and the rest goes to the catalog beside it.
+    #[test]
+    fn unpacked_files_fall_back_to_their_original_size() {
+        let mut pdf = object(Transform::Deflate, vec![0], 800);
+        pdf.size = 300;
+        let idx = Index {
+            created: 0,
+            entries: vec![file("notes.pdf", 0, 300), file("Assets.car", 1, 400)],
+            objects: vec![pdf, object(Transform::None, vec![1], 400)],
+            chunks: vec![chunk(0, 0, 800), chunk(0, 800, 400)],
+            // 0.6 × 300 = 180 for the PDF, the other 200 for the catalog.
+            blocks: vec![block(1200, 380)],
+        };
+        assert_eq!(idx.packed_estimates(), vec![180, 200]);
     }
 }
