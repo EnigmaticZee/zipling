@@ -75,6 +75,11 @@ Done (first slice):
 - [x] Create: Zipling, ZIP (AES-256, UTF-8 names), 7z (hidden names), TAR.GZ, TAR.XZ; split presets; Mac clutter left out; saved presets; a suggestion based on what's being compressed; every archive read back before it's handed over
 - [x] Edit in place: add/replace (drop on the list), delete, rename, new folder; ZIP, 7z and TAR through 7-Zip, Zipling and compressed tars rebuilt; edit a file in its own app and put it back
 - [x] System: Finder right-click (Services), Quick Look extension for `.zlg` and ZIP, Share, Dock drops (Option to extract), menu-bar drop zone with progress, Settings
+- [x] Convert any archive to Zipling, ZIP, 7z or a tarball (read back and checked; encrypted ZIP and 7z keep their password; the original can go to the Trash once the new one is checked)
+- [x] A size and time estimate in the Compress and Convert sheets, from compressing a sample spread across the files (exact when everything fits in the sample), and an Auto level that picks Fast, Balanced or Max from it
+- [x] Shrink later: archives made at Fast or Balanced are re-packed at Max while the Mac is idle and plugged in, swapped in only when complete, checked, identical in content and smaller
+- [x] Recovery files: `Name.zip.recovery` (5, 10 or 20% of the archive) rebuilds damaged parts with Reed–Solomon coding; Check and Repair in the inspector, a repair button when an archive won't open, and a warning when one opens only in part
+- [x] Automation: Shortcuts actions (compress, extract, convert), AppleScript commands, two Folder Action scripts; Spotlight finds archives by the names of the files inside
 
 Next:
 

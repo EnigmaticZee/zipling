@@ -301,10 +301,11 @@ enum SevenZip {
             throw EngineError(message: "\(name) isn't an archive Zipling can open, or it is damaged.")
         }
         if text.contains("Unexpected end of archive") || text.contains("Missing volume") {
-            throw EngineError(message: "\(name) is incomplete. If it is split into parts, keep all the parts in the same folder.")
+            throw EngineError(message: "\(name) is incomplete. If it is split into parts, keep all the parts in the same folder.",
+                              damaged: true)
         }
         if text.contains("CRC Failed") || text.contains("Data Error") || text.contains("Headers Error") {
-            throw EngineError(message: "\(name) is damaged: some of its data doesn't match its checksums.")
+            throw EngineError(message: "\(name) is damaged: some of its data doesn't match its checksums.", damaged: true)
         }
         if text.contains("There is not enough space") || text.contains("No space left") {
             throw EngineError(message: "There isn't enough free space to extract \(name).")

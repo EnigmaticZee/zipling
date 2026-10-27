@@ -108,6 +108,9 @@ enum Extraction {
     static func trash(_ url: URL) throws -> [URL] {
         let volumes = Archives.volumes(of: url)
         for volume in volumes { try FileManager.default.trashItem(at: volume, resultingItemURL: nil) }
+        // Its recovery file goes with it.
+        let recovery = Recovery.file(for: url)
+        if Placement.exists(recovery) { try? FileManager.default.trashItem(at: recovery, resultingItemURL: nil) }
         return volumes
     }
 }

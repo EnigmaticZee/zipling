@@ -90,3 +90,27 @@ helper.
   (sandbox; some extensions and the optional `rar` download get harder) — or both.
 * Minimum macOS: proposal macOS 15 (FSKit needs 15.4+); the UI targets the macOS 26
   design language.
+* Free vs Pro: which features sit in each (to discuss).
+
+## 7. Backlog
+
+Parked on purpose, to revisit before a future release.
+
+**Strong encryption** (wanted for a future release, not designed yet). People should be able to use Zipling to encrypt their files, not only to compress them:
+
+* Password-protected `.zlg`: every block encrypted with a key derived from the password (a slow, memory-hard key function so guessing is expensive), names hidden by encrypting the index, wrong passwords told apart from damage, and the per-block hashes made so they reveal nothing about the contents. This is a change to the engine and the format: older Zipling versions couldn't open encrypted archives.
+* Encrypting existing ZIPs (and other archives) in place, and encrypting plain files and folders.
+* Split `.zlg` archives (parts on several files), also an engine change.
+
+**Requires an engine change** (Stage 8 features that change the Arca engine and, for the first two, the `.zlg` format; parked until the engine is opened up again):
+
+* **Versioned archives.** One `.zlg` keeps several snapshots of a folder; each update adds only what changed, and any earlier version can be restored. Requires an engine change: a chain of indexes sharing data blocks, and an "add a snapshot" operation. Format change.
+* **Recovery data inside the `.zlg`.** Self-healing stored in the archive itself, so one file can repair its own damage. Requires an engine change: the engine writes the recovery data and uses it when reading. Format change. (A separate recovery file next to any archive needs no engine change and is in the app.)
+* **Shrink later, block by block.** Re-pack a Fast archive to Max one block at a time, so the job can pause, resume and survive a restart. Requires an engine change: swapping individual blocks and rewriting the index. (Re-packing the whole archive in one go needs no engine change and is in the app.)
+
+**Waiting on an Apple Developer account:**
+
+* Stage 7, mounting an archive in Finder as a read-only disk (FSKit). FSKit needs a restricted entitlement that only a paid Developer Program account can provision, so it isn't written until it can be run and tested.
+* A top-level Zipling menu in Finder (Finder Sync extension). Today the right-click actions come from macOS Services.
+* Quick Look in Finder for 7z, RAR and TAR. Today it covers `.zlg` and ZIP: the sandboxed extension can't run the helpers.
+* Developer ID signing and notarisation for anything shipped.

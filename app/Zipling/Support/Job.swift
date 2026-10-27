@@ -34,7 +34,9 @@ final class Job: Identifiable {
     var finishedTitle: String {
         guard case .finished = phase else { return title }
         let verbs = ["Extracting": "Extracted", "Compressing": "Compressed", "Verifying": "Verified",
-                     "Adding": "Added", "Updating": "Updated", "Deleting": "Deleted", "Renaming": "Renamed"]
+                     "Adding": "Added", "Updating": "Updated", "Deleting": "Deleted", "Renaming": "Renamed",
+                     "Converting": "Converted", "Shrinking": "Shrank", "Making": "Made", "Checking": "Checked",
+                     "Repairing": "Repaired"]
         var text = title.hasSuffix("…") ? String(title.dropLast()) : title
         for (doing, done) in verbs where text.hasPrefix(doing) {
             text = done + text.dropFirst(doing.count)

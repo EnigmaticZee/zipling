@@ -101,6 +101,8 @@
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Observant Systems</string>
 	<key>NSServices</key>
@@ -162,6 +164,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>OSAScriptingDefinition</key>
+	<string>Zipling.sdef</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

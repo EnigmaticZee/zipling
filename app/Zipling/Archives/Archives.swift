@@ -22,6 +22,8 @@ struct OpenedArchive: Sendable {
     var encoding: String?
     /// True when the encoding was picked by hand rather than detected.
     var encodingChosen = false
+    /// 7-Zip found it damaged and The Unarchiver read what it could: files may be missing.
+    var salvaged = false
 }
 
 /// The single entry point for reading archives of any format.
@@ -76,10 +78,11 @@ enum Archives {
         do {
             listing = try await SevenZip.list(url, password: password, cancel: cancel)
         } catch let error as EngineError where Unar.isAvailable && !error.isCancellation {
-            // Formats 7-Zip doesn't know (StuffIt, BinHex, MacBinary, Compact Pro…).
+            // Formats 7-Zip doesn't know (StuffIt, BinHex, MacBinary, Compact Pro…), and
+            // damaged archives The Unarchiver can still read part of.
             guard let found = try? await Unar.list(url, password: password, encoding: nil, cancel: cancel) else { throw error }
             return OpenedArchive(source: url, backend: .unar, listing: found.listing, password: password,
-                                 encoding: found.encoding)
+                                 encoding: found.encoding, salvaged: error.damaged)
         }
         if let better = await betterNames(url, listing: listing, password: password, cancel: cancel) {
             return better

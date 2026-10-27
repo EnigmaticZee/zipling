@@ -5,6 +5,8 @@ import os
 /// An error reported by the archive engine.
 struct EngineError: LocalizedError {
     let message: String
+    /// The archive was read but is damaged or cut short (not just unknown).
+    var damaged = false
     var errorDescription: String? { message }
     var isCancellation: Bool { message == "cancelled" }
 }

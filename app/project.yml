@@ -81,6 +81,9 @@ targets:
             # on the Dock icon to compress it.
             LSHandlerRank: None
             LSItemContentTypes: [public.item, public.folder]
+        # AppleScript: compress, extract and convert (Zipling.sdef).
+        NSAppleScriptEnabled: true
+        OSAScriptingDefinition: Zipling.sdef
         # Finder's right-click menu (Quick Actions and Services).
         NSServices:
           - NSMenuItem: { default: Compress with Zipling }

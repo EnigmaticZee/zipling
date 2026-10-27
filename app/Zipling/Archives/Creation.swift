@@ -42,8 +42,11 @@ struct CreateOptions: Codable, Equatable, Sendable {
     /// Bytes per part, or nil for one file.
     var splitBytes: UInt64?
     var leaveOutMacFiles = true
+    /// Zipling archives only: pick the level from a sample of the files.
+    var autoLevel: Bool?
 
     var hasLevels: Bool { format != .tarGz }
+    var isAuto: Bool { autoLevel == true && format == .zlg }
 }
 
 /// Makes archives: Zipling's own through the Arca engine, the rest through 7-Zip
@@ -59,7 +62,7 @@ enum Creation {
 
     static func create(
         _ items: [URL], into output: URL, options: CreateOptions, password: String?, task: EngineTask,
-        cancel: CancelToken, progress: @escaping @Sendable (UInt64, UInt64) -> Void
+        cancel: CancelToken, check: Bool = true, progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws -> Made {
         let fm = FileManager.default
         let folder = output.deletingLastPathComponent()
@@ -87,7 +90,7 @@ enum Creation {
         if cancel.isCancelled { throw EngineError(message: "cancelled") }
 
         // Check what was written before it's handed over (the Arca engine already does).
-        if options.format != .zlg {
+        if check, options.format != .zlg {
             let first = try made(at: staging).first ?? target
             if options.format == .zip || options.format == .sevenZip {
                 try await SevenZip.test(first, password: password, totalBytes: result.inputBytes, cancel: cancel) { _, _ in }

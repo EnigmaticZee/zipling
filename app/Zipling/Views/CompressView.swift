@@ -47,6 +47,10 @@ struct CompressView: View {
     @State private var presetName = ""
     @State private var job: Job?
     @State private var made: Creation.Made?
+    @State private var estimate: Estimate.Result?
+    @State private var autoChoice: Estimate.AutoChoice?
+    @State private var estimateFailed = false
+    @AppStorage("shrinkLater") private var shrinkLater = false
 
     init(items: [URL]) {
         self.items = items
@@ -67,9 +71,15 @@ struct CompressView: View {
                 }
                 if options.format == .zlg {
                     levelPicker
+                    if canShrinkLater {
+                        Toggle("Shrink it to Max later, while the Mac is idle and plugged in", isOn: $shrinkLater)
+                            .font(.callout)
+                    }
                 } else {
                     settings
                 }
+                EstimateLine(estimate: estimate, total: contents?.bytes, auto: options.isAuto ? autoChoice : nil,
+                             unavailable: estimateFailed)
                 destination
             }
             footer
@@ -80,6 +90,7 @@ struct CompressView: View {
             if let saved = CreateOptions(encoded: stored) { apply(saved) }
             contents = await ContentSummary.measure(items)
         }
+        .task(id: "\(options.encoded)|\(contents?.bytes ?? 0)") { await updateEstimate() }
         .sheet(isPresented: $savingPreset) { savePresetSheet }
     }
 
@@ -130,12 +141,53 @@ struct CompressView: View {
     }
 
     private var levelPicker: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
+            LevelCard(title: "Auto", symbol: "wand.and.stars", blurb: "Picks the level for these files.",
+                      selected: options.isAuto, recommended: false) {
+                options.autoLevel = true
+            }
             ForEach(Level.allCases) { option in
-                LevelCard(level: option, selected: option == options.level, recommended: option == .balanced) {
+                LevelCard(level: option, selected: !options.isAuto && option == options.level,
+                          recommended: option == .balanced) {
                     options.level = option
+                    options.autoLevel = nil
                 }
             }
+        }
+    }
+
+    /// The level the archive will actually be made at.
+    private var effectiveLevel: Level { options.isAuto ? autoChoice?.level ?? .balanced : options.level }
+
+    private var canShrinkLater: Bool { effectiveLevel == .fast || effectiveLevel == .balanced }
+
+    private func updateEstimate() async {
+        guard let contents, job == nil else { return }
+        estimate = nil
+        estimateFailed = false
+        // Let the settings settle while people click through them.
+        try? await Task.sleep(for: .milliseconds(350))
+        if Task.isCancelled { return }
+        let task = EngineTask(), cancel = CancelToken()
+        let (items, options) = (items, options)
+        do {
+            try await withTaskCancellationHandler {
+                if options.isAuto {
+                    let choice = try await Estimate.auto(items, contents: contents, task: task, cancel: cancel)
+                    if Task.isCancelled { return }
+                    autoChoice = choice
+                    estimate = choice.estimate
+                } else {
+                    let result = try await Estimate.of(items, options: options, task: task, cancel: cancel)
+                    if Task.isCancelled { return }
+                    estimate = result
+                }
+            } onCancel: {
+                task.cancel()
+                cancel.cancel()
+            }
+        } catch {
+            if !Task.isCancelled { estimateFailed = true }
         }
     }
 
@@ -344,8 +396,11 @@ struct CompressView: View {
         made = nil
         JobCenter.shared.track(job)
         stored = options.encoded
-        let (items, output, options) = (items, output, options)
+        var resolved = options
+        resolved.level = effectiveLevel
+        let (items, output, options) = (items, output, resolved)
         let password = usePassword && options.format.supportsPassword ? password : nil
+        let later = shrinkLater && options.format == .zlg && canShrinkLater
         Task {
             do {
                 let result = try await Creation.create(
@@ -354,7 +409,10 @@ struct CompressView: View {
                 made = result
                 job.finish(nil, outcome: "Made \(result.files.map(\.lastPathComponent).joined(separator: ", ")).",
                            placed: result.files)
-                if let first = result.files.first { AppRouter.shared.noteCreated(first) }
+                if let first = result.files.first {
+                    AppRouter.shared.noteCreated(first)
+                    if later { ShrinkLater.shared.add(first) }
+                }
             } catch {
                 job.finish(error)
             }
@@ -430,8 +488,13 @@ enum Presets {
 }
 
 extension CreateOptions {
-    /// As text for @AppStorage: the last options used come back next time.
-    var encoded: String { (try? JSONEncoder().encode(self)).map { String(decoding: $0, as: UTF8.self) } ?? "" }
+    /// As text for @AppStorage: the last options used come back next time. Keys are
+    /// sorted so the same options always give the same text (it's also a task id).
+    var encoded: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return (try? encoder.encode(self)).map { String(decoding: $0, as: UTF8.self) } ?? ""
+    }
 
     init?(encoded: String) {
         guard let value = try? JSONDecoder().decode(CreateOptions.self, from: Data(encoded.utf8)) else { return nil }
@@ -533,16 +596,28 @@ private struct AdviceBanner: View {
 }
 
 private struct LevelCard: View {
-    let level: Level
+    let title: String
+    let symbol: String
+    let blurb: String
     let selected: Bool
     let recommended: Bool
     let action: () -> Void
+
+    init(title: String, symbol: String, blurb: String, selected: Bool, recommended: Bool, action: @escaping () -> Void) {
+        (self.title, self.symbol, self.blurb, self.selected, self.recommended, self.action)
+            = (title, symbol, blurb, selected, recommended, action)
+    }
+
+    init(level: Level, selected: Bool, recommended: Bool, action: @escaping () -> Void) {
+        self.init(title: level.title, symbol: level.symbol, blurb: level.blurb, selected: selected,
+                  recommended: recommended, action: action)
+    }
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Image(systemName: level.symbol)
+                    Image(systemName: symbol)
                         .font(.title3)
                         .foregroundStyle(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                         .frame(height: 22)
@@ -556,8 +631,8 @@ private struct LevelCard: View {
                             .foregroundStyle(.tint)
                     }
                 }
-                Text(level.title).font(.headline)
-                Text(level.blurb)
+                Text(title).font(.headline)
+                Text(blurb)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -666,5 +741,40 @@ struct JobProgressView: View {
                 .monospacedDigit()
         }
         .padding(.vertical, 24)
+    }
+}
+
+/// "About 4.2 MB, 38% smaller · about 6 s", from compressing a sample.
+struct EstimateLine: View {
+    let estimate: Estimate.Result?
+    let total: UInt64?
+    var auto: Estimate.AutoChoice?
+    var unavailable = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "gauge.with.dots.needle.33percent")
+                .foregroundStyle(.secondary)
+            if let estimate, let total {
+                let saved = total == 0 ? 0 : max(0, 1 - Double(estimate.bytes) / Double(total))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text((estimate.exact ? "" : "About ") + "\(Format.bytes(estimate.bytes)), \(Format.percent(saved)) smaller · "
+                         + (estimate.exact ? "" : "about ") + Format.duration(estimate.seconds))
+                        .monospacedDigit()
+                    if let auto {
+                        Text("Auto chose " + auto.reason)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if unavailable {
+                Text("No estimate for these settings.").foregroundStyle(.secondary)
+            } else {
+                ProgressView().controlSize(.small)
+                Text("Estimating the size…").foregroundStyle(.secondary)
+            }
+        }
+        .font(.callout)
+        .animation(.default, value: estimate)
     }
 }

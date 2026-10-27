@@ -53,6 +53,9 @@ struct AppCommands: Commands {
                 .disabled(model?.selection.isEmpty ?? true)
             Button("Verify Archive") { model?.verify() }
                 .disabled(model?.listing == nil)
+            Button("Convert…") { model?.converting = true }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(!(model?.canConvert ?? false))
             Divider()
             Button("Add Files…") { model?.chooseFilesToAdd() }
                 .keyboardShortcut("a", modifiers: [.command, .option])
@@ -94,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Not while the test suite runs inside the app.
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             MenuBarDropZone.shared.update()
+            ShrinkLater.shared.schedule()
         }
     }
 
@@ -105,6 +109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             AppRouter.shared.open(urls)
         }
+    }
+
+    /// A Spotlight result for an archive: open it.
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        guard let archive = Spotlight.archive(for: userActivity) else { return false }
+        AppRouter.shared.open([archive])
+        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

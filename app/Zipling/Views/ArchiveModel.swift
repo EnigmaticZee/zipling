@@ -101,6 +101,10 @@ final class ArchiveModel {
     private(set) var searchFocusRequest = 0
     /// The item being renamed, for the rename sheet.
     var renaming: Item?
+    /// Shows the Convert sheet.
+    var converting = false
+    /// A recovery file sits next to the archive.
+    private(set) var hasRecovery = false
     /// Files opened in other apps from this archive and changed there, waiting to go back in.
     private(set) var changedOutside: [EditedFile] = []
 
@@ -130,11 +134,13 @@ final class ArchiveModel {
 
     func load(password: String? = nil) async {
         quarantine = SafeExtraction.quarantine(of: url)
+        hasRecovery = Placement.exists(Recovery.file(for: url))
         do {
             let archive = try await Archives.open(url, password: password, scratch: scratch)
             levels = [await Self.makeLevel(name: url.lastPathComponent, archive: archive)]
             state = .ready
             levelChanged(folder: "")
+            Spotlight.index(url, listing: archive.listing)
             #if DEBUG
             // Website screenshots: `open -a Zipling Backup.zlg --args -ShowItem Photos/Beach.jpg`.
             if let path = UserDefaults.standard.string(forKey: "ShowItem"), let item = levels[0].byID[path] {
@@ -769,6 +775,9 @@ final class ArchiveModel {
 
     var canEdit: Bool { editProblem == nil }
 
+    /// Converting works on the window's own archive, not one opened inside it.
+    var canConvert: Bool { levels.count == 1 }
+
     /// Adds files and folders to the folder on screen (or `folder`), replacing any with the same name.
     func add(_ files: [URL], into folder: String? = nil) {
         // Items dragged out of this window and back in are already here.
@@ -907,6 +916,8 @@ final class ArchiveModel {
                 try await Editing.apply(change, to: level.archive, at: original, method: method, task: job.task,
                                         cancel: job.cancelToken, progress: job.progressHandler)
                 try await reload(select: select)
+                // The recovery file described the old bytes.
+                if hasRecovery { try? await Recovery.refresh(for: original, cancel: job.cancelToken) }
                 job.finish(nil, outcome: "“\(original.lastPathComponent)” was updated.")
                 then?()
             } catch let p as PasswordRequired {
@@ -928,6 +939,7 @@ final class ArchiveModel {
         let archive = try await Archives.open(url, password: level.archive.password, scratch: scratch,
                                               encoding: level.archive.encodingChosen ? level.archive.encoding : nil)
         let reopened = await Self.makeLevel(name: level.name, archive: archive)
+        Spotlight.index(url, listing: archive.listing)
         let stay = reopened.byID[folder]?.isFolder == true ? folder : ""
         levels = [reopened]
         materialized = [:]
@@ -936,6 +948,89 @@ final class ArchiveModel {
         unreadable = []
         levelChanged(folder: stay)
         selection = select.filter { reopened.byID[$0] != nil }
+    }
+
+    // MARK: Recovery
+
+    /// Recovery files are for single-file archives; split ones are left out.
+    var canAddRecovery: Bool { levels.count <= 1 && !Archives.isVolume(url.lastPathComponent) }
+
+    var recoveryCapacity: UInt64? { hasRecovery ? Recovery.capacity(of: Recovery.file(for: url)) : nil }
+
+    /// Saves repair data next to the archive: `redundancy` of its size can be rebuilt.
+    func addRecovery(redundancy: Double) {
+        let job = Job(title: "Making a recovery file for “\(url.lastPathComponent)”…")
+        start(job)
+        let archive = url
+        Task {
+            do {
+                let file = try await Recovery.create(for: archive, redundancy: redundancy, cancel: job.cancelToken,
+                                                     progress: job.progressHandler)
+                hasRecovery = true
+                job.finish(nil, outcome: "“\(file.lastPathComponent)” can repair up to \(Format.bytes(Recovery.capacity(of: file) ?? 0)) of damage. Keep it with the archive.",
+                           placed: [file])
+            } catch {
+                job.finish(error)
+            }
+        }
+    }
+
+    /// Checks the archive against its recovery file and, if it's damaged, writes a
+    /// repaired copy next to it.
+    func checkAndRepair() {
+        let job = Job(title: "Checking “\(url.lastPathComponent)”…")
+        start(job)
+        let archive = url
+        Task {
+            do {
+                guard let repaired = try await Self.repair(archive, job: job) else {
+                    job.finish(nil, outcome: "No damage: every part of the archive matches its recovery data.")
+                    return
+                }
+                job.finish(nil, outcome: "The damaged parts were rebuilt into “\(repaired.lastPathComponent)”.", placed: [repaired])
+                NSWorkspace.shared.activateFileViewerSelecting([repaired])
+            } catch {
+                job.finish(error)
+            }
+        }
+    }
+
+    /// Repairs an archive that won't open, then opens the repaired copy.
+    func repairAndOpen() {
+        Task {
+            let job = Job(title: "Repairing “\(url.lastPathComponent)”…")
+            JobCenter.shared.track(job)
+            do {
+                if let repaired = try await Self.repair(url, job: job) {
+                    job.finish(nil, outcome: "Rebuilt into “\(repaired.lastPathComponent)”.", placed: [repaired])
+                    AppRouter.shared.open([repaired])
+                } else {
+                    job.finish(nil, outcome: "No damage found: every part matches its recovery data.")
+                    alert = "“\(url.lastPathComponent)” matches its recovery file, so the problem isn't damage to the file."
+                }
+            } catch {
+                job.finish(error)
+                alert = error.localizedDescription
+            }
+        }
+    }
+
+    /// A repaired copy as "Name (Repaired).zip", or nil when nothing was damaged.
+    private static func repair(_ archive: URL, job: Job) async throws -> URL? {
+        let recovery = Recovery.file(for: archive)
+        let report = try await Recovery.check(archive, recovery: recovery, cancel: job.cancelToken)
+        if report.intact { return nil }
+        guard report.repairable else {
+            throw EngineError(message: "\(report.damagedSlices) parts are damaged, and its recovery file can rebuild \(report.repairableSlices). Too much is damaged to repair.")
+        }
+        let name = (archive.lastPathComponent as NSString)
+        let base = Archives.baseName(archive.lastPathComponent)
+        let ext = String(archive.lastPathComponent.dropFirst(base.count))
+        let output = Placement.unique("\(base) (Repaired)\(ext.isEmpty ? "." + name.pathExtension : ext)",
+                                      in: archive.deletingLastPathComponent())
+        try await Recovery.repair(archive, recovery: recovery, to: output, cancel: job.cancelToken,
+                                  progress: job.progressHandler)
+        return output
     }
 
     // MARK: Tree

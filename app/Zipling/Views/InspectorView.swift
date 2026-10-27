@@ -77,6 +77,7 @@ private struct ArchiveSummary: View {
                     Label("Verify Now", systemImage: "checkmark.shield")
                 }
             }
+            ArchiveTools(model: model)
         }
     }
 
@@ -115,6 +116,7 @@ private struct ArchiveSummary: View {
                 Label("Verify Now", systemImage: "checkmark.shield")
             }
         }
+        ArchiveTools(model: model)
     }
 
     private struct Row {
@@ -226,6 +228,54 @@ private struct InspectorSection<Content: View>: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             content
+        }
+    }
+}
+
+/// Converting and recovery files, for the window's own archive.
+private struct ArchiveTools: View {
+    let model: ArchiveModel
+
+    var body: some View {
+        if model.canConvert {
+            InspectorSection("Convert") {
+                Text(model.listing?.isZipling == true
+                     ? "Make it a ZIP or 7z for people without Zipling, or re-pack it at another level. The files stay the same."
+                     : "Make it a Zipling archive, usually much smaller, or a tighter ZIP or 7z. The files stay the same.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button {
+                    model.converting = true
+                } label: {
+                    Label("Convert…", systemImage: "arrow.triangle.2.circlepath")
+                }
+            }
+        }
+        if model.canAddRecovery {
+            InspectorSection("Recovery") {
+                if let capacity = model.recoveryCapacity {
+                    Text("Its recovery file can repair up to \(Format.bytes(capacity)) of damage, from a failing disk or a broken download.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        model.checkAndRepair()
+                    } label: {
+                        Label("Check and Repair", systemImage: "bandage")
+                    }
+                } else {
+                    Text("Save repair data next to the archive, so damage from a failing disk or a broken download can be fixed later.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Menu {
+                        Button("5% of its size") { model.addRecovery(redundancy: 0.05) }
+                        Button("10% of its size") { model.addRecovery(redundancy: 0.10) }
+                        Button("20% of its size") { model.addRecovery(redundancy: 0.20) }
+                    } label: {
+                        Label("Add Recovery File", systemImage: "cross.case")
+                    }
+                    .fixedSize()
+                }
+            }
         }
     }
 }

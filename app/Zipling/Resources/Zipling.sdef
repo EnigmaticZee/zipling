@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Zipling Terminology" xmlns:xi="http://www.w3.org/2003/XInclude">
+	<xi:include href="file:///System/Library/ScriptingDefinitions/CocoaStandard.sdef" xpointer="xpointer(/dictionary/suite)"/>
+	<suite name="Zipling Suite" code="Zplg" description="Compress, extract and convert archives.">
+		<command name="compress" code="ZplgComp" description="Make an archive of files and folders, next to the first one.">
+			<cocoa class="ZiplingCompressCommand"/>
+			<direct-parameter description="The files and folders to compress.">
+				<type type="file" list="yes"/>
+				<type type="file"/>
+			</direct-parameter>
+			<parameter name="as" code="Frmt" type="text" optional="yes" description="zlg, zip, 7z, tar.gz or tar.xz (zlg when left out).">
+				<cocoa key="format"/>
+			</parameter>
+			<parameter name="level" code="Levl" type="text" optional="yes" description="fast, balanced, max or ultra (Auto when left out).">
+				<cocoa key="level"/>
+			</parameter>
+			<result type="file" description="The archive."/>
+		</command>
+		<command name="extract" code="ZplgExtr" description="Extract archives: one item comes out as it is, several in a folder named after the archive.">
+			<cocoa class="ZiplingExtractCommand"/>
+			<direct-parameter description="The archives to extract.">
+				<type type="file" list="yes"/>
+				<type type="file"/>
+			</direct-parameter>
+			<parameter name="into" code="Into" type="file" optional="yes" description="The folder to extract into (next to the archive when left out).">
+				<cocoa key="destination"/>
+			</parameter>
+			<parameter name="password" code="Pswd" type="text" optional="yes" description="The archive's password, if it has one.">
+				<cocoa key="password"/>
+			</parameter>
+			<result description="What was extracted.">
+				<type type="file" list="yes"/>
+			</result>
+		</command>
+		<command name="convert" code="ZplgConv" description="Make the same files into another format, next to the original.">
+			<cocoa class="ZiplingConvertCommand"/>
+			<direct-parameter description="The archives to convert.">
+				<type type="file" list="yes"/>
+				<type type="file"/>
+			</direct-parameter>
+			<parameter name="to" code="Frmt" type="text" optional="yes" description="zlg, zip, 7z, tar.gz or tar.xz (zlg when left out).">
+				<cocoa key="format"/>
+			</parameter>
+			<parameter name="level" code="Levl" type="text" optional="yes" description="fast, balanced, max or ultra (balanced when left out).">
+				<cocoa key="level"/>
+			</parameter>
+			<parameter name="password" code="Pswd" type="text" optional="yes" description="The archive's password, if it has one.">
+				<cocoa key="password"/>
+			</parameter>
+			<result type="file" description="The new archive."/>
+		</command>
+	</suite>
+</dictionary>

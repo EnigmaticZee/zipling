@@ -7,6 +7,7 @@ enum Preferences {
         static let trashAfterExtract = "trashAfterExtract"
         static let revealAfterExtract = "revealAfterExtract"
         static let showMenuBarIcon = "showMenuBarIcon"
+        static let indexArchives = "indexArchives"
     }
 
     /// What to do when an extracted item's name is already taken.
@@ -30,6 +31,11 @@ enum Preferences {
 
     /// Move an archive to the Trash once everything in it came out intact.
     static var trashAfterExtract: Bool { UserDefaults.standard.bool(forKey: Key.trashAfterExtract) }
+
+    /// Let Spotlight find files inside archives Zipling opens.
+    static var indexArchives: Bool {
+        UserDefaults.standard.object(forKey: Key.indexArchives) as? Bool ?? true
+    }
 
     static var showMenuBarIcon: Bool {
         UserDefaults.standard.object(forKey: Key.showMenuBarIcon) as? Bool ?? true

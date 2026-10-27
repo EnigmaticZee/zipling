@@ -27,6 +27,12 @@ struct ArchiveWindow: View {
                     Label("Can't open “\(model.name)”", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(message)
+                } actions: {
+                    // A damaged archive with a recovery file next to it can be rebuilt.
+                    if Placement.exists(Recovery.file(for: url)) {
+                        Button("Repair with Its Recovery File") { model.repairAndOpen() }
+                            .buttonStyle(.borderedProminent)
+                    }
                 }
             case .ready:
                 BrowserView(model: model)
@@ -62,6 +68,7 @@ struct BrowserView: View {
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
                         PathBar(model: model)
+                        if model.levels.first?.archive.salvaged == true { DamagedBanner(model: model) }
                         ForEach(model.changedOutside) { file in ChangedBanner(model: model, file: file) }
                     }
                 }
@@ -95,6 +102,9 @@ struct BrowserView: View {
         .quickLookPreview($model.quickLookURL, in: model.quickLookURLs)
         .sheet(item: $model.renaming) { item in
             RenameSheet(model: model, item: item)
+        }
+        .sheet(isPresented: $model.converting) {
+            ConvertView(model: model)
         }
     }
 
@@ -463,6 +473,29 @@ private struct PasswordSheet: View {
         guard !password.isEmpty else { return }
         dismiss()
         request.retry(password)
+    }
+}
+
+/// The archive is damaged and only part of it could be read.
+private struct DamagedBanner: View {
+    let model: ArchiveModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Text("This archive is damaged. Zipling read what it could, so some files may be missing.")
+                .lineLimit(2)
+            Spacer()
+            if model.hasRecovery {
+                Button("Repair with Its Recovery File") { model.repairAndOpen() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.orange.opacity(0.1))
+        .overlay(alignment: .bottom) { Divider() }
     }
 }
 
