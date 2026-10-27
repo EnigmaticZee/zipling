@@ -52,7 +52,7 @@
         <p class="fine">Not available to download yet · For Apple silicon Macs</p>
       </div>
       <figure class="hero-shot reveal">
-        <img src="assets/app-archive.jpg" alt="A Zipling archive window for Mac Backup.zlg: 15 files, 17.4 MB packed to 8.6 MB (50% smaller). A folder tree is on the left, the list shows each item's savings and method (Lepton for a photo, Unpacked + zstd for a PDF, Zstandard for text), and the inspector explains how the archive got smaller." width="2480" height="1440">
+        <img src="assets/app-archive.jpg" alt="A Zipling archive window for Mac Backup.zlg: 15 files, 17.4 MB packed to 8.6 MB (50% smaller). A folder tree is on the left, the list shows each item's savings and method (Lepton for a photo, Unpacked + zstd for a PDF, Zstandard for text), and the inspector explains how the archive got smaller, with buttons to verify it, convert it and add a recovery file." width="2480" height="1800">
       </figure>
     </section>
 
@@ -200,7 +200,11 @@
             <li>Quick Look and drag out any file without extracting the rest</li>
             <li>Makes Zipling, ZIP, 7z and TAR archives, encrypted and split, and edits them in place</li>
             <li>Extract Here keeps things tidy, in the background, with progress on the Dock</li>
+            <li>Converts any archive to Zipling, ZIP or 7z, and shows the new size and time before you start</li>
+            <li>Compress fast now: Zipling shrinks it to Max later, while your Mac is idle and plugged in</li>
+            <li>Recovery files repair a damaged archive, byte for byte</li>
             <li>Lives in Finder: Quick Look for archives, right-click menu, menu-bar drop zone</li>
+            <li>Works with Shortcuts, AppleScript and Folder Actions, and Spotlight finds archives by the files inside</li>
             <li>Safe extraction: nothing escapes the folder, and downloaded files stay marked for Gatekeeper</li>
           </ul>
         </div>
@@ -213,7 +217,7 @@
         <h3>Coming in 1.0</h3>
         <ul data-stagger>
           <li><strong>Mounts like a disk</strong>Browse an archive in Finder as if it were a folder</li>
-          <li><strong>Survives damage</strong>Recovery records that repair broken archives</li>
+          <li><strong>Heals itself</strong>Recovery data inside Zipling archives, no extra file</li>
           <li><strong>Locks Zipling archives</strong>Passwords and split parts for the .zlg format too</li>
           <li><strong>Feels native</strong>A fresh design, full keyboard and VoiceOver support</li>
           <li><strong>Runs on every Mac</strong>Intel Macs too, signed and notarised</li>
@@ -249,6 +253,14 @@
         <details>
           <summary>Can people without Zipling open my archives?</summary>
           <p>Zipling's own <code>.zlg</code> format is for when you want the smallest archive. When you share with someone who doesn't have Zipling, it creates standard ZIP, 7z and TAR archives that open anywhere, with AES-256 encryption and split parts if you want them.</p>
+        </details>
+        <details>
+          <summary>Can Zipling make the archives I already have smaller?</summary>
+          <p>Yes. Convert turns any archive Zipling opens into a Zipling archive, or into a tighter ZIP or 7z that still opens anywhere. It shows the new size and how long it will take before you start, checks the new archive once it's written, and only then moves the old one to the Trash if you ask it to.</p>
+        </details>
+        <details>
+          <summary>What if an archive gets damaged?</summary>
+          <p>Give it a recovery file. Zipling saves repair data next to any archive, at 5, 10 or 20% of its size, and if the archive is later damaged by a failing disk or a broken download, it rebuilds the damaged parts exactly, byte for byte. If more is damaged than the recovery file can cover, Zipling tells you instead of guessing. It works for any archive, not just Zipling's own.</p>
         </details>
         <details>
           <summary>What is Arca?</summary>
