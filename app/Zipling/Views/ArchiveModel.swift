@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import CoreTransferable
 import UniformTypeIdentifiers
 
 /// A row in the browser: a file, link or folder inside the archive.
@@ -18,7 +19,7 @@ struct Item: Identifiable, Hashable, Sendable {
     var packed: UInt64
     /// False when the format doesn't record how small this item got.
     var packedKnown = true
-    let modified: Date
+    var modified: Date
     let transform: String
     let codec: String
     var encrypted = false
@@ -546,32 +547,6 @@ final class ArchiveModel {
         }
     }
 
-    /// A drag of an item out to Finder or another app: the file is extracted when
-    /// it's dropped, not when the drag starts.
-    func dragProvider(for item: Item) -> NSItemProvider {
-        let provider = NSItemProvider()
-        provider.suggestedName = item.name
-        let type: UTType = item.isFolder ? .folder : UTType(filenameExtension: (item.name as NSString).pathExtension) ?? .data
-        provider.registerFileRepresentation(for: type, visibility: .all, openInPlace: false) { [weak self] handler in
-            let progress = Progress(totalUnitCount: 1)
-            // The system calls back once, from whichever thread it likes.
-            nonisolated(unsafe) let completion = handler
-            let finished = progress
-            Task { @MainActor in
-                guard let self else { return completion(nil, false, CancellationError()) }
-                do {
-                    let url = try await self.materialize(item)
-                    finished.completedUnitCount = 1
-                    completion(url, false, nil)
-                } catch {
-                    completion(nil, false, error)
-                }
-            }
-            return progress
-        }
-        return provider
-    }
-
     /// Shares items from inside the archive (Mail, Messages, AirDrop…), extracting them first.
     func share(_ ids: Set<Item.ID>) {
         let items = ids.compactMap(item)
@@ -741,6 +716,22 @@ final class ArchiveModel {
         self.job = job
         jobs.insert(job, at: 0)
         JobCenter.shared.track(job)
+        // Changes to the archive report briefly, then step aside; extractions keep
+        // their Show in Finder, and anything that failed stays until dismissed.
+        Task { [weak self, weak job] in
+            while let job, job.isRunning { try? await Task.sleep(for: .milliseconds(250)) }
+            try? await Task.sleep(for: .seconds(8))
+            guard let self, let job, case .finished = job.phase, job.placed.isEmpty else { return }
+            self.jobs.removeAll { $0 === job }
+            if self.job === job { self.job = self.jobs.first }
+        }
+    }
+
+    /// Forgets a password that turned out wrong, so the archive asks again.
+    func forgetPassword() {
+        guard !levels.isEmpty else { return }
+        levels[levels.count - 1].archive.password = nil
+        materialized = [:]
     }
 
     func dismiss(_ job: Job) {
@@ -960,18 +951,22 @@ final class ArchiveModel {
             guard let slash = path.lastIndex(of: "/") else { return "" }
             return String(path[..<slash])
         }
-        func folder(_ path: String, mtime: Int64 = 0) {
+        // Folder dates: their own where the archive lists one, else their newest file's.
+        var dated: [String: Int64] = [:]
+        var newest: [String: Int64] = [:]
+        func folder(_ path: String) {
             if folders[path] == nil {
                 folders[path] = Item(
                     id: path, path: path, name: (path as NSString).lastPathComponent, parent: parentOf(path),
                     isFolder: true, kind: "dir", size: 0, packed: 0,
-                    modified: Date(timeIntervalSince1970: TimeInterval(mtime)), transform: "none", codec: "store")
+                    modified: .distantPast, transform: "none", codec: "store")
             }
         }
 
         for e in entries {
             if e.isDirectory {
-                folder(e.path, mtime: e.mtime)
+                folder(e.path)
+                if e.mtime > 0 { dated[e.path] = e.mtime }
                 continue
             }
             let packedKnown = e.packedKnown ?? true
@@ -983,6 +978,7 @@ final class ArchiveModel {
             var p = e.parent
             while !p.isEmpty {
                 folder(p)
+                newest[p] = max(newest[p] ?? 0, e.mtime)
                 folders[p]!.size += e.size
                 folders[p]!.packed += e.packed
                 if !packedKnown { folders[p]!.packedKnown = false }
@@ -998,6 +994,12 @@ final class ArchiveModel {
             }
         }
 
+        for (path, var f) in folders {
+            let time = dated[path] ?? newest[path] ?? 0
+            f.modified = Date(timeIntervalSince1970: TimeInterval(time))
+            folders[path] = f
+        }
+
         var children: [String: [Item]] = [:]
         for f in files { children[f.parent, default: []].append(f) }
         for f in folders.values { children[f.parent, default: []].append(f) }
@@ -1010,5 +1012,25 @@ final class ArchiveModel {
             children[parent] = items.map { $0.isFolder ? folders[$0.id]! : $0 }
         }
         return (children, files + Array(folders.values))
+    }
+}
+
+/// An item dragged out of the archive to Finder or another app. The receiver gets
+/// the real file or folder, extracted when it's dropped rather than when the drag starts.
+struct ArchiveDrag: Transferable {
+    let item: Item
+    let model: ArchiveModel
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .folder) { drag in
+            SentTransferredFile(try await drag.model.materialize(drag.item))
+        }
+        .exportingCondition { $0.item.isFolder }
+        .suggestedFileName { $0.item.name }
+        FileRepresentation(exportedContentType: .data) { drag in
+            SentTransferredFile(try await drag.model.materialize(drag.item))
+        }
+        .exportingCondition { !$0.item.isFolder }
+        .suggestedFileName { $0.item.name }
     }
 }

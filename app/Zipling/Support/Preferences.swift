@@ -17,7 +17,7 @@ enum Preferences {
         var title: String {
             switch self {
             case .ask: "Ask Each Time"
-            case .keepBoth: "Keep Both (Number the New One)"
+            case .keepBoth: "Keep Both"
             case .replace: "Replace"
             case .skip: "Skip"
             }

@@ -279,7 +279,7 @@ struct CompressView: View {
         HStack {
             if let job, let made, case .finished = job.phase {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(made.files) }
-                ShareLink(items: made.files) { Label("Share", systemImage: "square.and.arrow.up") }
+                ShareLink("Share", items: made.files)
                 Button("Open Archive") {
                     AppRouter.shared.open([made.files[0]])
                     dismiss()

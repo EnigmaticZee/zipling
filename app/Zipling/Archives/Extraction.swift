@@ -25,6 +25,10 @@ enum Extraction {
         let complete: Bool
 
         var summary: String {
+            if placed.isEmpty, conflictsSkipped > 0 {
+                return "Nothing new came out: " + (conflictsSkipped == 1 ? "the item was already there and was kept."
+                    : "all \(conflictsSkipped) items were already there and were kept.")
+            }
             var text = "Extracted \(Format.count(result.files, "file")) (\(Format.bytes(result.bytes))) in \(Format.duration(result.seconds))."
             if let skipped = result.skipped, !skipped.isEmpty {
                 text += " \(Format.count(UInt64(skipped.count), "item")) " + (skipped.count == 1 ? "was" : "were")

@@ -64,6 +64,10 @@ struct PreviewPane: View {
             do {
                 url = try await model.materialize(item)
             } catch is CancellationError {
+            } catch let p as PasswordRequired {
+                // A wrong password: forget it, so Unlock to Preview comes back.
+                model.forgetPassword()
+                failed = p.wrong ? "That password didn't work." : "Locked. Unlock it to preview."
             } catch {
                 failed = "No preview: \(error.localizedDescription)"
             }

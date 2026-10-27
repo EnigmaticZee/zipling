@@ -54,6 +54,8 @@ struct BrowserView: View {
     var body: some View {
         NavigationSplitView {
             FolderTree(model: model)
+                // A fresh outline for each archive, so nothing of the last one lingers.
+                .id(model.levels.map(\.archive.source.path).joined(separator: "\u{1}"))
                 .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 320)
         } detail: {
             table
@@ -86,12 +88,7 @@ struct BrowserView: View {
         }
         .searchable(text: $model.search, placement: .toolbar, prompt: "Search archive")
         .searchFocused($searchFocused)
-        .searchScopes($model.searchInside, activation: .onSearchPresentation) {
-            if hasArchivesInside {
-                Text("This Archive").tag(false)
-                Text("Archives Inside Too").tag(true)
-            }
-        }
+        .modifier(InsideScopes(searchInside: $model.searchInside, shown: hasArchivesInside))
         .onChange(of: model.searchFocusRequest) { searchFocused = true }
         .navigationSubtitle(subtitle)
         .toolbar { toolbar }
@@ -177,7 +174,7 @@ struct BrowserView: View {
         } rows: {
             ForEach(model.visibleItems) { item in
                 TableRow(item)
-                    .itemProvider { model.dragProvider(for: item) }
+                    .draggable(ArchiveDrag(item: item, model: model))
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
@@ -523,5 +520,23 @@ private struct RenameSheet: View {
     private func submit() {
         problem = model.rename(item, to: name)
         if problem == nil { dismiss() }
+    }
+}
+
+/// "This Archive / Archives Inside Too" under the search field, only when there are
+/// archives inside to search (an empty scope bar would still take up room).
+private struct InsideScopes: ViewModifier {
+    @Binding var searchInside: Bool
+    let shown: Bool
+
+    func body(content: Content) -> some View {
+        if shown {
+            content.searchScopes($searchInside, activation: .onSearchPresentation) {
+                Text("This Archive").tag(false)
+                Text("Archives Inside Too").tag(true)
+            }
+        } else {
+            content
+        }
     }
 }

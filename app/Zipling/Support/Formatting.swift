@@ -47,7 +47,8 @@ enum Method {
     static func foreignName(_ method: String) -> String {
         let steps = method.split(separator: " ").map { $0.split(separator: ":").first.map(String.init) ?? String($0) }
         guard !steps.isEmpty else { return "—" }
-        return steps.map { $0 == "Copy" ? "Stored" : $0 }.joined(separator: " + ")
+        // 7-Zip says Copy and The Unarchiver says None for files kept as they are.
+        return steps.map { $0 == "Copy" || $0 == "None" ? "Stored" : $0 }.joined(separator: " + ")
     }
 
     static func shortCodec(_ codec: String) -> String {

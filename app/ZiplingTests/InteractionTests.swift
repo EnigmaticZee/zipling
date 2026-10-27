@@ -32,10 +32,13 @@ struct InteractionTests {
         for _ in 0..<1000 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
     }
 
-    /// What a drop target (Finder) receives from a drag out of the list.
-    private func dropped(_ provider: NSItemProvider, as type: UTType) async throws -> (name: String, contents: [String]) {
-        try await withCheckedThrowingContinuation { continuation in
-            _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, error in
+    /// What a drop target (Finder) receives: the file the drag exports.
+    private func dropped(_ drag: ArchiveDrag, as type: UTType) async throws -> (name: String, contents: [String]) {
+        let provider = NSItemProvider()
+        provider.register(drag)
+        #expect(provider.registeredContentTypes.contains { $0.conforms(to: type) }, "offered as \(type.identifier)")
+        return try await withCheckedThrowingContinuation { continuation in
+            _ = provider.loadFileRepresentation(for: type) { url, _, error in
                 guard let url else { return continuation.resume(throwing: error ?? CocoaError(.fileNoSuchFile)) }
                 // The file only exists while this handler runs, as for a real drop.
                 let isFolder = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
@@ -52,13 +55,12 @@ struct InteractionTests {
         let model = ArchiveModel(url: archive)
         await model.load()
         let file = try #require(model.item("Project/docs/readme.txt"))
-        let provider = model.dragProvider(for: file)
-        #expect(provider.suggestedName == "readme.txt")
-        let text = try await dropped(provider, as: .plainText)
+        let text = try await dropped(ArchiveDrag(item: file, model: model), as: .data)
+        #expect(text.name == "readme.txt")
         #expect(text.contents == [readme], "the file comes out of the archive on drop")
 
         let folder = try #require(model.item("Project/docs"))
-        let tree = try await dropped(model.dragProvider(for: folder), as: .folder)
+        let tree = try await dropped(ArchiveDrag(item: folder, model: model), as: .folder)
         #expect(tree.name == "docs")
         #expect(tree.contents == ["nested", "nested/copy.txt", "readme.txt"], "a folder comes out whole")
         model.close()

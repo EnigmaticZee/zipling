@@ -127,7 +127,7 @@ struct BrowserTests {
         model.extract([], to: out, then: .nothing, layout: .smart(folder: "Tidy"), conflicts: Conflicts(policy: .skip))
         try await waitForJob(model)
         #expect(model.job?.placed.isEmpty == true)
-        #expect(model.job?.outcome?.contains("already there") == true)
+        #expect(model.job?.outcome == "Nothing new came out: the item was already there and was kept.")
         #expect(!fm.fileExists(atPath: out.appending(path: "Project 3").path))
         let leftovers = try fm.contentsOfDirectory(atPath: out.path).filter { $0.hasPrefix(".zipling") }
         #expect(leftovers.isEmpty, "no staging folders left behind")
@@ -166,6 +166,21 @@ struct BrowserTests {
         model.goUp()
         #expect(model.folder == "" && model.selection == ["Project"], "going up selects where you came from")
         model.close()
+    }
+
+    /// Folders an archive doesn't list get their newest file's date (not 1970), and
+    /// files kept as they are read "Stored" whichever tool listed them.
+    @Test func implicitFoldersAndStoredLabels() {
+        let entry = { (path: String, mtime: Int64) in
+            ArchiveEntry(path: path, kind: "file", size: 1, mtime: mtime, mode: 0o644, transform: "foreign",
+                         codec: "None", packed: 1, target: nil)
+        }
+        let (children, _) = ArchiveModel.buildTree([entry("Docs/a.txt", 1_700_000_000), entry("Docs/b.txt", 1_800_000_000)])
+        let docs = children[""]?.first { $0.name == "Docs" }
+        #expect(docs?.modified == Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(Method.foreignName("None") == "Stored")
+        #expect(Method.foreignName("Copy") == "Stored")
+        #expect(Method.foreignName("LZMA2:24 BCJ") == "LZMA2 + BCJ")
     }
 
     /// A hundred thousand entries: listing, building the tree, and searching stay quick.

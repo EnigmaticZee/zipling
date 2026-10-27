@@ -10,8 +10,11 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Extracting") {
-                Picker("When a name is already taken", selection: $conflict) {
+                Picker(selection: $conflict) {
                     ForEach(Preferences.Conflict.allCases) { Text($0.title).tag($0) }
+                } label: {
+                    Text("When a name is already taken")
+                    Text("Keep Both gives the new one a numbered name, as Finder does. Replace moves the old one to the Trash.")
                 }
                 Toggle("Show extracted items in Finder", isOn: $revealAfterExtract)
                 Toggle(isOn: $trashAfterExtract) {

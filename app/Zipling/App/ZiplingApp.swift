@@ -42,7 +42,8 @@ struct AppCommands: Commands {
             Button("Extract Here") { model?.extractHere() }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(model?.listing == nil)
-            Button(model?.selection.isEmpty == false ? "Extract Selected…" : "Extract All…") {
+            // The selection, or everything when nothing is selected.
+            Button("Extract To…") {
                 if let model { model.extractInteractively(model.selection) }
             }
             .keyboardShortcut("e")
