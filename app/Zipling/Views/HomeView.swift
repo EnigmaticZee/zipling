@@ -5,7 +5,10 @@ struct HomeView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var router = AppRouter.shared
     @State private var jobs = JobCenter.shared
-    @State private var targeted = false
+    /// What's being dragged over the window, while it is.
+    @State private var hover: DropHover?
+    @State private var zone: CGRect = .zero
+    private var targeted: Bool { hover != nil }
 
     var body: some View {
         @Bindable var router = router
@@ -26,10 +29,8 @@ struct HomeView: View {
         .padding(.top, 36)
         .padding(.bottom, 20)
         .frame(width: 600)
-        .dropDestination(for: URL.self) { urls, _ in
-            router.open(urls)
-            return !urls.isEmpty
-        } isTargeted: { targeted = $0 }
+        .coordinateSpace(.named(Self.space))
+        .onDrop(of: [.fileURL], delegate: HomeDrop(hover: $hover, zone: zone))
         .sheet(item: $router.compressRequest) { request in
             CompressView(items: request.items)
         }
@@ -47,7 +48,8 @@ struct HomeView: View {
                     .foregroundStyle(.tint)
                     .contentTransition(.symbolEffect(.replace))
             }
-            Text("Drop files to compress")
+            Text(hover.map { $0.count > 1 ? "Compress \($0.count) items into one archive" : "Drop to compress" }
+                 ?? "Drop files to compress")
                 .font(.title2.weight(.semibold))
             Text("Or drop an archive to open it.")
                 .font(.callout)
@@ -87,7 +89,99 @@ struct HomeView: View {
                     style: StrokeStyle(lineWidth: targeted ? 2 : 1, dash: [7, 5])
                 )
         }
-        .animation(.snappy(duration: 0.2), value: targeted)
+        .overlay {
+            if let hover, hover.archives { ArchiveDropChoice(hover: hover) }
+        }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { zone = $0 }
+        .animation(.snappy(duration: 0.2), value: hover)
+    }
+
+    private nonisolated static let space = "home"
+}
+
+/// Files over the home window: how many, whether they're all archives, and for
+/// archives, whether the pointer is over Compress rather than Open.
+struct DropHover: Equatable {
+    var count: Int
+    var archives: Bool
+    var compress: Bool
+}
+
+/// Archives dropped on the drop zone's right part are compressed instead of opened.
+private struct HomeDrop: DropDelegate {
+    @Binding var hover: DropHover?
+    let zone: CGRect
+    /// The drop zone's share that opens archives; the rest compresses them.
+    static let openShare: CGFloat = 0.6
+
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.fileURL]) }
+
+    func dropEntered(info: DropInfo) { hover = state(info) }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        hover = state(info)
+        return DropProposal(operation: .copy)
+    }
+
+    func dropExited(info: DropInfo) { hover = nil }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let urls = AppRouter.draggedFiles()
+        let compress = state(info)?.compress ?? false
+        hover = nil
+        guard !urls.isEmpty else { return false }
+        if compress { AppRouter.shared.compress(urls) } else { AppRouter.shared.open(urls) }
+        return true
+    }
+
+    private func state(_ info: DropInfo) -> DropHover? {
+        let urls = AppRouter.draggedFiles()
+        guard !urls.isEmpty else { return nil }
+        let archives = urls.allSatisfy(AppRouter.isArchive)
+        let onCompress = zone.contains(info.location) && info.location.x >= zone.minX + zone.width * Self.openShare
+        return DropHover(count: urls.count, archives: archives, compress: archives && onCompress)
+    }
+}
+
+/// While archives are over the drop zone: Open on the left, Compress on the right.
+private struct ArchiveDropChoice: View {
+    let hover: DropHover
+
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                target("Open", symbol: "shippingbox",
+                       detail: hover.count > 1 ? "Each in its own window" : "Browse what's inside",
+                       active: !hover.compress)
+                    .frame(width: geometry.size.width * HomeDrop.openShare)
+                target("Compress", symbol: "archivebox",
+                       detail: hover.count > 1 ? "All into one archive" : "Into a new archive",
+                       active: hover.compress)
+                    .frame(width: geometry.size.width * (1 - HomeDrop.openShare))
+            }
+        }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private func target(_ title: String, symbol: String, detail: String, active: Bool) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 34))
+                .foregroundStyle(active ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            Text(title).font(.title3.weight(.semibold))
+            Text(detail).font(.callout).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(active ? AnyShapeStyle(.tint.opacity(0.14)) : AnyShapeStyle(.clear))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(active ? AnyShapeStyle(.tint) : AnyShapeStyle(.separator),
+                              style: StrokeStyle(lineWidth: active ? 2 : 1, dash: [7, 5]))
+        }
+        .padding(8)
     }
 }
 

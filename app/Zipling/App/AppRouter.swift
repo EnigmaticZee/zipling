@@ -25,21 +25,23 @@ final class AppRouter {
         open(pending)
     }
 
+    /// Archives on their own open, each in a window. Anything else, or a mix of
+    /// archives and other things, is compressed together into one archive.
     func open(_ urls: [URL]) {
         guard let openWindow else {
             queued += urls
             return
         }
-        let archives = urls.filter(Self.isArchive)
-        let others = urls.filter { !Self.isArchive($0) }
-        for url in archives {
-            openWindow(value: url)
-            RecentArchives.add(url)
-        }
-        recents = RecentArchives.load()
-        if !others.isEmpty {
+        guard !urls.isEmpty else { return }
+        if Self.opens(urls) {
+            for url in urls {
+                openWindow(value: url)
+                RecentArchives.add(url)
+            }
+            recents = RecentArchives.load()
+        } else {
             openWindow(id: Self.homeWindow)
-            compressRequest = CompressRequest(items: others)
+            compressRequest = CompressRequest(items: urls)
         }
     }
 
@@ -99,6 +101,17 @@ final class AppRouter {
 
     private static let archiveTypes: [UTType] = [.ziplingArchive, .archive, .diskImage, .zip, .gzip, .bz2]
         + Archives.archiveExtensions.compactMap { UTType(filenameExtension: $0) }
+
+    /// Archives on their own open; anything else, or a mix, is compressed together.
+    static func opens(_ urls: [URL]) -> Bool {
+        !urls.isEmpty && urls.allSatisfy(isArchive)
+    }
+
+    /// The files being dragged right now, readable while they're over a window.
+    static func draggedFiles() -> [URL] {
+        NSPasteboard(name: .drag).readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+            as? [URL] ?? []
+    }
 
     /// Archives open in a browser window; folders and other files go to Compress.
     static func isArchive(_ url: URL) -> Bool {

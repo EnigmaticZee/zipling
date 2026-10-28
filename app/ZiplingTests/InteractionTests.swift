@@ -145,6 +145,18 @@ struct InteractionTests {
         #expect(!MenuBarDropZone.extracts([]))
     }
 
+    @Test func dropsOpenArchivesOnTheirOwnAndCompressAMix() throws {
+        let (root, zip) = try makeArchive()
+        let (_, sevenZip) = try makeArchive("Other.7z")
+        let folder = root.appending(path: "Project")
+        let text = root.appending(path: "Project/docs/readme.txt")
+        #expect(AppRouter.opens([zip]))
+        #expect(AppRouter.opens([zip, sevenZip]), "archives on their own each open")
+        #expect(!AppRouter.opens([text]) && !AppRouter.opens([folder]))
+        #expect(!AppRouter.opens([text, zip]), "a file and an archive are compressed together, not split")
+        #expect(!AppRouter.opens([]))
+    }
+
     @Test func presetsKeepEverythingButThePassword() throws {
         let suite = "InteractionTests-\(UUID().uuidString)"
         let saved = Presets.defaults

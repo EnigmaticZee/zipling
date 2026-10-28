@@ -60,6 +60,8 @@ struct BrowserView: View {
     @FocusState private var searchFocused: Bool
     /// The list starts with the keyboard, so space opens Quick Look straight away.
     @FocusState private var listFocused: Bool
+    /// Files from elsewhere being dragged over the window: how many, while they are.
+    @State private var incoming = 0
 
     var body: some View {
         NavigationSplitView {
@@ -96,6 +98,19 @@ struct BrowserView: View {
                     InspectorView(model: model)
                         .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
                 }
+        }
+        // Files dropped anywhere in the window go into the folder on screen.
+        .dropDestination(for: URL.self) { urls, _ in
+            incoming = 0
+            guard model.canEdit else { return false }
+            model.add(urls)
+            return true
+        } isTargeted: { over in
+            // Items dragged out of this window are file promises, not files: no overlay.
+            incoming = over ? AppRouter.draggedFiles().count : 0
+        }
+        .overlay {
+            if incoming > 0 { AddOverlay(model: model, count: incoming) }
         }
         .searchable(text: $model.search, placement: .toolbar, prompt: "Search archive")
         .searchFocused($searchFocused)
@@ -190,11 +205,6 @@ struct BrowserView: View {
                 TableRow(item)
                     .draggable(ArchiveDrag(item: item, model: model))
             }
-        }
-        .dropDestination(for: URL.self) { urls, _ in
-            guard model.canEdit else { return false }
-            model.add(urls)
-            return true
         }
         .contextMenu(forSelectionType: Item.ID.self) { ids in
             menu(for: ids)
@@ -482,6 +492,42 @@ private struct PasswordSheet: View {
         guard !password.isEmpty else { return }
         dismiss()
         request.retry(password)
+    }
+}
+
+/// Over the whole window while files are dragged onto it: where they'll go, or why
+/// this archive can't take them.
+private struct AddOverlay: View {
+    let model: ArchiveModel
+    let count: Int
+
+    var body: some View {
+        let problem = model.editProblem
+        let place = model.folder.isEmpty || !model.search.isEmpty
+            ? "“\(model.levelNames.last ?? model.name)”"
+            : "“\((model.folder as NSString).lastPathComponent)” in “\(model.levelNames.last ?? model.name)”"
+        VStack(spacing: 10) {
+            Image(systemName: problem == nil ? "plus.rectangle.on.folder" : "nosign")
+                .font(.system(size: 44))
+                .foregroundStyle(problem == nil ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            Text(problem == nil ? "Add \(count == 1 ? "it" : "\(count) items") to \(place)" : "Can't add to this archive")
+                .font(.title2.weight(.semibold))
+                .multilineTextAlignment(.center)
+            Text(problem ?? "Anything with the same name is replaced.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial)
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(problem == nil ? AnyShapeStyle(.tint) : AnyShapeStyle(.separator),
+                              style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                .padding(10)
+        }
+        .allowsHitTesting(false)
     }
 }
 
