@@ -90,6 +90,7 @@ impl Archive {
                     Codec::Zstd => "decode.zstd",
                     Codec::Xz => "decode.xz",
                     Codec::Ppmd => "decode.ppmd",
+                    Codec::Lzma2 => "decode.lzma2",
                 },
                 b.raw_len,
             );

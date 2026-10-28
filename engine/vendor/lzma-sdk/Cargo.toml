@@ -1,0 +1,11 @@
+[package]
+name = "lzma-sdk"
+version = "26.5.0"
+edition = "2021"
+publish = false
+description = "Igor Pavlov's public-domain LZMA SDK (from 7-Zip 26.05): LZMA2 encoder with a threaded match finder, and the decoder with its ARM64 assembly core"
+license = "Public domain (LZMA SDK)"
+build = "build.rs"
+
+[build-dependencies]
+cc = "1"

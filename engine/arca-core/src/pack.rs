@@ -69,7 +69,7 @@ impl PackOptions {
     pub fn preset(level: Level) -> Self {
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
         let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false };
-        let xz = |extreme| CodecConfig { codec: Codec::Xz, level: 9, extreme };
+        let xz = |extreme| CodecConfig { codec: Codec::Lzma2, level: 9, extreme };
         // Per lane: text needs the expensive match finders (zstd's binary tree, xz's
         // extreme mode) to reach full ratio; binaries lose <0.4% with the cheaper
         // ones and gain it back from bigger blocks, at 3-4x the speed.
@@ -363,7 +363,27 @@ fn name_group(ext: &str) -> u8 {
     }
 }
 
-fn order_key(job: &Job, entries: &[Entry]) -> (u8, Option<Class>, String, u64, String) {
+/// Order within a sort group. PNGs, the costliest files to transform, go last
+/// so the blocks of everything before them fill, and start compressing, while
+/// they are still being expanded. PDF and ZIP-family data stays next to the
+/// executables: putting plain binaries between them cost 1 MiB at Max.
+fn class_rank(class: Option<Class>) -> u8 {
+    use crate::classify::DeflateKind;
+    match class {
+        None => 0,
+        Some(Class::Text) => 1,
+        Some(Class::MachO) => 2,
+        Some(Class::DeflateContainer(DeflateKind::Zip)) => 3,
+        Some(Class::DeflateContainer(DeflateKind::Pdf)) => 4,
+        Some(Class::DeflateContainer(DeflateKind::Gzip)) => 5,
+        Some(Class::Binary) => 6,
+        Some(Class::DeflateContainer(DeflateKind::Png)) => 7,
+        Some(Class::Compressed) => 8,
+        Some(Class::Jpeg) => 9,
+    }
+}
+
+fn order_key(job: &Job, entries: &[Entry]) -> (u8, u8, String, u64, String) {
     let path = &entries[job.entry].path;
     let name = path.rsplit('/').next().unwrap_or(path);
     let ext = extension(name);
@@ -371,7 +391,7 @@ fn order_key(job: &Job, entries: &[Entry]) -> (u8, Option<Class>, String, u64, S
     // keeps the slowest files from finishing alone at the end.
     let jpeg = job.class.map_or(matches!(ext.as_str(), "jpg" | "jpeg" | "jpe"), |c| c == Class::Jpeg);
     let size_first = if jpeg { u64::MAX - job.size } else { 0 };
-    (job.group, job.class, ext, size_first, name.to_owned())
+    (job.group, class_rank(job.class), ext, size_first, name.to_owned())
 }
 
 fn extension(name: &str) -> String {

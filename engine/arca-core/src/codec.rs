@@ -9,7 +9,7 @@ use zstd::zstd_safe::{CParameter, DParameter};
 #[derive(Debug, Clone, Copy)]
 pub struct CodecConfig {
     pub codec: Codec,
-    /// zstd: 1..=22, xz: 0..=9 (with `extreme`), ppmd: model order 2..=64.
+    /// zstd: 1..=22, xz and lzma2: 0..=9 (with `extreme`), ppmd: model order 2..=64.
     pub level: i32,
     pub extreme: bool,
 }
@@ -32,6 +32,30 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
             let mut enc = liblzma::write::XzEncoder::new_stream(Vec::with_capacity(raw.len() / 3), stream);
             enc.write_all(raw)?;
             Ok(enc.finish()?)
+        }
+        Codec::Lzma2 => {
+            // 7-Zip's -mx9 with the longest matches (fb 273) for `extreme`, the
+            // block as dictionary, and the match finder in its own thread (the
+            // output is the same either way).
+            let dict = (raw.len() as u32).clamp(1 << 16, 1 << 26);
+            let s = lzma_sdk::Settings {
+                level: cfg.level.clamp(0, 9),
+                dict_size: dict,
+                fb: std::env::var("ARCA_EXP_FB").ok().and_then(|v| v.parse().ok()).unwrap_or(if cfg.extreme { 273 } else { 64 }),
+                mc: 0,
+                threads: 2,
+            };
+            // Anything that doesn't shrink is stored by the caller anyway.
+            match lzma_sdk::encode(raw, s, raw.len()) {
+                Ok((c, prop)) => {
+                    let mut out = Vec::with_capacity(c.len() + 1);
+                    out.push(prop);
+                    out.extend_from_slice(&c);
+                    Ok(out)
+                }
+                Err(e) if e.0 == lzma_sdk::ERROR_OUTPUT_EOF => Ok(raw.to_vec()),
+                Err(e) => Err(e.into()),
+            }
         }
         Codec::Ppmd => {
             let order = cfg.level.clamp(2, 64) as u32;
@@ -68,6 +92,9 @@ pub fn encoder_memory(cfg: CodecConfig, block: usize) -> u64 {
             if m == u64::MAX { 1 << 30 } else { m }
         }
         Codec::Ppmd => (block as u64 * 3).clamp(16 << 20, PPMD_MAX_MEM as u64) + (block as u64 / 2),
+        // Binary tree of the dictionary (~10x it) plus the threaded match
+        // finder's buffers, as 7-Zip estimates for -mx9.
+        Codec::Lzma2 => 11 * (block as u64).clamp(1 << 16, 1 << 26) + (64 << 20),
     }
 }
 
@@ -102,6 +129,10 @@ pub fn decompress(comp: &[u8], codec: Codec, raw_len: u64) -> Result<Vec<u8>> {
             let mut out = Vec::with_capacity(raw_len);
             liblzma::read::XzDecoder::new(comp).take(raw_len as u64 + 1).read_to_end(&mut out).context("xz block")?;
             out
+        }
+        Codec::Lzma2 => {
+            ensure!(!comp.is_empty(), "lzma2 block header missing");
+            lzma_sdk::decode(&comp[1..], comp[0], raw_len).context("lzma2 block")?
         }
         Codec::Ppmd => {
             ensure!(comp.len() >= 5, "ppmd block header truncated");
