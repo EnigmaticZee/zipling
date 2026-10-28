@@ -490,7 +490,16 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let open_blocks = 4 * (block_size.max(text_block_size) as u64 + CDC_MAX as u64);
     let task_memory = opts.threads as u64 * (64 << 20);
     let spare = budget.saturating_sub(lookahead + open_blocks + task_memory);
-    let block_threads = (spare / per_encoder).clamp(1, opts.threads.max(1) as u64) as usize;
+    let mut block_threads = (spare / per_encoder).clamp(1, opts.threads.max(1) as u64) as usize;
+    // LZMA2 encoders run two threads each (the match finder has its own), so
+    // about half as many of them keep the cores busy without starving the
+    // first blocks: six on 10 cores made Max 4-6% faster than ten.
+    if [opts.text_codec, opts.binary_codec, opts.image_codec].iter().any(|c| c.codec == Codec::Lzma2) {
+        block_threads = block_threads.min(opts.threads.max(1) / 2 + 1);
+    }
+    if let Some(cap) = std::env::var("ARCA_EXP_ENCODERS").ok().and_then(|v| v.parse::<usize>().ok()) {
+        block_threads = block_threads.min(cap.max(1));
+    }
     if timing {
         eprintln!(
             "memory budget {} MiB: {block_threads} block encoders of {} MiB, lookahead {} MiB",
