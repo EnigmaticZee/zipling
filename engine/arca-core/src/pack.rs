@@ -69,16 +69,21 @@ impl PackOptions {
     pub fn preset(level: Level) -> Self {
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
         let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false };
-        let xz = |extreme| CodecConfig { codec: Codec::Lzma2, level: 9, extreme };
+        let lzma2 = |level, extreme| CodecConfig { codec: Codec::Lzma2, level, extreme };
         // Per lane: text needs the expensive match finders (zstd's binary tree, xz's
         // extreme mode) to reach full ratio; binaries lose <0.4% with the cheaper
         // ones and gain it back from bigger blocks, at 3-4x the speed.
         let (text, binary, text_block, block, adaptive_below) = match level {
             Level::Fast => (zstd(3), zstd(3), 8 << 20, 8 << 20, u64::MAX),
             Level::Balanced => (zstd(15), zstd(12), 16 << 20, 64 << 20, 64 << 20),
-            Level::Max => (xz(true), xz(true), 64 << 20, 64 << 20, 0),
-            // Context modelling beats LZ on prose and source code, at the cost of decode speed.
-            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false }, xz(true), 64 << 20, 64 << 20, 0),
+            // Max is the fast high-ratio level: LZMA2 with 32-byte matches (half the
+            // CPU of 273-byte ones for 1-6% more output) and 32 MiB text blocks,
+            // so no single block holds the end back.
+            Level::Max => (lzma2(7, false), lzma2(7, false), 32 << 20, 64 << 20, 0),
+            // Ultra is the smallest: context modelling for text (it beats LZ on
+            // prose and source code, at the cost of decode speed) and the longest
+            // LZMA2 matches.
+            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false }, lzma2(9, true), 64 << 20, 64 << 20, 0),
         };
         let heavy = level != Level::Fast;
         PackOptions {

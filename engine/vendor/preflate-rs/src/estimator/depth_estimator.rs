@@ -364,7 +364,6 @@ pub fn run_depth_candidates(
     candidates: &mut Vec<Box<dyn HashTableDepthEstimator>>,
 ) {
     let mut input = PreflateInput::new(&plain_text);
-
     for (_i, b) in deflate.blocks.iter().enumerate() {
         match &b.block_type {
             DeflateTokenBlockType::Stored { uncompressed, .. } => {

@@ -189,8 +189,16 @@ impl TokenPredictor {
         for i in 0..tokens.len() {
             let target_token = &tokens[i];
 
-            if i % 1024 == 0 && self.steps() > self.budget {
-                return err_exit_code(ExitCode::OverBudget, "stream is too costly to recreate");
+            // A stream's cost per byte is about even throughout, so one far over
+            // budget is caught after a small part of the work (four times the
+            // proportional share, so streams with a costly start still pass),
+            // and the whole budget still holds at the end.
+            if i % 1024 == 0 && self.budget != u64::MAX {
+                let total = u64::from(input.total_length()).max(1);
+                let share = (self.budget as u128 * 4 * u64::from(input.pos()) as u128 / total as u128) as u64;
+                if self.steps() > share.min(self.budget) + (1 << 20) {
+                    return err_exit_code(ExitCode::OverBudget, "stream is too costly to recreate");
+                }
             }
 
             codec.encode_verify_state(
