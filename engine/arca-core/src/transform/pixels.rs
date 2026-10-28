@@ -15,7 +15,9 @@
 //! rest are written raw. Tokens and flags share one rANS stream, so decoding a
 //! symbol is a multiply and a 15-way compare instead of a chain of binary steps.
 //!
-//! Stream: `u32 rans_len | rANS state (u32) and 16-bit words | remainder bits`.
+//! Stream: `u32 rans_len | two rANS states (u32 each) and 16-bit words |
+//! remainder bits`. Symbols alternate between the two states, so decoding runs
+//! two independent chains at once.
 
 use anyhow::{ensure, Result};
 
@@ -146,15 +148,29 @@ impl Bin {
 }
 
 struct Models {
-    tok: Vec<Cdf16>,
+    tok: Box<[Cdf16; 4 * ACT * C2]>,
     zero: [Bin; 8],
     /// Top remainder bit, by (channel, size class, activity).
-    top: Vec<Bin>,
+    top: Box<[Bin; 4 * 8 * ACT]>,
 }
 
 impl Models {
-    fn new(ch: usize) -> Self {
-        Models { tok: vec![Cdf16::new(); ch * ACT * C2], zero: [HALF; 8], top: vec![HALF; ch * 8 * ACT] }
+    fn new() -> Self {
+        let tok: Vec<Cdf16> = vec![Cdf16::new(); 4 * ACT * C2];
+        let top: Vec<Bin> = vec![HALF; 4 * 8 * ACT];
+        Models { tok: tok.try_into().ok().unwrap(), zero: [HALF; 8], top: top.try_into().ok().unwrap() }
+    }
+
+    /// Token table for channel `c` (< 4), activity `act` (< ACT) and second
+    /// context `c2` (< C2); masking keeps the index in range at no cost.
+    #[inline(always)]
+    fn tok(&mut self, c: usize, act: usize, c2: usize) -> &mut Cdf16 {
+        &mut self.tok[(tok_index(c & 3, act, c2) % (4 * ACT * C2))]
+    }
+
+    #[inline(always)]
+    fn top(&mut self, c: usize, k: u32, act: usize) -> &mut Bin {
+        &mut self.top[(top_index(c & 3, k & 7, act) % (4 * 8 * ACT))]
     }
 }
 
@@ -305,7 +321,7 @@ pub fn encode(px: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
         let i = p.at(0, y);
         p.buf[i..i + w * ch].copy_from_slice(&px[y * w * ch..(y + 1) * w * ch]);
     }
-    let mut m = Models::new(ch);
+    let mut m = Models::new();
     // Model every symbol in order, remembering its (start, frequency); rANS
     // then codes them last to first.
     let mut syms: Vec<(u16, u16)> = Vec::with_capacity(w * h + px.len() / 2);
@@ -341,14 +357,14 @@ pub fn encode(px: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
             for &c in order(ch) {
                 if !all_zero {
                     let (act, c2) = ctxs[c];
-                    let model = &mut m.tok[tok_index(c, act, c2)];
+                    let model = m.tok(c, act, c2);
                     let (tok, k, rem) = tokenize(res[c]);
                     syms.push((model.lo(tok) as u16, (model.hi(tok) - model.lo(tok)) as u16));
                     model.update(tok);
                     // -128 (token 15 with k = 7) has no remainder.
                     if k > 0 && tok != 15 {
                         let top = (rem >> (k - 1)) & 1 == 1;
-                        let b = &mut m.top[top_index(c, k, act)];
+                        let b = m.top(c, k, act);
                         syms.push(bin(b.f0(), top));
                         b.update(top);
                         if k > 1 {
@@ -361,21 +377,23 @@ pub fn encode(px: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
         }
     }
     let mut words: Vec<u16> = Vec::with_capacity(syms.len() / 2);
-    let mut x: u32 = RANS_L;
-    for &(start, freq) in syms.iter().rev() {
+    let mut xs: [u32; 2] = [RANS_L; 2];
+    for (i, &(start, freq)) in syms.iter().enumerate().rev() {
+        let x = &mut xs[i & 1];
         let (start, freq) = (start as u32, freq as u32);
         let x_max = ((RANS_L >> SCALE_BITS) << 16) * freq;
-        while x >= x_max {
-            words.push(x as u16);
-            x >>= 16;
+        while *x >= x_max {
+            words.push(*x as u16);
+            *x >>= 16;
         }
-        x = ((x / freq) << SCALE_BITS) + (x % freq) + start;
+        *x = ((*x / freq) << SCALE_BITS) + (*x % freq) + start;
     }
-    let rans_len = 4 + 2 * words.len();
+    let rans_len = 8 + 2 * words.len();
     let rem = bits.finish();
     let mut out = Vec::with_capacity(4 + rans_len + rem.len());
     out.extend_from_slice(&(rans_len as u32).to_le_bytes());
-    out.extend_from_slice(&x.to_le_bytes());
+    out.extend_from_slice(&xs[0].to_le_bytes());
+    out.extend_from_slice(&xs[1].to_le_bytes());
     for wd in words.iter().rev() {
         out.extend_from_slice(&wd.to_le_bytes());
     }
@@ -389,33 +407,39 @@ pub fn decode(src: &[u8], w: usize, h: usize, ch: usize) -> Result<Vec<u8>> {
     ensure!((1..=4).contains(&ch), "pixel data has {ch} channels");
     ensure!(src.len() >= 8, "pixel data truncated");
     let rans_len = u32::from_le_bytes(src[0..4].try_into().unwrap()) as usize;
-    ensure!(rans_len >= 4 && 4 + rans_len <= src.len(), "pixel data truncated");
+    ensure!(rans_len >= 8 && 4 + rans_len <= src.len(), "pixel data truncated");
     let rans = &src[4..4 + rans_len];
     let mut bits = BitReader { src: &src[4 + rans_len..], pos: 0, acc: 0, n: 0 };
-    let mut x = u32::from_le_bytes(rans[0..4].try_into().unwrap());
-    let mut rp = 4usize;
+    let mut xs = [u32::from_le_bytes(rans[0..4].try_into().unwrap()), u32::from_le_bytes(rans[4..8].try_into().unwrap())];
+    // Which state the next symbol uses.
+    let mut si = 0usize;
+    let mut rp = 8usize;
     let lut = act_lut();
-    let mut m = Models::new(ch);
+    let mut m = Models::new();
     let mut p = Padded::new(w, h, ch);
     let mut prev = [0i32; 4];
     let mut zrow = vec![false; w + 2];
     macro_rules! renorm {
-        () => {
-            if x < RANS_L {
-                let lo = rans.get(rp).copied().unwrap_or(0) as u32;
-                let hi = rans.get(rp + 1).copied().unwrap_or(0) as u32;
+        ($x:expr) => {
+            if *$x < RANS_L {
+                let w = match rans.get(rp..rp + 2) {
+                    Some(b) => u16::from_le_bytes([b[0], b[1]]) as u32,
+                    None => 0,
+                };
                 rp += 2;
-                x = (x << 16) | lo | (hi << 8);
+                *$x = (*$x << 16) | w;
             }
         };
     }
     macro_rules! decode_bin {
         ($b:expr) => {{
+            let x = &mut xs[si & 1];
+            si += 1;
             let f0 = $b.f0();
-            let slot = x & (SCALE - 1);
+            let slot = *x & (SCALE - 1);
             let bit = slot >= f0;
-            x = if bit { (SCALE - f0) * (x >> SCALE_BITS) + slot - f0 } else { f0 * (x >> SCALE_BITS) + slot };
-            renorm!();
+            *x = if bit { (SCALE - f0) * (*x >> SCALE_BITS) + slot - f0 } else { f0 * (*x >> SCALE_BITS) + slot };
+            renorm!(x);
             $b.update(bit);
             bit
         }};
@@ -432,16 +456,18 @@ pub fn decode(src: &[u8], w: usize, h: usize, ch: usize) -> Result<Vec<u8>> {
                 let (pred, act, c2) = p.context(i, c, prev[c], &lut);
                 let c2 = c2 + 3 * if c == 1 { 0 } else { gclass(g_res) };
                 let coded = if any {
-                    let model = &mut m.tok[tok_index(c, act, c2)];
-                    let slot = x & (SCALE - 1);
+                    let model = m.tok(c, act, c2);
+                    let x = &mut xs[si & 1];
+                    si += 1;
+                    let slot = *x & (SCALE - 1);
                     let tok = model.find(slot);
                     let (lo, hi) = (model.lo(tok), model.hi(tok));
-                    x = (hi - lo) * (x >> SCALE_BITS) + slot - lo;
-                    renorm!();
+                    *x = (hi - lo) * (*x >> SCALE_BITS) + slot - lo;
+                    renorm!(x);
                     model.update(tok);
                     let k = class_of(tok);
                     let rem = if k > 0 && tok != 15 {
-                        let top = decode_bin!(m.top[top_index(c, k, act)]);
+                        let top = decode_bin!(m.top(c, k, act));
                         ((top as u32) << (k - 1)) | if k > 1 { bits.get(k - 1) } else { 0 }
                     } else {
                         0
@@ -504,10 +530,18 @@ struct BitReader<'a> {
 impl BitReader<'_> {
     #[inline]
     fn get(&mut self, bits: u32) -> u32 {
-        while self.n < bits {
-            self.acc |= (self.src.get(self.pos).copied().unwrap_or(0) as u64) << self.n;
-            self.pos += 1;
-            self.n += 8;
+        if self.n < bits {
+            if let Some(b) = self.src.get(self.pos..self.pos + 4) {
+                self.acc |= (u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as u64) << self.n;
+                self.pos += 4;
+                self.n += 32;
+            } else {
+                while self.n < bits {
+                    self.acc |= (self.src.get(self.pos).copied().unwrap_or(0) as u64) << self.n;
+                    self.pos += 1;
+                    self.n += 8;
+                }
+            }
         }
         let v = (self.acc & ((1u64 << bits) - 1)) as u32;
         self.acc >>= bits;
