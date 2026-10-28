@@ -31,7 +31,9 @@ use anyhow::{bail, ensure, Result};
 
 pub const MAGIC: &[u8; 8] = b"ARCA\x00\r\n\x1a";
 pub const FOOTER_MAGIC: &[u8; 8] = b"ARCAEND\x00";
-pub const VERSION: u16 = 1;
+/// Version 2 stores the index's entries column by column (front-coded paths,
+/// delta-coded times and objects). Version 1 archives still open.
+pub const VERSION: u16 = 2;
 pub const HEADER_LEN: usize = 32;
 pub const FOOTER_LEN: usize = 64;
 
@@ -171,7 +173,7 @@ pub fn header_bytes(flags: u16) -> [u8; HEADER_LEN] {
 pub fn check_header(h: &[u8]) -> Result<u16> {
     ensure!(h.len() >= HEADER_LEN && &h[..8] == MAGIC, "not an Arca archive");
     let version = u16::from_le_bytes([h[8], h[9]]);
-    ensure!(version == VERSION, "unsupported archive version {version}");
+    ensure!(version == 1 || version == VERSION, "unsupported archive version {version}");
     Ok(u16::from_le_bytes([h[10], h[11]]))
 }
 
@@ -216,28 +218,54 @@ impl Index {
         w.uv(VERSION as u64);
         w.iv(self.created);
 
-        w.uv(self.entries.len() as u64);
-        for e in &self.entries {
-            w.str(&e.path);
-            match &e.kind {
-                EntryKind::File { size, object } => {
-                    w.u8(0);
-                    w.uv(*size);
-                    w.uv(*object as u64);
-                }
-                EntryKind::Dir => w.u8(1),
-                EntryKind::Symlink { target } => {
-                    w.u8(2);
-                    w.bytes(target);
-                }
-                EntryKind::HardLink { target } => {
-                    w.u8(3);
-                    w.uv(*target as u64);
-                }
+        // Entries column by column, so zstd sees like next to like: paths
+        // front-coded against the previous one (a folder walk shares long
+        // prefixes), times and object numbers as differences.
+        let es = &self.entries;
+        w.uv(es.len() as u64);
+        let mut prev: &[u8] = &[];
+        for e in es {
+            let p = e.path.as_bytes();
+            let shared = p.iter().zip(prev).take_while(|(a, b)| a == b).count();
+            w.uv(shared as u64);
+            w.bytes(&p[shared..]);
+            prev = p;
+        }
+        for e in es {
+            w.u8(match e.kind {
+                EntryKind::File { .. } => 0,
+                EntryKind::Dir => 1,
+                EntryKind::Symlink { .. } => 2,
+                EntryKind::HardLink { .. } => 3,
+            });
+        }
+        let mut prev_object = 0i64;
+        for e in es {
+            if let EntryKind::File { size, object } = e.kind {
+                w.uv(size);
+                w.iv(object as i64 - prev_object);
+                prev_object = object as i64;
             }
+        }
+        for e in es {
+            match &e.kind {
+                EntryKind::Symlink { target } => w.bytes(target),
+                EntryKind::HardLink { target } => w.uv(*target as u64),
+                _ => {}
+            }
+        }
+        for e in es {
             w.uv(e.mode as u64);
-            w.iv(e.mtime.0);
+        }
+        let mut prev_time = 0i64;
+        for e in es {
+            w.iv(e.mtime.0 - prev_time);
+            prev_time = e.mtime.0;
+        }
+        for e in es {
             w.uv(e.mtime.1 as u64);
+        }
+        for e in es {
             w.uv(e.xattrs.len() as u64);
             for (k, v) in &e.xattrs {
                 w.str(k);
@@ -298,12 +326,7 @@ impl Index {
         w.buf
     }
 
-    pub fn decode(data: &[u8]) -> Result<Self> {
-        let mut r = Reader::new(data);
-        let version = r.uv()?;
-        ensure!(version == VERSION as u64, "unsupported index version {version}");
-        let created = r.iv()?;
-
+    fn entries_v1(r: &mut Reader) -> Result<Vec<Entry>> {
         let n = r.len()?;
         let mut entries = Vec::with_capacity(n.min(1 << 20));
         for _ in 0..n {
@@ -324,6 +347,71 @@ impl Index {
             }
             entries.push(Entry { path, kind, mode, mtime, xattrs });
         }
+        Ok(entries)
+    }
+
+    fn entries_v2(r: &mut Reader) -> Result<Vec<Entry>> {
+        let n = r.len()?;
+        let mut paths: Vec<String> = Vec::with_capacity(n.min(1 << 20));
+        let mut prev: Vec<u8> = Vec::new();
+        for _ in 0..n {
+            let shared = r.len()?;
+            ensure!(shared <= prev.len(), "bad path prefix in index");
+            prev.truncate(shared);
+            prev.extend_from_slice(r.bytes()?);
+            paths.push(String::from_utf8(prev.clone()).map_err(|_| anyhow::anyhow!("path in index is not UTF-8"))?);
+        }
+        let kinds: Vec<u8> = (0..n).map(|_| r.u8()).collect::<Result<_>>()?;
+        let mut entries: Vec<Entry> = Vec::with_capacity(n.min(1 << 20));
+        let mut prev_object = 0i64;
+        for (path, &k) in paths.into_iter().zip(&kinds) {
+            let kind = match k {
+                0 => {
+                    let size = r.uv()?;
+                    prev_object += r.iv()?;
+                    EntryKind::File { size, object: u32::try_from(prev_object)? }
+                }
+                1 => EntryKind::Dir,
+                2 => EntryKind::Symlink { target: Vec::new() },
+                3 => EntryKind::HardLink { target: 0 },
+                t => bail!("unknown entry kind {t}"),
+            };
+            entries.push(Entry { path, kind, mode: 0, mtime: (0, 0), xattrs: Vec::new() });
+        }
+        for e in &mut entries {
+            match &mut e.kind {
+                EntryKind::Symlink { target } => *target = r.bytes()?.to_vec(),
+                EntryKind::HardLink { target } => *target = r.uv()? as u32,
+                _ => {}
+            }
+        }
+        for e in &mut entries {
+            e.mode = r.uv()? as u32;
+        }
+        let mut prev_time = 0i64;
+        for e in &mut entries {
+            prev_time = prev_time.checked_add(r.iv()?).ok_or_else(|| anyhow::anyhow!("bad time in index"))?;
+            e.mtime.0 = prev_time;
+        }
+        for e in &mut entries {
+            e.mtime.1 = r.uv()? as u32;
+        }
+        for e in &mut entries {
+            let nx = r.len()?;
+            e.xattrs.reserve(nx.min(64));
+            for _ in 0..nx {
+                e.xattrs.push((r.str()?, r.bytes()?.to_vec()));
+            }
+        }
+        Ok(entries)
+    }
+
+    pub fn decode(data: &[u8]) -> Result<Self> {
+        let mut r = Reader::new(data);
+        let version = r.uv()?;
+        ensure!(version == 1 || version == VERSION as u64, "unsupported index version {version}");
+        let created = r.iv()?;
+        let entries = if version == 1 { Self::entries_v1(&mut r)? } else { Self::entries_v2(&mut r)? };
 
         let n = r.len()?;
         let mut objects = Vec::with_capacity(n.min(1 << 20));

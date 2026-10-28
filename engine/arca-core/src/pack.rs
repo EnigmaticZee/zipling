@@ -355,6 +355,9 @@ fn name_group(ext: &str) -> u8 {
         "ini", "cfg", "conf", "lock", "sql", "s", "asm", "cmake", "mk", "am", "in", "ac", "svg", "proto", "gradle",
         "properties", "bat", "ps1", "vue", "el", "hs", "ml", "erl", "ex", "exs", "clj", "dart", "r", "jl", "nim",
         "zig", "v", "sv", "vhd", "d", "f90", "pas", "cs", "fs", "vb", "awk", "sed", "diff", "patch", "po", "pot",
+        "orig", "cargo-ok", "gitignore", "gitattributes", "gitmodules", "stderr", "stdout", "m4", "rc", "inc", "pc",
+        "options", "1", "2", "3", "4", "5", "6", "7", "8", "9", "xsd", "xsl", "dtd", "bib", "mdx", "ipynb",
+        "editorconfig", "npmignore", "dockerignore", "env", "def", "mak", "tcl", "pyi", "pxd", "pyx",
     ];
     const MEDIA: &[&str] = &[
         "jpg", "jpeg", "jpe", "heic", "heif", "avif", "webp", "gif", "jxl", "mp4", "m4v", "mov", "m4a", "mp3", "aac",
@@ -387,6 +390,17 @@ fn class_rank(class: Option<Class>) -> u8 {
         Some(Class::Compressed) => 8,
         Some(Class::Jpeg) => 9,
     }
+}
+
+/// Text files that usually have no extension.
+fn text_name(name: &str) -> bool {
+    const NAMES: &[&str] = &[
+        "LICENSE", "LICENCE", "COPYING", "README", "NOTICE", "AUTHORS", "CHANGELOG", "CHANGES", "CONTRIBUTING",
+        "COPYRIGHT", "UNLICENSE", "INSTALL", "NEWS", "TODO", "THANKS", "HISTORY", "PATENTS", "VERSION", "Makefile",
+        "makefile", "GNUmakefile", "Dockerfile", "Gemfile", "Rakefile", "Procfile", "Vagrantfile", "BUILD", "WORKSPACE",
+        "CODEOWNERS", "Podfile", "Brewfile", "Justfile", "justfile",
+    ];
+    NAMES.iter().any(|n| name.starts_with(n))
 }
 
 fn order_key(job: &Job, entries: &[Entry]) -> (u8, u8, String, u64, String) {
@@ -442,7 +456,9 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                 stats.files += 1;
                 stats.input_bytes += size;
                 let name = s.entry.path.rsplit('/').next().unwrap_or(&s.entry.path);
-                jobs.push(Job { entry: i, source, size: *size, group: name_group(&extension(name)), class: None });
+                let ext = extension(name);
+                let group = if ext.is_empty() && text_name(name) { 0 } else { name_group(&ext) };
+                jobs.push(Job { entry: i, source, size: *size, group, class: None });
             }
             (EntryKind::Dir, _) => stats.dirs += 1,
             _ => {}
