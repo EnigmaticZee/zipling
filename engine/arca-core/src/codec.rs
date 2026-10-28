@@ -9,7 +9,9 @@ use zstd::zstd_safe::{CParameter, DParameter};
 #[derive(Debug, Clone, Copy)]
 pub struct CodecConfig {
     pub codec: Codec,
-    /// zstd: 1..=22, xz and lzma2: 0..=9 (with `extreme`), ppmd: model order 2..=64.
+    /// zstd: 1..=22, xz: 0..=9 (with `extreme`), ppmd: model order 2..=64.
+    /// lzma2: 7, 8 or 9 for match lengths (`fb`) 32, 48 or 64, `extreme` for 273;
+    /// the dictionary is always the block.
     pub level: i32,
     pub extreme: bool,
 }
@@ -34,14 +36,21 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
             Ok(enc.finish()?)
         }
         Codec::Lzma2 => {
-            // 7-Zip's -mx9 with the longest matches (fb 273) for `extreme`, the
-            // block as dictionary, and the match finder in its own thread (the
-            // output is the same either way).
+            // 7-Zip's binary-tree encoder with the block as dictionary and the
+            // match finder in its own thread (the output is the same either way).
+            // Longer matches (fb) cost CPU: 273 against 32 is 1.5-2.3x the time
+            // for 1-6% less output.
             let dict = (raw.len() as u32).clamp(1 << 16, 1 << 26);
+            let fb = match (cfg.extreme, cfg.level) {
+                (true, _) => 273,
+                (false, l) if l >= 9 => 64,
+                (false, 8) => 48,
+                _ => 32,
+            };
             let s = lzma_sdk::Settings {
-                level: cfg.level.clamp(0, 9),
+                level: 9,
                 dict_size: dict,
-                fb: std::env::var("ARCA_EXP_FB").ok().and_then(|v| v.parse().ok()).unwrap_or(if cfg.extreme { 273 } else { 64 }),
+                fb: std::env::var("ARCA_EXP_FB").ok().and_then(|v| v.parse().ok()).unwrap_or(fb),
                 mc: 0,
                 threads: 2,
             };

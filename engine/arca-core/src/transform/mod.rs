@@ -63,7 +63,9 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
     let fwd = prof::span(
         match class {
             Class::Jpeg if opts.jpeg => "fwd.lepton(+verify)",
-            Class::DeflateContainer(_) if opts.deflate => "fwd.deflate",
+            Class::DeflateContainer(crate::classify::DeflateKind::Png) if opts.deflate => "fwd.deflate.png",
+            Class::DeflateContainer(crate::classify::DeflateKind::Pdf) if opts.deflate => "fwd.deflate.pdf",
+            Class::DeflateContainer(_) if opts.deflate => "fwd.deflate.other",
             Class::MachO if opts.arm64 => "fwd.arm64",
             _ => "fwd.none",
         },
@@ -97,7 +99,14 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
 
     drop(fwd);
     if let Some((transform, out, lane)) = attempt {
-        let _v = prof::span(if transform == Transform::Deflate { "verify.deflate" } else { "verify.other" }, data.len() as u64);
+        let _v = prof::span(
+            match (transform == Transform::Deflate, class) {
+                (true, Class::DeflateContainer(crate::classify::DeflateKind::Png)) => "verify.deflate.png",
+                (true, _) => "verify.deflate.other",
+                _ => "verify.other",
+            },
+            data.len() as u64,
+        );
         // Lepton verifies its own round trip internally.
         let ok = !opts.verify
             || transform == Transform::Lepton
