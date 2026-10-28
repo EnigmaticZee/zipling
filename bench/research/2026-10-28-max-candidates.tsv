@@ -1,0 +1,13 @@
+set	candidate	bytes	pack_s	unpack_s
+docs	max-B	17920285	13.16	0.60
+jpeg	max-B	71096903	2.63	1.33
+apps	max-B	48679164	15.38	0.76
+source	max-B	8793324	14.50	0.60
+silesia	max-B	48628032	27.25	0.70
+mixed	max-B	194955752	35.71	2.89
+docs	max-C	17816457	16.20	0.58
+jpeg	max-C	71096903	2.71	1.39
+apps	max-C	48563750	17.22	0.80
+source	max-C	8257204	23.66	0.66
+silesia	max-C	48547778	32.99	0.68
+mixed	max-C	194098197	45.93	2.97

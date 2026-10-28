@@ -172,6 +172,31 @@ the new file order; Default is barely faster (its CPU is Lepton, preflate and
 zstd, untouched so far); Ultra is smaller everywhere but still extracts slowly
 (PPMd: 4.2 s source, 7.2 s Silesia, 8.0 s mixed).
 
+### Max settings across every set
+
+Three Max settings (A = the fast preset the user picked: text fb 64 in 32 MiB
+blocks, binaries fb 32; B = text fb 273 in 64 MiB blocks, binaries and pixels
+fb 64; C = fb 273 everywhere), size against this morning's Max:
+
+| Set | A | B | C |
+|---|---|---|---|
+| docs | +1.1%, 1.9x faster | −0.4%, 1.6x | −1.0%, 1.3x |
+| apps | −1.3%, 1.5x | −2.3%, 1.7x | −2.6%, 1.5x |
+| source | **+11.9%**, 4.2x | +6.1%, 1.9x | −0.4%, 1.2x |
+| silesia | +1.4%, 2.4x | −0.04%, 1.3x | −0.2%, 1.1x |
+| mixed (website) | +0.7%, 1.5x | −0.3%, 1.3x | −0.7%, 1.0x |
+| saved folder | 212.61 MiB, 21.8 s | 211.17 MiB, 25.5 s | 210.32 MiB, 34.4 s |
+
+(This morning: saved folder 211.47 MiB in 105 s.) Source code is where long
+matches matter most: its ~2,800 static libraries repeat whole object files.
+Raw: `bench/research/2026-10-28-max-candidates.tsv`.
+
+**Index format v2**: entries column by column, paths front-coded against the
+previous path, times and object numbers delta-coded (version 1 archives still
+open). Saved folder at Fast: index 251.37 KiB (v1, zstd-9) / 232.61 KiB (v1,
+zstd-19) → **206.75 KiB** (v2, zstd-9, 5 ms); raw index 1.3 MB → 0.5 MB. Fast on
+the source set is now within 858 bytes of this morning (was +24.8 KB).
+
 ## Known fixes
 
 1. **Max PNG rebuild cost** (in progress).
