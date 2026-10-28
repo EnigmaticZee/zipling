@@ -87,6 +87,7 @@ dependencies = [
  "lepton_jpeg",
  "libc",
  "liblzma",
+ "liblzma-sys",
  "memchr",
  "memmap2",
  "ppmd-rust",
