@@ -503,6 +503,393 @@ fn decode(src: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
     px
 }
 
+
+// ---------- v4: adaptive 16-symbol models + rANS (fast decoding) ----------
+
+const SCALE_BITS: u32 = 15;
+const SCALE: u32 = 1 << SCALE_BITS;
+const RANS_L: u32 = 1 << 16;
+
+/// Adaptive distribution over 16 symbols as a cumulative table (LZNA style):
+/// after each symbol the table moves 1/2^RATE of the way toward one that puts
+/// almost everything on that symbol. Every symbol keeps a frequency of at least 1.
+#[derive(Clone)]
+struct Cdf16 {
+    c: [u16; 17],
+    /// Symbols seen, for the warm-up: adapt fast at first, then settle.
+    n: u16,
+}
+
+const RATE: u32 = 7;
+
+impl Cdf16 {
+    fn new() -> Self {
+        let mut c = [0u16; 17];
+        for (i, v) in c.iter_mut().enumerate() {
+            *v = (i as u32 * SCALE / 16) as u16;
+        }
+        c[16] = SCALE as u16 - 1; // stored as SCALE-1 to fit; see `hi`
+        Cdf16 { c, n: 0 }
+    }
+    #[inline]
+    fn lo(&self, s: usize) -> u32 {
+        self.c[s] as u32
+    }
+    #[inline]
+    fn hi(&self, s: usize) -> u32 {
+        if s == 15 { SCALE } else { self.c[s + 1] as u32 }
+    }
+    /// Branch-free: counts the entries 1..=15 at or below `slot` (vectorises).
+    #[inline]
+    fn find(&self, slot: u32) -> usize {
+        let slot = slot as u16;
+        let mut n = 0u16;
+        for i in 1..16 {
+            n += (self.c[i] <= slot) as u16;
+        }
+        n as usize
+    }
+    #[inline]
+    fn update(&mut self, s: usize) {
+        let rate = match self.n {
+            0..=3 => 2,
+            4..=15 => 3,
+            16..=63 => 4,
+            64..=255 => 5,
+            _ => RATE,
+        };
+        self.n = self.n.saturating_add(1);
+        let s = s as i16;
+        let mut c: [i16; 16] = [0; 16];
+        for i in 0..16 {
+            c[i] = self.c[i] as i16; // SCALE <= 32768 fits once offset below
+        }
+        for i in 1..16 {
+            let ii = i as i16;
+            // Targets: i for i <= s, SCALE - 16 + i above s. Work relative to
+            // 16384 so everything fits in i16.
+            let target = if ii > s { (SCALE as i32 - 16 + i as i32 - 16384) as i16 } else { ii - 16384 };
+            let cur = c[i].wrapping_sub(16384);
+            c[i] = (cur + ((target - cur) >> rate)).wrapping_add(16384);
+        }
+        for i in 1..16 {
+            self.c[i] = c[i] as u16;
+        }
+    }
+}
+
+/// A binary probability for rANS (frequency of 0 out of SCALE).
+#[derive(Clone, Copy)]
+struct Bin(u16);
+
+impl Bin {
+    #[inline]
+    fn f0(self) -> u32 {
+        (self.0 as u32).clamp(1, SCALE - 1)
+    }
+    #[inline]
+    fn update(&mut self, bit: bool) {
+        let p = self.0 as i32;
+        self.0 = if bit { (p - (p >> 5)) as u16 } else { (p + ((SCALE as i32 - p) >> 5)) as u16 };
+    }
+}
+
+/// Token for a residual in -128..=127: 0 zero, 1..=7 positive with
+/// floor(log2 r) = token-1, 8..=15 negative with floor(log2 -r) = token-8.
+#[inline]
+fn tokenize(r: i32) -> (usize, u32, u32) {
+    if r == 0 {
+        return (0, 0, 0);
+    }
+    let a = r.unsigned_abs();
+    let k = 31 - a.leading_zeros();
+    let tok = if r > 0 { 1 + k as usize } else { 8 + k as usize };
+    (tok, k, a - (1 << k))
+}
+
+#[inline]
+fn untokenize(tok: usize, mant: u32) -> i32 {
+    if tok == 0 {
+        0
+    } else if tok < 8 {
+        ((1u32 << (tok - 1)) + mant) as i32
+    } else {
+        -(((1u32 << (tok - 8)) + mant) as i32)
+    }
+}
+
+struct Models4 {
+    tok: Vec<Cdf16>,
+    zero: [Bin; 8],
+    /// Top remainder bit, by (channel, size class, activity).
+    top: Vec<Bin>,
+}
+
+impl Models4 {
+    fn new(ch: usize) -> Self {
+        Models4 { tok: vec![Cdf16::new(); ch * ACT * C2], zero: [Bin(SCALE as u16 / 2); 8], top: vec![Bin(SCALE as u16 / 2); ch * 8 * ACT] }
+    }
+}
+
+#[inline]
+fn tctx(c: usize, act: usize, c2: usize) -> usize {
+    (c * ACT + act) * C2 + c2
+}
+
+struct BitWriter {
+    out: Vec<u8>,
+    acc: u64,
+    n: u32,
+}
+
+impl BitWriter {
+    #[inline]
+    fn put(&mut self, v: u32, bits: u32) {
+        self.acc |= (v as u64) << self.n;
+        self.n += bits;
+        while self.n >= 8 {
+            self.out.push(self.acc as u8);
+            self.acc >>= 8;
+            self.n -= 8;
+        }
+    }
+    fn finish(mut self) -> Vec<u8> {
+        if self.n > 0 {
+            self.out.push(self.acc as u8);
+        }
+        self.out
+    }
+}
+
+struct BitReader<'a> {
+    src: &'a [u8],
+    pos: usize,
+    acc: u64,
+    n: u32,
+}
+
+impl BitReader<'_> {
+    #[inline]
+    fn get(&mut self, bits: u32) -> u32 {
+        while self.n < bits {
+            self.acc |= (self.src.get(self.pos).copied().unwrap_or(0) as u64) << self.n;
+            self.pos += 1;
+            self.n += 8;
+        }
+        let v = (self.acc & ((1u64 << bits) - 1)) as u32;
+        self.acc >>= bits;
+        self.n -= bits;
+        v
+    }
+}
+
+/// Activity bucket for every activity value the coder can see.
+fn act_lut() -> Vec<u8> {
+    (0..1024).map(|v| bucket(v) as u8).collect()
+}
+
+/// Image with one zero row above and one zero column on each side, so the four
+/// neighbours of any pixel are plain reads.
+struct Padded {
+    buf: Vec<u8>,
+    /// Bytes per padded row.
+    stride: usize,
+    ch: usize,
+}
+
+impl Padded {
+    fn new(w: usize, h: usize, ch: usize) -> Self {
+        let stride = (w + 2) * ch;
+        Padded { buf: vec![0; (h + 1) * stride], stride, ch }
+    }
+    #[inline(always)]
+    fn at(&self, x: usize, y: usize) -> usize {
+        (y + 1) * self.stride + (x + 1) * self.ch
+    }
+}
+
+/// MED prediction, activity bucket and previous-error class for one channel.
+#[inline(always)]
+fn ctx4(p: &Padded, i: usize, c: usize, prev_err: i32, lut: &[u8]) -> (i32, usize, usize) {
+    let b = &p.buf;
+    let (s, ch) = (p.stride, p.ch);
+    let wv = b[i - ch + c] as i32;
+    let nv = b[i - s + c] as i32;
+    let nw = b[i - s - ch + c] as i32;
+    let ne = b[i - s + ch + c] as i32;
+    let act = (wv - nw).abs() + (nv - nw).abs() + (nv - ne).abs() + prev_err;
+    let ctx2 = if prev_err == 0 { 0 } else if prev_err < 8 { 1 } else { 2 };
+    (med(wv, nv, nw), lut[act as usize] as usize, ctx2)
+}
+
+fn encode4(px: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
+    let lut = act_lut();
+    let mut p = Padded::new(w, h, ch);
+    for y in 0..h {
+        let i = p.at(0, y);
+        p.buf[i..i + w * ch].copy_from_slice(&px[y * w * ch..(y + 1) * w * ch]);
+    }
+    let mut m = Models4::new(ch);
+    // Forward pass: model the symbols, remembering each one's (start, freq).
+    let mut syms: Vec<(u16, u16)> = Vec::with_capacity(w * h * (ch + 1));
+    let mut bits = BitWriter { out: Vec::new(), acc: 0, n: 0 };
+    let mut prev = [0i32; 4];
+    let mut zrow = vec![false; w + 2];
+    let mut ctxs = [(0usize, 0usize); 4];
+    let mut res = [0i32; 4];
+    for y in 0..h {
+        let mut zleft = false;
+        for x in 0..w {
+            let i = p.at(x, y);
+            let mut g_res = 0;
+            let mut all_zero = true;
+            for &c in order(ch) {
+                let (pred, act, c2) = ctx4(&p, i, c, prev[c], &lut);
+                let mut r = (p.buf[i + c] as i32 - pred) as i8 as i32;
+                if c == 1 && ch >= 3 {
+                    g_res = r;
+                } else if (c == 0 || c == 2) && ch >= 3 {
+                    r = (r - g_res) as i8 as i32;
+                }
+                ctxs[c] = (act, c2 + 3 * if c == 1 { 0 } else { gclass(g_res) });
+                res[c] = r;
+                all_zero &= r == 0;
+            }
+            let zc = zleft as usize + 2 * zrow[x + 1] as usize + 4 * zrow[x + 2] as usize;
+            let z = &mut m.zero[zc];
+            let f0 = z.f0();
+            syms.push(if all_zero { (0, f0 as u16) } else { (f0 as u16, (SCALE - f0) as u16) });
+            z.update(!all_zero);
+            zleft = all_zero;
+            zrow[x + 1] = all_zero;
+            for &c in order(ch) {
+                if !all_zero {
+                    let (act, c2) = ctxs[c];
+                    let model = &mut m.tok[tctx(c, act, c2)];
+                    let (tok, k, mant) = tokenize(res[c]);
+                    syms.push((model.lo(tok) as u16, (model.hi(tok) - model.lo(tok)) as u16));
+                    model.update(tok);
+                    if k > 0 && tok != 15 {
+                        let topbit = (mant >> (k - 1)) & 1 == 1;
+                        let b = &mut m.top[(c * 8 + k as usize) * ACT + act];
+                        let f0 = b.f0();
+                        syms.push(if topbit { (f0 as u16, (SCALE - f0) as u16) } else { (0, f0 as u16) });
+                        b.update(topbit);
+                        if k > 1 {
+                            bits.put(mant & ((1 << (k - 1)) - 1), k - 1);
+                        }
+                    }
+                }
+                prev[c] = res[c].abs().min(64);
+            }
+        }
+    }
+    // rANS, last symbol first.
+    let mut words: Vec<u16> = Vec::with_capacity(syms.len() / 2);
+    let mut x: u32 = RANS_L;
+    for &(start, freq) in syms.iter().rev() {
+        let (start, freq) = (start as u32, freq as u32);
+        let x_max = ((RANS_L >> SCALE_BITS) << 16) * freq;
+        while x >= x_max {
+            words.push(x as u16);
+            x >>= 16;
+        }
+        x = ((x / freq) << SCALE_BITS) + (x % freq) + start;
+    }
+    let mut out = Vec::with_capacity(8 + words.len() * 2);
+    out.extend_from_slice(&x.to_le_bytes());
+    for wd in words.iter().rev() {
+        out.extend_from_slice(&wd.to_le_bytes());
+    }
+    let mant = bits.finish();
+    let mut framed = (out.len() as u32).to_le_bytes().to_vec();
+    framed.extend_from_slice(&out);
+    framed.extend_from_slice(&mant);
+    framed
+}
+
+fn decode4(src: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
+    let lut = act_lut();
+    let rlen = u32::from_le_bytes(src[0..4].try_into().unwrap()) as usize;
+    let rans = &src[4..4 + rlen];
+    let mut bits = BitReader { src: &src[4 + rlen..], pos: 0, acc: 0, n: 0 };
+    let mut x = u32::from_le_bytes(rans[0..4].try_into().unwrap());
+    let mut rp = 4usize;
+    let mut m = Models4::new(ch);
+    let mut p = Padded::new(w, h, ch);
+    let mut prev = [0i32; 4];
+    let mut zrow = vec![false; w + 2];
+    macro_rules! renorm {
+        () => {
+            if x < RANS_L {
+                let wd = u16::from_le_bytes([rans.get(rp).copied().unwrap_or(0), rans.get(rp + 1).copied().unwrap_or(0)]);
+                rp += 2;
+                x = (x << 16) | wd as u32;
+            }
+        };
+    }
+    for y in 0..h {
+        let mut zleft = false;
+        for x0 in 0..w {
+            let i = p.at(x0, y);
+            let zc = zleft as usize + 2 * zrow[x0 + 1] as usize + 4 * zrow[x0 + 2] as usize;
+            let z = &mut m.zero[zc];
+            let f0 = z.f0();
+            let slot = x & (SCALE - 1);
+            let any = slot >= f0;
+            x = if any { (SCALE - f0) * (x >> SCALE_BITS) + slot - f0 } else { f0 * (x >> SCALE_BITS) + slot };
+            renorm!();
+            z.update(any);
+            zleft = !any;
+            zrow[x0 + 1] = !any;
+            let mut g_res = 0;
+            for &c in order(ch) {
+                let (pred, act, c2) = ctx4(&p, i, c, prev[c], &lut);
+                let c2 = c2 + 3 * if c == 1 { 0 } else { gclass(g_res) };
+                let coded = if any {
+                    let model = &mut m.tok[tctx(c, act, c2)];
+                    let slot = x & (SCALE - 1);
+                    let tok = model.find(slot);
+                    let (lo, hi) = (model.lo(tok), model.hi(tok));
+                    x = (hi - lo) * (x >> SCALE_BITS) + slot - lo;
+                    renorm!();
+                    model.update(tok);
+                    let k = if tok == 0 { 0 } else if tok < 8 { tok as u32 - 1 } else { tok as u32 - 8 };
+                    let mant = if k > 0 && tok != 15 {
+                        let b = &mut m.top[(c * 8 + k as usize) * ACT + act];
+                        let f0 = b.f0();
+                        let slot = x & (SCALE - 1);
+                        let topbit = slot >= f0;
+                        x = if topbit { (SCALE - f0) * (x >> SCALE_BITS) + slot - f0 } else { f0 * (x >> SCALE_BITS) + slot };
+                        renorm!();
+                        b.update(topbit);
+                        ((topbit as u32) << (k - 1)) | if k > 1 { bits.get(k - 1) } else { 0 }
+                    } else {
+                        0
+                    };
+                    untokenize(tok, mant)
+                } else {
+                    0
+                };
+                prev[c] = (coded as i8 as i32).abs().min(64);
+                let mut r = coded;
+                if c == 1 && ch >= 3 {
+                    g_res = coded;
+                } else if (c == 0 || c == 2) && ch >= 3 {
+                    r = (coded + g_res) as i8 as i32;
+                }
+                p.buf[i + c] = (pred + r) as u8;
+            }
+        }
+    }
+    let mut px = vec![0u8; w * h * ch];
+    for y in 0..h {
+        let i = p.at(0, y);
+        px[y * w * ch..(y + 1) * w * ch].copy_from_slice(&p.buf[i..i + w * ch]);
+    }
+    px
+}
+
 fn main() {
     let mut files = Vec::new();
     for a in std::env::args().skip(1) {
@@ -524,24 +911,30 @@ fn main() {
             let png = parse_png(&d)?;
             let (_types, px) = unfilter(&png);
             let t = Instant::now();
-            let ours = encode(&px, png.w, png.h, png.ch);
+            let v4 = std::env::var_os("PIX_V4").is_some();
+            let ours = if v4 { encode4(&px, png.w, png.h, png.ch) } else { encode(&px, png.w, png.h, png.ch) };
             let te = t.elapsed().as_secs_f64();
             let t = Instant::now();
-            let back = decode(&ours, png.w, png.h, png.ch);
+            let back = if v4 { decode4(&ours, png.w, png.h, png.ch) } else { decode(&ours, png.w, png.h, png.ch) };
             let td = t.elapsed().as_secs_f64();
             assert!(back == px, "round trip failed: {}", f.display());
             let t = Instant::now();
-            let mut xz = liblzma::write::XzEncoder::new(Vec::new(), 9);
-            std::io::Write::write_all(&mut xz, &png.filtered).unwrap();
-            let xz = xz.finish().unwrap().len();
+            let xz = if std::env::var_os("PIX_NOXZ").is_some() {
+                0
+            } else {
+                let mut xz = liblzma::write::XzEncoder::new(Vec::new(), 9);
+                std::io::Write::write_all(&mut xz, &png.filtered).unwrap();
+                xz.finish().unwrap().len()
+            };
             let tx = t.elapsed().as_secs_f64();
-            Some((f.file_name().unwrap().to_string_lossy().into_owned(), d.len(), px.len(), ours.len(), xz, te, td, tx))
+            let z1 = zstd::bulk::compress(&png.filtered, 1).unwrap().len();
+            Some((f.file_name().unwrap().to_string_lossy().into_owned(), d.len(), px.len(), ours.len(), xz, te, td, tx, z1))
         })
         .collect();
     let mut tot = (0usize, 0usize, 0usize, 0usize, 0f64, 0f64, 0f64);
-    for (name, size, raw, ours, xz, te, td, tx) in &rows {
+    for (name, size, raw, ours, xz, te, td, tx, z1) in &rows {
         if std::env::var_os("PIX_VERBOSE").is_some() {
-            println!("{name}\t{size}\t{raw}\t{ours}\t{xz}\t{:.3}\t{:.3}\t{:.3}", te, td, tx);
+            println!("{name}\t{size}\t{raw}\t{ours}\t{xz}\t{:.3}\t{:.3}\t{:.3}\t{z1}", te, td, tx);
         }
         tot.0 += size;
         tot.1 += raw;

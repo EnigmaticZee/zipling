@@ -327,7 +327,31 @@ production design needs fast decoding: integer-only prediction, static per-strip
 statistics, table-driven interleaved rANS for a combined zero/sign/exponent token
 with raw mantissa bits, aiming at 200+ MB/s.
 
-Next: that fast codec, then a real transform (pixels + row filter
+**v4, the fast design** (same PNGs Max expands, 409 eligible, 573 MB of pixels;
+times with nothing else running except other sessions):
+
+| Step | Size | Encode / decode CPU |
+|---|---:|---:|
+| v2 (adaptive binary, MED) for reference | 43.80 MB | 14.5 s / 24.9 s |
+| v4: 16-token adaptive tables (LZNA-style) + rANS, raw remainder bits | 46.32 MB | 11.0 s / 16.3 s |
+| zero-padded image, LUT activity, zero-flag row instead of `memcmp` | 46.37 MB | 7.5 s / 7.3 s |
+| top remainder bit modelled | 45.69 MB | 7.9 s / 7.5 s |
+| table adaptation rate 6 (was 4) | 44.38 MB | 8.1 s / 7.5 s |
+| warm-up (fast at first, settling to rate 7) | **44.03 MB** | 8.4 s / 7.8 s |
+
+So v4 is within 0.5% of v2 at ~3x the decoding speed (~75 MB/s per core). For
+comparison LZMA decodes these pixels at ~133 MB/s in the real Max archive, so the
+extra extraction CPU is ~2 s (~0.2 s wall) for the images the codec takes.
+
+**Choosing per image without running xz:** pixel codec when its output is under
+0.9x the zstd-1 size of the filtered rows, else the rows go to the LZMA image lane.
+That gives 41.30 MB against 40.95 MB for a perfect choice and 49.23 MB for xz-9
+alone (−16%), with the codec taking 484 of the 573 MB of pixels.
+
+Next: build it into the engine as a PNG mode of the Deflate transform (pixels coded
+in the file task, routed to the store lane; layout, corrections and row filter
+types to the binary lane), at Max and Ultra first. Default would need faster
+decoding first (it would add ~0.7 s to Default's 2.6 s extraction). (pixels + row filter
 types + preflate corrections), choosing per image between the pixel codec and the
 LZMA image lane, measured in real archives (solid blocks find cross-image matches
 that standalone numbers miss).
