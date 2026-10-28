@@ -16,6 +16,7 @@ pub mod scan;
 pub mod transform;
 pub mod unpack;
 mod wire;
+pub mod zip;
 
 pub use format::{Codec, Entry, EntryKind, Index, Transform};
 pub use hooks::{Hooks, ProgressFn};

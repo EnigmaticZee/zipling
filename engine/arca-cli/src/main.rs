@@ -78,6 +78,19 @@ enum Cmd {
     },
     /// List archive contents.
     List { archive: PathBuf },
+    /// Extract a ZIP archive with Arca's own ZIP reader.
+    Unzip {
+        archive: PathBuf,
+        #[arg(short = 'o', long, default_value = ".")]
+        dest: PathBuf,
+        #[arg(short = 'j', long)]
+        threads: Option<usize>,
+        #[arg(short, long)]
+        force: bool,
+        only: Vec<String>,
+    },
+    /// Check every entry of a ZIP archive with Arca's own ZIP reader.
+    Ziptest { archive: PathBuf },
     /// Decode everything and check every hash, writing nothing.
     Verify {
         archive: PathBuf,
@@ -219,6 +232,19 @@ fn main() -> Result<()> {
                     }
                 }
             }
+        }
+        Cmd::Unzip { archive, dest, threads, force, only } => {
+            let z = arca_core::zip::ZipArchive::open(&archive)?;
+            let opts = arca_core::zip::ZipExtractOptions { threads: threads.unwrap_or(0), overwrite: force, only, ..Default::default() };
+            let s = z.extract(&dest, &opts)?;
+            println!("extracted {} files ({}) in {:.2}s, CRCs checked{}", s.files, human(s.bytes), s.seconds,
+                if s.skipped_links.is_empty() { String::new() } else { format!("; {} unsafe links left out", s.skipped_links.len()) });
+        }
+        Cmd::Ziptest { archive } => {
+            let t = std::time::Instant::now();
+            let z = arca_core::zip::ZipArchive::open(&archive)?;
+            let n = z.verify(std::thread::available_parallelism().map_or(4, |n| n.get()))?;
+            println!("OK: {} entries, {} checked in {:.2}s", z.entries.len(), human(n), t.elapsed().as_secs_f64());
         }
         Cmd::Verify { archive, threads } => {
             let a = Archive::open(&archive)?;
