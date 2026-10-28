@@ -12,7 +12,7 @@ fn main() {
     let reps: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(1);
     let Class::DeflateContainer(kind) = classify(&data[..data.len().min(4096)]) else { panic!("not a deflate container") };
     let t = Instant::now();
-    let out = deflate::encode(&data, kind, chain, 0, false);
+    let out = deflate::encode(&data, kind, chain, 0, false, std::env::var_os("ARCA_EXP_PIXELS").is_some()).map(|e| e.stored);
     let fwd = t.elapsed().as_secs_f64();
     let Some(out) = out else {
         println!("{} -> not expanded; forward {fwd:.3} s", data.len());
