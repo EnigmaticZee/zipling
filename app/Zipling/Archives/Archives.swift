@@ -164,8 +164,25 @@ enum Archives {
             return ExtractResult(files: files, bytes: bytes, seconds: Date().timeIntervalSince(started))
         case .sevenZip:
             let started = Date()
+            // A ZIP made on a Mac holds a small "._" file of metadata for every file.
+            // Read into memory while the files extract, and applied from there, they
+            // cost a fraction of writing thousands of files out and merging each one.
+            let metadata = only.isEmpty ? archive.listing.macMetadata ?? [] : []
+            let inMemory = !metadata.isEmpty && metadata.reduce(0) { $0 + $1.size } <= 64 << 20
+            async let read: Data? = inMemory
+                ? try? SevenZip.read(archive.source, paths: metadata.map(\.path), password: archive.password, cancel: cancel)
+                : nil
             let skipped = try await SevenZip.extract(archive.source, to: dest, only: only, password: archive.password,
-                                                     totalBytes: bytes, cancel: cancel, progress: progress)
+                                                     totalBytes: bytes, cancel: cancel, skipMacMetadata: inMemory,
+                                                     progress: progress)
+            if inMemory {
+                let data = await read
+                if !(data.map { SafeExtraction.applyAppleDouble($0, entries: metadata, under: dest.path) } ?? false) {
+                    // Out to disk after all; SafeExtraction.finalize merges them as before.
+                    try await SevenZip.extract(archive.source, to: dest, only: metadata.map(\.path),
+                                               password: archive.password, totalBytes: 0, cancel: cancel) { _, _ in }
+                }
+            }
             return ExtractResult(files: files - UInt64(min(skipped.count, Int(files))), bytes: bytes,
                                  seconds: Date().timeIntervalSince(started), skipped: skipped)
         }

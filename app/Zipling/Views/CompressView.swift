@@ -405,7 +405,7 @@ struct CompressView: View {
             do {
                 let result = try await Creation.create(
                     items, into: output, options: options, password: password, task: job.task,
-                    cancel: job.cancelToken, progress: job.progressHandler)
+                    cancel: job.cancelToken, check: Preferences.checkNewArchives, progress: job.progressHandler)
                 made = result
                 job.finish(nil, outcome: "Made \(result.files.map(\.lastPathComponent).joined(separator: ", ")).",
                            placed: result.files)

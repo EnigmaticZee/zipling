@@ -8,6 +8,7 @@ enum Preferences {
         static let revealAfterExtract = "revealAfterExtract"
         static let showMenuBarIcon = "showMenuBarIcon"
         static let indexArchives = "indexArchives"
+        static let checkNewArchives = "checkNewArchives"
     }
 
     /// What to do when an extracted item's name is already taken.
@@ -31,6 +32,10 @@ enum Preferences {
 
     /// Move an archive to the Trash once everything in it came out intact.
     static var trashAfterExtract: Bool { UserDefaults.standard.bool(forKey: Key.trashAfterExtract) }
+
+    /// Read every new ZIP, 7z or TAR back in full before it's put in place. Converting,
+    /// editing and Shrink Later always do, since they replace an archive that exists.
+    static var checkNewArchives: Bool { UserDefaults.standard.bool(forKey: Key.checkNewArchives) }
 
     /// Let Spotlight find files inside archives Zipling opens.
     static var indexArchives: Bool {

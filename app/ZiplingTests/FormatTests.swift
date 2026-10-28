@@ -414,6 +414,65 @@ struct FormatTests {
         #expect(leftovers.isEmpty, "no ._ files")
     }
 
+    /// Metadata applied from memory matches what macOS itself restores (`ditto -x -k`)
+    /// on every item: tags, custom attributes, Finder info, resource forks, hidden flags.
+    @Test func macMetadataMatchesDitto() async throws {
+        let root = try makeTree()
+        let project = root.appending(path: "Project")
+        func set(_ name: String, _ value: Data, on path: String) {
+            _ = value.withUnsafeBytes { setxattr(project.appending(path: path).path, name, $0.baseAddress, value.count, 0, 0) }
+        }
+        let tags = try PropertyListSerialization.data(fromPropertyList: ["Red\n6", "Work"], format: .binary, options: 0)
+        set("com.apple.metadata:_kMDItemUserTags", tags, on: "docs/readme.txt")
+        set("com.apple.metadata:_kMDItemUserTags", tags, on: "docs/nested")
+        set("org.example.note", Data("kept as is".utf8), on: "Résumé.txt")
+        set("org.example.big", Data((0..<70_000).map { UInt8($0 % 251) }), on: "Résumé.txt")
+        var finderInfo = Data("TEXTttxt".utf8) + Data(count: 24)
+        finderInfo[8] = 0x40  // invisible
+        set(AppleDouble.finderInfoName, finderInfo, on: "docs/nested/copy.txt")
+        set(AppleDouble.resourceForkName, Data((0..<5_000).map { UInt8($0 % 256) }), on: "docs/readme.txt")
+        let archive = root.appending(path: "Finder.zip")
+        try sh("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", "Project", archive.path], in: root)
+
+        let ours = root.appending(path: "ours"), apple = root.appending(path: "apple")
+        try fm.createDirectory(at: ours, withIntermediateDirectories: true)
+        try sh("/usr/bin/ditto", ["-x", "-k", archive.path, apple.path], in: root)
+        let model = ArchiveModel(url: archive)
+        await model.load()
+        #expect(model.listing?.macMetadata?.isEmpty == false, "the metadata files are found")
+        model.extract([], to: ours, then: .nothing)
+        try await waitForJob(model)
+
+        func attributes(_ path: String) -> [String: Data] {
+            let size = listxattr(path, nil, 0, XATTR_NOFOLLOW)
+            guard size > 0 else { return [:] }
+            var names = [CChar](repeating: 0, count: size)
+            listxattr(path, &names, size, XATTR_NOFOLLOW)
+            let all = names.split(separator: 0).map { String(decoding: $0.map(UInt8.init), as: UTF8.self) }
+            // Set by the system on whatever writes a file, so they differ between tools.
+            let systemOwned: Set<String> = ["com.apple.provenance", SafeExtraction.quarantineName]
+            return Dictionary(uniqueKeysWithValues: all.filter { !systemOwned.contains($0) }.map {
+                ($0, SafeExtraction.xattr($0, of: path) ?? Data())
+            })
+        }
+        func hidden(_ path: String) -> Bool {
+            var info = stat()
+            return lstat(path, &info) == 0 && info.st_flags & UInt32(UF_HIDDEN) != 0
+        }
+        let items = ["Project", "Project/docs", "Project/docs/nested", "Project/docs/readme.txt",
+                     "Project/docs/nested/copy.txt", "Project/Résumé.txt"]
+        for item in items {
+            let (a, b) = (ours.appending(path: item).path, apple.appending(path: item).path)
+            #expect(attributes(a) == attributes(b), "\(item) has the same metadata as ditto gives it")
+            #expect(hidden(a) == hidden(b), "\(item) is hidden only if ditto hides it")
+        }
+        #expect(attributes(ours.appending(path: "Project/docs/readme.txt").path)[AppleDouble.resourceForkName]?.count == 5_000)
+        #expect(hidden(ours.appending(path: "Project/docs/nested/copy.txt").path))
+        let leftovers = fm.enumerator(atPath: ours.path)?.allObjects.compactMap { $0 as? String }
+            .filter { ($0 as NSString).lastPathComponent.hasPrefix("._") || $0.contains("__MACOSX") } ?? []
+        #expect(leftovers.isEmpty, "no ._ files or __MACOSX folder")
+    }
+
     private func waitForJob(_ model: ArchiveModel) async throws {
         for _ in 0..<2000 {
             if let job = model.job, !job.isRunning {

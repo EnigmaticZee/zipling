@@ -8,10 +8,17 @@ struct SettingsView: View {
     @AppStorage(Preferences.Key.showMenuBarIcon) private var showMenuBarIcon = true
     @State private var shrink = ShrinkLater.shared
     @AppStorage(Preferences.Key.indexArchives) private var indexArchives = true
+    @AppStorage(Preferences.Key.checkNewArchives) private var checkNewArchives = false
     @State private var automationNote: String?
 
     var body: some View {
         Form {
+            Section("Compressing") {
+                Toggle(isOn: $checkNewArchives) {
+                    Text("Check new ZIP, 7z and TAR archives")
+                    Text("Reads each one back in full before it's put in place, which can double the time for a ZIP. Zipling archives are checked by the engine as they're made, and converting or editing an archive always checks.")
+                }
+            }
             Section("Extracting") {
                 Picker(selection: $conflict) {
                     ForEach(Preferences.Conflict.allCases) { Text($0.title).tag($0) }

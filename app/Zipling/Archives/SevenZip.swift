@@ -111,6 +111,7 @@ enum SevenZip {
             : ["[HFS+ Private Data]", ".HFS+ Private Directory Data", ".fseventsd", ".Trashes", ".journal", ".journal_info_block"]
 
         var entries: [ArchiveEntry] = []
+        var metadata: [MacMetadata] = []
         var files: UInt64 = 0, dirs: UInt64 = 0, total: UInt64 = 0
         var anyEncrypted = headers.contains { $0["Encrypted"] == "+" }
         let isStream = Archives.streamFormats.contains((outer["Type"] ?? "").lowercased())
@@ -119,7 +120,14 @@ enum SevenZip {
             // blank and names the extracted file after the archive.
             let raw = (b["Path"] ?? "").isEmpty && isStream ? streamName(archive) : (b["Path"] ?? "")
             let path = cleanPath(raw)
-            guard !path.isEmpty, !isAppleDouble(path) else { continue }
+            guard !path.isEmpty else { continue }
+            if isAppleDouble(path) {
+                let size = UInt64(b["Size"] ?? "") ?? 0
+                if b["Folder"] != "+", !(b["Attributes"] ?? "").hasPrefix("D"), size > 0 {
+                    metadata.append(MacMetadata(path: raw, size: size))
+                }
+                continue
+            }
             if !hidden.isEmpty, path.split(separator: "/").contains(where: {
                 hidden.contains(String($0)) || $0.contains("HFS+ Private")
             }) { continue }
@@ -146,7 +154,8 @@ enum SevenZip {
             created: Int64(created.timeIntervalSince1970), files: files, dirs: dirs, totalSize: total,
             blocks: Int(inner["Blocks"] ?? "") ?? 0, entries: entries,
             format: outer["Type"] ?? "archive", method: inner["Method"].flatMap { $0.isEmpty ? nil : $0 },
-            solid: inner["Solid"].map { $0 == "+" }, encrypted: anyEncrypted)
+            solid: inner["Solid"].map { $0 == "+" }, encrypted: anyEncrypted,
+            macMetadata: metadata.isEmpty ? nil : metadata)
     }
 
     /// The path as 7-Zip writes it: "..", "." and empty components dropped, so
@@ -224,11 +233,14 @@ enum SevenZip {
     @discardableResult
     static func extract(
         _ archive: URL, to dest: URL, only: [String], password: String?, totalBytes: UInt64,
-        cancel: CancelToken, progress: @escaping @Sendable (UInt64, UInt64) -> Void
+        cancel: CancelToken, skipMacMetadata: Bool = false, progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws -> [String] {
         try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
         var args = ["x", "-y", "-snl", "-spd", "-bso0", "-bse2", "-bsp1", "-sccUTF-8", "-scsUTF-8",
                     "-o" + dest.path, archive.path]
+        // Read separately with `read` and applied in memory, instead of written out as
+        // thousands of small files.
+        if skipMacMetadata { args += ["-xr!__MACOSX", "-xr!._*"] }
         var listFile: URL?
         if !only.isEmpty {
             // A list file instead of arguments: no length limit, and with -spd no wildcards.
@@ -247,6 +259,18 @@ enum SevenZip {
         }
         progress(totalBytes, totalBytes)
         return skipped
+    }
+
+    /// The given files' contents, one after another in archive order, without writing
+    /// them anywhere. Meant for small files: it all arrives in memory.
+    static func read(_ archive: URL, paths: [String], password: String?, cancel: CancelToken) async throws -> Data {
+        let file = FileManager.default.temporaryDirectory.appending(path: "zipling-list-\(UUID().uuidString).txt")
+        try paths.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let out = try await run(["x", "-so", "-spd", "-bso0", "-bsp0", "-bse2", "-sccUTF-8", "-scsUTF-8",
+                                 archive.path, "@" + file.path], password: password, cancel: cancel)
+        try check(out, archive: archive, password: password, cancel: cancel)
+        return out.data
     }
 
     /// When every error is an entry 7-Zip refused to write for safety, the extraction
@@ -282,6 +306,8 @@ enum SevenZip {
         let status: Int32
         let stdout: String
         let stderr: String
+        /// Standard output as it came, for `-so`.
+        var data = Data()
     }
 
     /// Turns a failed run into an error people can act on.
@@ -395,7 +421,7 @@ private final class HelperRun: @unchecked Sendable {
                 lock.lock()
                 let result = SevenZip.Output(status: p.terminationStatus,
                                              stdout: String(decoding: out, as: UTF8.self),
-                                             stderr: String(decoding: err, as: UTF8.self))
+                                             stderr: String(decoding: err, as: UTF8.self), data: out)
                 lock.unlock()
                 continuation.resume(returning: result)
             }

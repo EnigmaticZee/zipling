@@ -24,7 +24,8 @@ enum Automation {
         do {
             let made = try await Creation.create(items, into: output, options: options,
                                                  password: format.supportsPassword ? password : nil,
-                                                 task: job.task, cancel: job.cancelToken, progress: job.progressHandler)
+                                                 task: job.task, cancel: job.cancelToken,
+                                                 check: Preferences.checkNewArchives, progress: job.progressHandler)
             job.finish(nil, outcome: "Made \(made.files.map(\.lastPathComponent).joined(separator: ", ")).", placed: made.files)
             AppRouter.shared.noteCreated(made.files[0])
             return made.files[0]

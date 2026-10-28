@@ -17,6 +17,9 @@ struct Listing: Decodable, Sendable {
     var solid: Bool?
     /// True when some entries (or the names themselves) are encrypted.
     var encrypted: Bool?
+    /// Mac metadata stored beside the files (`__MACOSX/…/._name`), in archive order.
+    /// Not listed as entries: it's applied to the files it describes on extraction.
+    var macMetadata: [MacMetadata]?
 
     var isZipling: Bool { format == nil }
     var createdDate: Date { Date(timeIntervalSince1970: TimeInterval(created)) }
@@ -25,6 +28,12 @@ struct Listing: Decodable, Sendable {
     var saved: Double {
         totalSize == 0 ? 0 : max(0, 1 - Double(archiveBytes) / Double(totalSize))
     }
+}
+
+/// One AppleDouble file in an archive: its path as stored, and its size.
+struct MacMetadata: Decodable, Sendable, Hashable {
+    let path: String
+    let size: UInt64
 }
 
 struct ArchiveEntry: Decodable, Sendable, Hashable {

@@ -72,7 +72,7 @@ Done (first slice):
 - [x] RAR 4 and RAR 5 samples in the tests (embedded, from libarchive's suite)
 - [x] Browse: folder tree sidebar, Quick Look on inner files (space, ⌘Y; follows the selection), a live preview pane, search inside nested archives, Finder keys (type-to-select, ⌘↑, ⌘↓, ⌘[, ⌘F), 100k entries open in ~1.5 s
 - [x] Get files out: drag out to Finder (extracted on drop), Extract Here (one item comes out as is, several go in a folder named after the archive), Keep Both / Replace (to the Trash) / Skip / Ask on conflicts, move to Trash only after a complete, checksummed extraction, background jobs with Dock progress, batch Extract Here
-- [x] Create: Zipling, ZIP (AES-256, UTF-8 names), 7z (hidden names), TAR.GZ, TAR.XZ; split presets; Mac clutter left out; saved presets; a suggestion based on what's being compressed; every archive read back before it's handed over
+- [x] Create: Zipling, ZIP (AES-256, UTF-8 names), 7z (hidden names), TAR.GZ, TAR.XZ; split presets; Mac clutter left out; saved presets; a suggestion based on what's being compressed; new ZIP, 7z and TAR archives read back before they're handed over when Settings asks (off by default; Zipling archives are checked as they're made)
 - [x] Edit in place: add/replace (drop on the list), delete, rename, new folder; ZIP, 7z and TAR through 7-Zip, Zipling and compressed tars rebuilt; edit a file in its own app and put it back
 - [x] System: Finder right-click (Services), Quick Look extension for `.zlg` and ZIP, Share, Dock drops (Option to extract), menu-bar drop zone with progress, Settings
 - [x] Convert any archive to Zipling, ZIP, 7z or a tarball (read back and checked; encrypted ZIP and 7z keep their password; the original can go to the Trash once the new one is checked)

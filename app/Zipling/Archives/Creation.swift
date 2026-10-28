@@ -114,9 +114,11 @@ enum Creation {
         _ items: [URL], into target: URL, options: CreateOptions, password: String?, totalBytes: UInt64,
         cancel: CancelToken, progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws {
+        // Balanced ZIP uses 7-Zip's fast Deflate, as Fast does: level 5's deeper search
+        // saved under 2% on a 660 MB folder and took three times as long.
         let level = switch options.level {
         case .fast: 1
-        case .balanced: 5
+        case .balanced: options.format == .zip ? 1 : 5
         case .max: 7
         case .ultra: 9
         }
@@ -125,6 +127,11 @@ enum Creation {
         if options.format == .zip {
             // UTF-8 names, so accents and other scripts survive on Windows.
             args.append("-mcu=on")
+        }
+        if options.format == .sevenZip, options.level == .balanced {
+            // Level 5's 32 MB window, split into 32 MB pieces instead of 128 MB so every
+            // core has one: 1.3x faster for about 3% more on a 660 MB folder.
+            args.append("-m0=LZMA2:d=32m:c=32m")
         }
         if let password, !password.isEmpty {
             args.append("-p")
