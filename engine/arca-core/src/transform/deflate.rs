@@ -292,7 +292,7 @@ fn zip_deflate_entries(d: &[u8]) -> Vec<(usize, usize)> {
 /// `self_check` asks preflate to re-create each stream as it goes. Callers that
 /// verify the whole transformed file afterwards (the default) turn it off: one
 /// round trip proves the same thing at a third less work.
-pub fn encode(data: &[u8], kind: DeflateKind, max_chain: u32, self_check: bool) -> Option<Vec<u8>> {
+pub fn encode(data: &[u8], kind: DeflateKind, max_chain: u32, steps_per_byte: u32, self_check: bool) -> Option<Vec<u8>> {
     let sc = Scanner {
         data,
         config: PreflateConfig {
@@ -300,7 +300,7 @@ pub fn encode(data: &[u8], kind: DeflateKind, max_chain: u32, self_check: bool) 
             verify_compression: self_check,
             max_chain_length: max_chain,
             cap_max_chain: std::env::var_os("ARCA_EXP_CAP").is_some(),
-            max_steps_per_byte: std::env::var("ARCA_EXP_STEPS").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
+            max_steps_per_byte: std::env::var("ARCA_EXP_STEPS").ok().and_then(|v| v.parse().ok()).unwrap_or(steps_per_byte),
         },
         budget: AtomicIsize::new(MAX_PLAIN_TOTAL as isize),
     };

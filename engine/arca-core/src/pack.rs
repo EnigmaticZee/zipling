@@ -95,6 +95,9 @@ impl PackOptions {
                 // Most real-world Deflate comes from zlib levels 1-7 (search depth
                 // <= 256); deeper search only helps the rare level-8/9 streams.
                 deflate_chain: if level == Level::Balanced { 256 } else { 4096 },
+                // A few photo-like PNGs from level-9 encoders need millions of
+                // searches to re-create (one took 3 s); they stay as they are.
+                deflate_steps_per_byte: 128,
             },
             dedup: true,
             probe: matches!(level, Level::Fast | Level::Balanced),

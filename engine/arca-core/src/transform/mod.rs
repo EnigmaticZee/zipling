@@ -22,6 +22,10 @@ pub struct TransformOpts {
     /// Preflate's match-search depth: lower is faster, but streams from encoders
     /// that searched deeper need more corrections.
     pub deflate_chain: u32,
+    /// Most hash-chain steps per compressed byte a Deflate stream may need to be
+    /// re-created (0: no limit). Re-creating costs ~3.1 ns a step on an M1, so 128
+    /// keeps every expanded stream above ~2.5 MB/s per core on extraction.
+    pub deflate_steps_per_byte: u32,
 }
 
 pub struct Prepared<'a> {
@@ -64,7 +68,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
         Class::Jpeg if opts.jpeg => jpeg::encode(data).map(|out| (Transform::Lepton, out, Lane::Store)),
         Class::DeflateContainer(kind) if opts.deflate => {
             let lane = if kind == crate::classify::DeflateKind::Png { Lane::Image } else { Lane::Binary };
-            deflate::encode(data, kind, opts.deflate_chain, !opts.verify).map(|out| (Transform::Deflate, out, lane))
+            deflate::encode(data, kind, opts.deflate_chain, opts.deflate_steps_per_byte, !opts.verify).map(|out| (Transform::Deflate, out, lane))
         }
         Class::MachO if opts.arm64 => {
             let ranges = arm64::code_ranges(data);
