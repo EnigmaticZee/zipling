@@ -348,7 +348,27 @@ extra extraction CPU is ~2 s (~0.2 s wall) for the images the codec takes.
 That gives 41.30 MB against 40.95 MB for a perfect choice and 49.23 MB for xz-9
 alone (−16%), with the codec taking 484 of the 573 MB of pixels.
 
-Next: build it into the engine as a PNG mode of the Deflate transform (pixels coded
+**In the engine** (`transform/pixels.rs`, Deflate layout version 2): a PNG whose
+pixels the codec takes stores layout, corrections, literal bytes and row filter
+types (binary lane) followed by the coded pixels (store lane); extraction decodes
+the pixels, re-applies the row filters and re-creates the Deflate stream. Unit
+tests cover round trips, filters and malformed input. On at Max and Ultra.
+
+Whole saved folder, Max (Mac at load ~24 when it started, so times are rough):
+
+| | Size | Make | Extract | Pack CPU |
+|---|---:|---:|---:|---:|
+| Max at the start of 2026-10-28 | 211.47 MiB | 105 s | 9.6 s | 722 s |
+| + rebuild budget | 217.17 MiB | 73 s | 3.58 s | 429 s |
+| **+ pixel codec** | **210.84 MiB** | **38.3 s** | 3.99 s | 259 s |
+
+Round trip byte-identical. The codec took 409 PNGs (573 MB of pixels); the image
+lane shrank to 117 MiB of flat images (4.73 MiB compressed, 26 s of LZMA instead
+of 212 s). Remaining pack CPU: binary lane 145 s (xz-9e), preflate 24 + 12 s
+(verification now includes decoding pixels), Lepton 24 s, text 22 s, pixels 8 s.
+Extraction: pixel decoding adds ~7 s of CPU and LZMA decoding drops 3.4 s.
+
+(Earlier plan, kept for the record: build it into the engine as a PNG mode of the Deflate transform (pixels coded
 in the file task, routed to the store lane; layout, corrections and row filter
 types to the binary lane), at Max and Ultra first. Default would need faster
 decoding first (it would add ~0.7 s to Default's 2.6 s extraction). (pixels + row filter

@@ -98,6 +98,8 @@ impl PackOptions {
                 // A few photo-like PNGs from level-9 encoders need millions of
                 // searches to re-create (one took 3 s); they stay as they are.
                 deflate_steps_per_byte: 128,
+                png_pixels: matches!(level, Level::Max | Level::Ultra)
+                    || std::env::var_os("ARCA_EXP_PIXELS").is_some(),
             },
             dedup: true,
             probe: matches!(level, Level::Fast | Level::Balanced),
@@ -738,8 +740,8 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
     if !claimed {
         return Ok(Hashed { hash, class, extra: 0, prepared: None });
     }
-    let (transform, owned, lane, cuts) = match plain_cuts {
-        Some(cuts) => (Transform::None, None, transform::plain_lane(class), cuts),
+    let (transform, owned, lane, store_from, cuts) = match plain_cuts {
+        Some(cuts) => (Transform::None, None, transform::plain_lane(class), None, cuts),
         None => {
             let p = transform::forward(&data, class, &opts.transforms);
             let owned = match p.stored {
@@ -749,15 +751,27 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
             let stored: &[u8] = owned.as_deref().unwrap_or(&data);
             let cuts = {
                 let _p = prof::span("file.chunk", stored.len() as u64);
-                cut_chunks(stored, opts.dedup)
+                match p.store_from {
+                    // Chunk the compressible head and the coded tail separately,
+                    // so each chunk belongs to one lane.
+                    Some(k) => {
+                        let mut c = cut_chunks(&stored[..k], opts.dedup);
+                        c.extend(cut_chunks(&stored[k..], opts.dedup).into_iter().map(|(o, l, h)| (o + k, l, h)));
+                        c
+                    }
+                    None => cut_chunks(stored, opts.dedup),
+                }
             };
-            (p.transform, owned, p.lane, cuts)
+            (p.transform, owned, p.lane, p.store_from, cuts)
         }
     };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
     let cuts = cuts
         .into_iter()
         .map(|(off, len, hash)| {
+            if store_from.is_some_and(|k| off >= k) {
+                return (off, len, hash, Lane::Store);
+            }
             let incompressible = opts.probe && matches!(lane, Lane::Binary | Lane::Image) && {
                 let _p = prof::span("file.probe", len as u64);
                 classify::probably_incompressible(&stored[off..off + len])

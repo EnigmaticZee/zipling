@@ -12,8 +12,17 @@
 //! u8 version | streams: (corr_len, plain_len)* | ops* | literal_len
 //! [corrections...][literal][plain texts...]
 //! ```
+//!
+//! Version 2 is a PNG whose pixels are coded with `pixels.rs` instead of being
+//! stored as filtered rows (one stream; `plain_len` is the rows' length):
+//!
+//! ```text
+//! version-1 fields up to literal_len | width | height | u8 channels | coded_len
+//! [corrections][literal][row filter types: height bytes][coded pixels]
+//! ```
 
 use crate::classify::DeflateKind;
+use crate::transform::pixels;
 use crate::wire::{Reader, Writer};
 use anyhow::{ensure, Result};
 use memchr::memmem;
@@ -287,12 +296,47 @@ fn zip_deflate_entries(d: &[u8]) -> Vec<(usize, usize)> {
     out
 }
 
+/// The transformed form of a file.
+pub struct Encoded {
+    pub stored: Vec<u8>,
+    /// Where already entropy-coded bytes (coded pixels) start, if any: they go to
+    /// the store lane, the rest to a compressing lane.
+    pub store_from: Option<usize>,
+}
+
+/// Width, height and channels of an 8-bit, non-interlaced PNG whose pixels the
+/// pixel codec can take (grey, grey + alpha, RGB, RGBA).
+fn png_geometry(d: &[u8]) -> Option<(usize, usize, usize)> {
+    let h = d.get(8..33)?;
+    if &h[4..8] != b"IHDR" || u32::from_be_bytes(h[0..4].try_into().ok()?) != 13 {
+        return None;
+    }
+    let (w, ht) = (u32::from_be_bytes(h[8..12].try_into().ok()?), u32::from_be_bytes(h[12..16].try_into().ok()?));
+    let (depth, ctype, interlace) = (h[16], h[17], h[20]);
+    let ch = match ctype {
+        0 => 1,
+        2 => 3,
+        4 => 2,
+        6 => 4,
+        _ => return None,
+    };
+    (depth == 8 && interlace == 0 && w > 0 && ht > 0).then_some((w as usize, ht as usize, ch))
+}
+
 /// Expands the Deflate streams in `data`. `None` when nothing worth expanding was found.
 ///
 /// `self_check` asks preflate to re-create each stream as it goes. Callers that
 /// verify the whole transformed file afterwards (the default) turn it off: one
-/// round trip proves the same thing at a third less work.
-pub fn encode(data: &[u8], kind: DeflateKind, max_chain: u32, steps_per_byte: u32, self_check: bool) -> Option<Vec<u8>> {
+/// round trip proves the same thing at a third less work. With `pixels`, a PNG's
+/// pixels are coded with the pixel codec when that beats compressing its rows.
+pub fn encode(
+    data: &[u8],
+    kind: DeflateKind,
+    max_chain: u32,
+    steps_per_byte: u32,
+    self_check: bool,
+    pixels: bool,
+) -> Option<Encoded> {
     let sc = Scanner {
         data,
         config: PreflateConfig {
@@ -339,8 +383,28 @@ pub fn encode(data: &[u8], kind: DeflateKind, max_chain: u32, steps_per_byte: u3
         literal.extend_from_slice(&data[pos..]);
     }
 
+    // Pixel mode: when the pixel codec's output is under 0.9x what zstd-1 makes of
+    // the rows, LZMA would not beat it either (on the saved folder this choice is
+    // within 1% of picking the better of the codec and xz-9 per image).
+    let mut coded_pixels = None;
+    if pixels && kind == DeflateKind::Png && streams.len() == 1 {
+        if let Some((pw, ph, ch)) = png_geometry(data) {
+            let rows = &streams[0].plain;
+            if let Some((types, px)) = pixels::unfilter(rows, pw, ph, ch) {
+                let coded = {
+                    let _p = crate::prof::span("fwd.pixels", px.len() as u64);
+                    pixels::encode(&px, pw, ph, ch)
+                };
+                let lz = zstd::bulk::compress(rows, 1).map_or(usize::MAX, |c| c.len());
+                if coded.len() as u64 * 10 < lz as u64 * 9 {
+                    coded_pixels = Some((pw, ph, ch, types, coded));
+                }
+            }
+        }
+    }
+
     let mut w = Writer::new();
-    w.u8(1);
+    w.u8(if coded_pixels.is_some() { 2 } else { 1 });
     w.uv(streams.len() as u64);
     for s in &streams {
         w.uv(s.corrections.len() as u64);
@@ -357,6 +421,18 @@ pub fn encode(data: &[u8], kind: DeflateKind, max_chain: u32, steps_per_byte: u3
         }
     }
     w.uv(literal.len() as u64);
+    if let Some((pw, ph, ch, types, coded)) = &coded_pixels {
+        w.uv(*pw as u64);
+        w.uv(*ph as u64);
+        w.u8(*ch as u8);
+        w.uv(coded.len() as u64);
+        w.raw(&streams[0].corrections);
+        w.raw(&literal);
+        w.raw(types);
+        let store_from = w.buf.len();
+        w.raw(coded);
+        return Some(Encoded { stored: w.buf, store_from: Some(store_from) });
+    }
     for s in &streams {
         w.raw(&s.corrections);
     }
@@ -364,12 +440,16 @@ pub fn encode(data: &[u8], kind: DeflateKind, max_chain: u32, steps_per_byte: u3
     for s in &streams {
         w.raw(&s.plain);
     }
-    Some(w.buf)
+    Some(Encoded { stored: w.buf, store_from: None })
 }
+
+/// Largest pixel image a stored PNG may ask the decoder to rebuild.
+const MAX_PIXEL_ROWS: usize = 1 << 30;
 
 pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
     let mut r = Reader::new(stored);
-    ensure!(r.u8()? == 1, "unknown deflate layout version");
+    let version = r.u8()?;
+    ensure!(version == 1 || version == 2, "unknown deflate layout version");
     let n = r.len()?;
     let mut lens = Vec::with_capacity(n.min(1 << 16));
     for _ in 0..n {
@@ -388,9 +468,23 @@ pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
         });
     }
     let lit_len = r.len()?;
-    let corrections: Vec<&[u8]> = lens.iter().map(|&(c, _)| r.raw(c)).collect::<Result<_>>()?;
-    let literal = r.raw(lit_len)?;
-    let plains: Vec<&[u8]> = lens.iter().map(|&(_, p)| r.raw(p)).collect::<Result<_>>()?;
+    let rebuilt_rows;
+    let (corrections, literal, plains): (Vec<&[u8]>, &[u8], Vec<&[u8]>) = if version == 2 {
+        let (pw, ph, ch, coded_len) = (r.len()?, r.len()?, r.u8()? as usize, r.len()?);
+        ensure!(n == 1 && (1..=4).contains(&ch), "bad pixel layout");
+        let rows_len = pw.checked_mul(ch).and_then(|s| s.checked_add(1)).and_then(|s| s.checked_mul(ph));
+        ensure!(rows_len == Some(lens[0].1) && lens[0].1 <= MAX_PIXEL_ROWS, "pixel layout does not match its rows");
+        let corrections = vec![r.raw(lens[0].0)?];
+        let literal = r.raw(lit_len)?;
+        let types = r.raw(ph)?;
+        let px = pixels::decode(r.raw(coded_len)?, pw, ph, ch)?;
+        rebuilt_rows = pixels::refilter(types, &px, pw, ph, ch)?;
+        (corrections, literal, vec![&rebuilt_rows[..]])
+    } else {
+        let corrections = lens.iter().map(|&(c, _)| r.raw(c)).collect::<Result<_>>()?;
+        let literal = r.raw(lit_len)?;
+        (corrections, literal, lens.iter().map(|&(_, p)| r.raw(p)).collect::<Result<_>>()?)
+    };
     ensure!(r.is_empty(), "trailing bytes in deflate layout");
 
     // Streams are independent: re-create them on all cores.
