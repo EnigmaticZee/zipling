@@ -87,6 +87,62 @@ fn mac_made_zip_extracts_like_ditto() {
 }
 
 #[test]
+fn entries_that_escape_are_left_out() {
+    // A ZIP whose names try to leave the destination, written by hand.
+    fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let (mut out, mut cd) = (Vec::new(), Vec::new());
+        for (name, data) in entries {
+            let crc = crc32fast::hash(data);
+            let at = out.len() as u32;
+            for (buf, central) in [(&mut out, false), (&mut cd, true)] {
+                buf.extend_from_slice(if central { b"PK\x01\x02" } else { b"PK\x03\x04" });
+                if central {
+                    buf.extend_from_slice(&20u16.to_le_bytes());
+                }
+                for v in [20u16, 0, 0, 0, 0x21] {
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
+                for v in [crc, data.len() as u32, data.len() as u32] {
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
+                buf.extend_from_slice(&(name.len() as u16).to_le_bytes());
+                buf.extend_from_slice(&0u16.to_le_bytes());
+                if central {
+                    for v in [0u16, 0, 0] {
+                        buf.extend_from_slice(&v.to_le_bytes());
+                    }
+                    buf.extend_from_slice(&0u32.to_le_bytes());
+                    buf.extend_from_slice(&at.to_le_bytes());
+                }
+                buf.extend_from_slice(name.as_bytes());
+                if !central {
+                    buf.extend_from_slice(data);
+                }
+            }
+        }
+        let cd_at = out.len() as u32;
+        let cd_len = cd.len() as u32;
+        out.extend_from_slice(&cd);
+        out.extend_from_slice(b"PK\x05\x06");
+        for v in [0u16, 0, entries.len() as u16, entries.len() as u16] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        out.extend_from_slice(&cd_len.to_le_bytes());
+        out.extend_from_slice(&cd_at.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("hostile.zip");
+    fs::write(&path, zip(&[("../evil.txt", b"escaped"), ("/abs.txt", b"absolute"), ("fine.txt", b"fine")])).unwrap();
+    let dest = tmp.path().join("dest");
+    let s = ZipArchive::open(&path).unwrap().extract(&dest, &ZipExtractOptions::default()).unwrap();
+    assert_eq!(fs::read(dest.join("fine.txt")).unwrap(), b"fine");
+    assert!(!tmp.path().join("evil.txt").exists());
+    assert_eq!(s.skipped_links.len(), 2);
+}
+
+#[test]
 fn refuses_what_it_does_not_handle() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("plain");

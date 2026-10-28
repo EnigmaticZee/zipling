@@ -37,6 +37,15 @@ char *arca_extract(const char *request, ArcaTask *task, ArcaProgress progress, v
 
 char *arca_verify(const char *archive_path, ArcaTask *task, ArcaProgress progress, void *ctx);
 
+// Extracts a ZIP archive with Arca's own reader: every core, CRCs checked, Mac
+// metadata from __MACOSX applied in memory, unsafe links left out.
+// request: {"archive": path, "dest": dir, "only": [paths], "overwrite": bool,
+//           "quarantine": [bytes]?}
+// {"ok": {files, bytes, seconds, skipped: [paths]}}, or {"error": "unsupported: ..."}
+// for archives it doesn't handle (encryption, other methods, legacy name
+// encodings, split archives): use another reader for those.
+char *arca_zip_extract(const char *request, ArcaTask *task, ArcaProgress progress, void *ctx);
+
 #ifdef __cplusplus
 }
 #endif

@@ -289,6 +289,58 @@ pub unsafe extern "C" fn arca_extract(
     })
 }
 
+#[derive(Deserialize)]
+struct ZipExtractRequest {
+    archive: PathBuf,
+    dest: PathBuf,
+    #[serde(default)]
+    only: Vec<String>,
+    #[serde(default)]
+    overwrite: bool,
+    /// Set as `com.apple.quarantine` on everything extracted.
+    #[serde(default)]
+    quarantine: Option<Vec<u8>>,
+}
+
+#[derive(Serialize)]
+struct ZipExtractResult {
+    files: u64,
+    bytes: u64,
+    seconds: f64,
+    /// Links that pointed outside the extracted items, left out for safety.
+    skipped: Vec<String>,
+}
+
+/// Extracts a ZIP archive with Arca's own reader (every core, CRCs checked, Mac
+/// metadata from `__MACOSX` applied in memory). Fails with an error starting
+/// "unsupported:" for archives it doesn't handle (encryption, other methods,
+/// legacy name encodings, split archives), for the caller to use another reader.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated JSON string; `task` null or live.
+#[no_mangle]
+pub unsafe extern "C" fn arca_zip_extract(
+    request: *const c_char,
+    task: *mut ArcaTask,
+    progress: ArcaProgress,
+    ctx: *mut c_void,
+) -> *mut c_char {
+    let hooks = hooks(task, progress, ctx);
+    respond(|| {
+        let req: ZipExtractRequest = serde_json::from_str(&arg(request)?).context("bad zip extract request")?;
+        let z = arca_core::zip::ZipArchive::open(&req.archive)?;
+        let opts = arca_core::zip::ZipExtractOptions {
+            overwrite: req.overwrite,
+            only: req.only,
+            quarantine: req.quarantine,
+            hooks,
+            ..Default::default()
+        };
+        let s = z.extract(&req.dest, &opts)?;
+        Ok(ZipExtractResult { files: s.files, bytes: s.bytes, seconds: s.seconds, skipped: s.skipped_links })
+    })
+}
+
 /// Decodes the whole archive and checks every hash without writing anything.
 ///
 /// # Safety
