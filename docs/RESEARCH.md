@@ -11,10 +11,11 @@ everything below it is the record.
 - Steps done: log, test sets (silesia pending a download OK), baseline profiles.
 - Known fixes: Fast mostly done (see 4); Max PNG rebuild mechanism done, size
   trade-off needs the user's call (see 1); memory and blocks-vs-cores not started.
-- Next: memory cap for Max; then deep research on Max make time (pixel codec,
-  faster LZMA match finding), PNG token coding to win back size.
-- Asked the user (2026-10-28): may Max grow ~3% for 2.7x faster extraction, and
-  may I download Silesia?
+- Done since: memory cap, rebuild budget (user OK'd ~3% growth for it), pixel
+  codec (won the size back), LZMA SDK codec (user OK'd the 7-Zip source download),
+  file order. Silesia downloaded (user OK).
+- Next: the user's call on Max's size/speed point; then Default extraction,
+  Lepton and preflate costs, ZIP reader/writer, app integration (quarantine).
 
 ## The task, in short
 
@@ -281,6 +282,57 @@ user: Lepton 24 s, preflate 12 + 3 s, pixels 11 s, binaries 9 s, text 7 s.
 LZMA2): claims 20–100% faster than 7-Zip's LZMA2 for 1–5% larger output. Useful
 to spread one block over several cores, but not the ~4x Max needs, and the size
 loss breaks the brief. Kept as a fallback for blocks-vs-cores.
+
+### The LZMA SDK as Max's codec (done)
+
+With the user's OK, 7-Zip 26.05's public-domain LZMA SDK files are vendored in
+`engine/vendor/lzma-sdk` (checksum-verified pinned release; every file says
+"Public domain"; see its ARCA-NOTES.md). New block codec `lzma2` (tag 4): raw
+LZMA2 behind its property byte, no xz container or CRC-64 (blocks carry BLAKE3).
+Max and Ultra use it (fb 273 = xz -9e's long matches; match finder in its own
+thread, which the SDK's tests show gives identical output). Decoding uses
+7-Zip's ARM64 assembly loop.
+
+Whole saved folder, Max, busy Mac:
+- size 210.84 → **210.60 MiB**; **LZMA decoding 4.76 → 3.18 s of CPU**; extraction
+  3.99 → 3.83 s;
+- no gain in make time (40 s): with ten blocks compressing at once there is no
+  spare core for the second match-finder thread. Pack CPU 259 → 270 s.
+
+**File order.** Most binary blocks were created only at 11.3 s, after the packer
+had worked through every slow PNG/PDF. Orders tried (Max):
+
+| Order within the binary group | Size | Make |
+|---|---:|---:|
+| Mach-O, ZIP, PNG, PDF, gzip, other binaries (before) | 210.60 MiB | 40.4 s |
+| Mach-O, other binaries, gzip, ZIP, PDF, PNG | 211.66 MiB | 35.8 s |
+| **Mach-O, ZIP, PDF, gzip, other binaries, PNG** | **210.35 MiB** | 39.6 s |
+
+Kept the last (PNGs last: their pixels mostly go to the store lane now). Default
+245.34 → 245.43 MiB with it (+0.04%), Fast unchanged.
+
+**LZMA effort against CPU** (SDK, one 64 MiB block each, one thread, CPU s):
+
+| Setting | Text | Mach-O | PDF + PNG tail | Other binaries |
+|---|---|---|---|---|
+| fb 273 | 6.249 MB / 28.1 | 10.155 / 33.6 | 6.407 / 33.8 | 20.561 / 25.6 |
+| fb 128 | 6.285 / 23.6 | 10.170 / 31.3 | 6.523 / 24.8 | 20.593 / 22.1 |
+| fb 64 | 6.366 / 20.0 | 10.233 / 28.8 | 6.641 / 19.3 | 20.631 / 19.3 |
+| fb 48 | 6.431 / 18.2 | 10.303 / 27.8 | 6.680 / 17.4 | 20.653 / 18.2 |
+| fb 32 | 6.593 / 15.6 | 10.529 / 23.1 | 6.769 / 14.7 | 20.734 / 16.2 |
+
+Max is now CPU-bound (275 s on 10 cores), so make time follows LZMA effort.
+Whole folder (Mac at load ~20):
+
+| Max variant | Size | Make | CPU |
+|---|---:|---:|---:|
+| start of 2026-10-28 | 211.47 MiB | 105 s | 722 s |
+| fb 273 (smallest) | 210.35 MiB | ~40 s | 275 s |
+| fb 64, 32 MiB text blocks | 211.50 MiB | 26.8 s | 194 s |
+| fb 32, 32 MiB text blocks | 212.85 MiB | 23.2 s | 168 s |
+
+Under 20 s on a quiet Mac likely needs fb 32-ish and cheaper preflate/Lepton
+work (34 s and 22 s of CPU), or a new idea for LZMA itself.
 
 ### A pixel codec for PNG data (most promising lead)
 

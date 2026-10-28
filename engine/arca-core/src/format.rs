@@ -42,6 +42,10 @@ pub enum Codec {
     Xz,
     /// PPMd var. H; the payload starts with `order: u8, mem_size: u32le`.
     Ppmd,
+    /// Raw LZMA2 from the LZMA SDK; the payload starts with its dictionary
+    /// property byte. (Xz blocks carry an xz container and a CRC-64 that the
+    /// block's own BLAKE3 hashes make redundant.)
+    Lzma2,
 }
 
 impl Codec {
@@ -51,6 +55,7 @@ impl Codec {
             Codec::Zstd => 1,
             Codec::Xz => 2,
             Codec::Ppmd => 3,
+            Codec::Lzma2 => 4,
         }
     }
 
@@ -60,6 +65,7 @@ impl Codec {
             1 => Codec::Zstd,
             2 => Codec::Xz,
             3 => Codec::Ppmd,
+            4 => Codec::Lzma2,
             _ => bail!("unknown codec {t}"),
         })
     }
@@ -70,6 +76,7 @@ impl Codec {
             Codec::Zstd => "zstd",
             Codec::Xz => "xz",
             Codec::Ppmd => "ppmd",
+            Codec::Lzma2 => "lzma2",
         }
     }
 }
