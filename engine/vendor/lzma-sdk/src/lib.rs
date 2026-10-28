@@ -1,7 +1,8 @@
 //! Igor Pavlov's LZMA SDK (public domain, from 7-Zip 26.05) for Arca's LZMA2
-//! blocks: its encoder is ~13% cheaper than liblzma's at the same settings and
-//! can run its match finder in a second thread without changing the output; its
-//! decoder has a hand-written ARM64 core.
+//! blocks: its encoder can run its match finder in a second thread, which on a
+//! 64 MiB block is 1.7x faster and uses 17% less CPU (the output differs from
+//! one thread's by ~0.06% but is the same on every run); its decoder has a
+//! hand-written ARM64 core.
 
 use std::os::raw::{c_int, c_uchar, c_uint};
 
@@ -30,7 +31,8 @@ pub struct Settings {
     pub fb: i32,
     /// Match-finder cycles; 0 picks the SDK's default for `fb`.
     pub mc: u32,
-    /// 1, or 2 to run the match finder in its own thread (same output).
+    /// 1, or 2 to run the match finder in its own thread (deterministic output,
+    /// a little different from one thread's).
     pub threads: i32,
 }
 
@@ -93,11 +95,13 @@ mod tests {
     }
 
     #[test]
-    fn threads_do_not_change_output() {
+    fn threaded_output_is_deterministic() {
         let data: Vec<u8> = (0..500_000u32).map(|i| (i.wrapping_mul(2654435761) >> 27) as u8 + (i % 13) as u8).collect();
-        let a = encode(&data, Settings { level: 9, dict_size: 1 << 20, fb: 64, mc: 0, threads: 1 }, data.len() + 1024).unwrap();
-        let b = encode(&data, Settings { level: 9, dict_size: 1 << 20, fb: 64, mc: 0, threads: 2 }, data.len() + 1024).unwrap();
-        assert_eq!(a, b);
+        let s = Settings { level: 9, dict_size: 1 << 20, fb: 64, mc: 0, threads: 2 };
+        let a = encode(&data, s, data.len() + 1024).unwrap();
+        for _ in 0..3 {
+            assert_eq!(encode(&data, s, data.len() + 1024).unwrap(), a);
+        }
     }
 
     #[test]

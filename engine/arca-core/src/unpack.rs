@@ -293,6 +293,7 @@ impl Archive {
             }),
             failure: Mutex::new(None),
             failed: AtomicBool::new(false),
+            trace: timing.then(|| (start, Mutex::new(Vec::new()))),
         };
 
         {
@@ -310,6 +311,28 @@ impl Archive {
             });
         }
         phase("blocks decoded, files written");
+        if let Some((_, v)) = &x.trace {
+            // Busy threads per quarter second, by kind of work.
+            let v = v.lock().unwrap();
+            let end = v.iter().map(|t| t.1).fold(0.0, f64::max);
+            let mut t = 0.0;
+            while t < end {
+                let mut busy = [0.0f64; 3];
+                for &(a, b, k) in v.iter() {
+                    let overlap = (b.min(t + 0.25) - a.max(t)).max(0.0);
+                    busy[k as usize] += overlap / 0.25;
+                }
+                eprintln!(
+                    "  {:>5.2}s  decode {:>4.1}  write {:>4.1}  rebuild {:>4.1}  total {:>4.1}",
+                    t,
+                    busy[0],
+                    busy[1],
+                    busy[2],
+                    busy[0] + busy[1] + busy[2]
+                );
+                t += 0.25;
+            }
+        }
         if let Some(e) = x.failure.lock().unwrap().take() {
             return Err(e);
         }
@@ -484,6 +507,9 @@ struct Extraction<'a> {
     sched: Mutex<Sched>,
     failure: Mutex<Option<anyhow::Error>>,
     failed: AtomicBool,
+    /// Debug timing: (start, end, kind) of every work item, kind 0 decode,
+    /// 1 write, 2 rebuild.
+    trace: Option<(Instant, Mutex<Vec<(f64, f64, u8)>>)>,
 }
 
 impl Extraction<'_> {
@@ -513,7 +539,16 @@ impl Extraction<'_> {
             st.ready.pop().expect("one ready item per job").3
         };
         let failed = self.failed.load(Ordering::Relaxed);
+        let t0 = self.trace.as_ref().map(|(s, _)| s.elapsed().as_secs_f64());
         let res = if failed { Ok(None) } else { self.hooks.check().and_then(|_| self.run(w)) };
+        if let (Some((s, v)), Some(t0)) = (&self.trace, t0) {
+            let kind = match w {
+                Work::Decode(_) => 0,
+                Work::Write(..) => 1,
+                Work::Rebuild(_) => 2,
+            };
+            v.lock().unwrap().push((t0, s.elapsed().as_secs_f64(), kind));
+        }
         let spawn = {
             let mut st = self.sched.lock().unwrap();
             st.running -= 1;
