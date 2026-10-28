@@ -243,6 +243,74 @@ packer. To check as part of the scheduling work.
 
 (to fill: codecs, transforms, dedup, scheduling, writing files, GPU, lzraven)
 
+### Codecs
+
+**Apple's LZRAVEN and LZMESH** (macOS 27 SDK, `compression.h`: `COMPRESSION_LZRAVEN
+= 0xD05`, `COMPRESSION_LZMESH = 0xE05`, buffer API only). Apple: LZRAVEN is
+"faster than, and generally compresses better than LZMA"; LZMESH replaces zlib and
+LZFSE. Per the Apple Wiki it appeared in 26.4b1 as "Mammoth". Tested on the
+dumped 64 MiB blocks with `compression_encode_buffer` (single thread; tool in the
+scratchpad, `rv.c`), compressed MB / encode s / decode s:
+
+| Block | LZRAVEN | LZMESH | Apple LZMA (level 6) | xz-9e | xz-9 |
+|---|---|---|---|---|---|
+| 008 synthetic pixels | 0.789 / 2.39 / 0.018 | 1.070 / 0.06 / 0.007 | 0.800 / 2.65 / 0.034 | 0.678 / 17.4 | 0.768 / 2.6 |
+| 000 source text | 6.701 / 11.45 / 0.101 | 9.081 / 0.18 / 0.028 | 6.654 / 13.90 / 0.240 | 6.258 / 20.3 | 6.371 / 15.3 |
+| 001 Mach-O | 11.655 / 18.13 / 0.211 | — | — | 10.201 / 25.8 | 10.251 / 22.4 |
+
+LZRAVEN sits between xz-6 and xz-9 on ratio (7% over xz-9e on text, 14% on
+Mach-O), compresses no faster, and decodes ~2.4x faster than LZMA. It needs macOS
+27 (Zipling supports 15+), so an archive using it would not open on older Macs.
+**Dead end for Max**; its fast decoding is noted in case Zipling ever requires 27.
+
+**7-Zip's LZMA encoder** (LZMA SDK, public domain), `7zz a -txz -mx9 -mfb=273`
+against `xz -9e`, alternating, same blocks: Mach-O 10.159 MB in 15.5 s vs 10.201 MB
+in 27.7 s; synthetic pixels 0.698 MB in 13.8 s vs 0.678 MB in 17.4 s. But 7-Zip
+used ~1.6 threads even at `-mmt1` (its match finder runs in its own thread):
+user time 24.1 s vs 27.7 s, so **~13% less CPU and slightly smaller**, and a
+two-thread match finder for when there are fewer blocks than cores.
+Worth vendoring (needs the 7-Zip source download).
+
+**Where Max's CPU goes** (thread CPU time, `prof.rs` now uses
+`CLOCK_THREAD_CPUTIME_ID`): Max 429 s user: pixel blocks 212 s (600 MB, xz-9e),
+binary blocks 145 s (415 MB), text blocks 23 s, Lepton 23 s, preflate 23 + 4 s.
+**Blocks are 89% of Max.** Under 20 s needs ~4x less block CPU. Default 67 s
+user: Lepton 24 s, preflate 12 + 3 s, pixels 11 s, binaries 9 s, text 7 s.
+
+**Fast LZMA2** (Conor McCarthy, BSD-3/GPL-2; parallel radix match finder, standard
+LZMA2): claims 20–100% faster than 7-Zip's LZMA2 for 1–5% larger output. Useful
+to spread one block over several cores, but not the ~4x Max needs, and the size
+loss breaks the brief. Kept as a fallback for blocks-vs-cores.
+
+### A pixel codec for PNG data (most promising lead)
+
+Per-PNG study of the saved folder (644 PNGs, 1,106 MB of pixels; standalone xz-9 per
+image): photo-like images (under 6:1) are 56% of the compressed pixel bytes but
+29% of the CPU; flat UI graphics (over 30:1) are 6.5% of the output and 13% of the
+CPU. 75% of the whole gain from expanding PNGs costs 21% of the LZMA CPU.
+
+Prototype (`examples/pixbench.rs`): undo the PNG row filters, predict each pixel
+with MED (LOCO-I), code green's residual, then red and blue as differences from
+green's, then alpha, with an LZMA-style adaptive binary range coder (12-bit
+probabilities; contexts: 12 activity buckets x 3 previous-error classes; residual
+as zero flag, sign, Elias-gamma exponent, mantissa). No run mode, no tuning.
+On the 559 8-bit non-interlaced docs PNGs (1,042 MB of pixels):
+
+| | Size | CPU |
+|---|---:|---:|
+| xz-9 on the filtered rows, per image | 70.44 MB | 167.8 s |
+| pixel codec v0, per image | 70.62 MB | 22.3 s encode, 21.7 s decode |
+| better of the two, per image | **61.77 MB** | |
+
+By type (xz ratio): under 3:1 ours is 0.894 of xz; 3–6: 0.854; 6–12: 0.940;
+12–30: 1.185; over 30: 1.753 (flat areas need a run mode). Decoding runs at ~48 MB/s
+per core, slower than LZMA's ~150 MB/s: a cost on extraction to keep in view.
+
+Next: run mode, a better predictor, then a real transform (pixels + row filter
+types + preflate corrections), choosing per image between the pixel codec and the
+LZMA image lane, measured in real archives (solid blocks find cross-image matches
+that standalone numbers miss).
+
 Ideas queued, with why:
 
 - **PNG token coding.** For costly PNGs, instead of replaying the encoder, store the
