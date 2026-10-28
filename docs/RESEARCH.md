@@ -134,6 +134,44 @@ the busy pack pool. While it waits on the join, the thread steals unrelated task
 (e.g. a 3 s PNG), so one file's hash can finish seconds late and stall the in-order
 packer. To check as part of the scheduling work.
 
+## All website sets, before and after (2026-10-28)
+
+Every rebuilt set at every level, this morning's engine (tag
+`before-engine-research`, built in a separate worktree) against commit e891199.
+Sizes exact; times rough (the baseline ran while other tests ran). All 48 round
+trips byte-identical. Raw: `bench/research/2026-10-28-sets-*.tsv`, script
+`bench/research/sets.sh`.
+
+| Set | Level | Size before | Size now | Δ | Make before → now |
+|---|---|---:|---:|---:|---|
+| docs | fast | 41.50 MB | 41.52 MB | +0.06% | 0.29 → 0.24 s |
+| docs | default | 22.21 | 22.17 | −0.17% | 2.28 → 2.06 |
+| docs | max | 18.00 | 18.20 | +1.12% | 21.4 → 11.4 |
+| docs | ultra | 18.00 | 17.82 | −1.03% | 22.1 → 16.2 |
+| jpeg | all | 71.09–95.10 | +0.00–0.01% | | 1.2–1.7x faster |
+| apps | fast | 72.40 | 72.46 | +0.09% | 0.51 → 0.38 |
+| apps | default | 62.43 | 62.39 | −0.08% | 2.74 → 2.25 |
+| apps | max | 49.84 | 49.17 | −1.34% | 26.5 → 18.0 |
+| apps | ultra | 49.81 | 48.53 | −2.56% | 26.9 → 17.3 |
+| source | fast | 13.55 | 13.57 | +0.18% | 0.57 → 0.42 |
+| source | default | 11.22 | 11.23 | +0.11% | 2.31 → 2.15 |
+| source | max | 8.29 | 9.28 | **+11.94%** | 27.6 → 6.5 |
+| source | ultra | 8.29 | 8.26 | −0.36% | 27.5 → 23.2 |
+| silesia | fast | 65.74 | 65.67 | −0.10% | 0.31 → 0.25 |
+| silesia | default | 57.27 | 57.27 | 0.00% | 5.89 → 5.54 |
+| silesia | max | 48.65 | 49.31 | +1.37% | 36.0 → 14.8 |
+| silesia | ultra | 47.00 | 46.90 | −0.21% | 27.4 → 17.9 |
+| mixed | fast | 288.27 | 288.37 | +0.04% | 1.45 → 1.04 |
+| mixed | default | 223.39 | 223.25 | −0.06% | 10.9 → 10.4 |
+| mixed | max | 195.48 | 196.76 | +0.66% | 47.2 → 31.9 |
+| mixed | ultra | 193.63 | 192.26 | −0.71% | 37.9 → 37.1 |
+
+Findings: the fast Max (the user's choice, made on the saved folder's +0.65%)
+costs 12% on source code; Fast and Default have small regressions (≤0.18%) from
+the new file order; Default is barely faster (its CPU is Lepton, preflate and
+zstd, untouched so far); Ultra is smaller everywhere but still extracts slowly
+(PPMd: 4.2 s source, 7.2 s Silesia, 8.0 s mixed).
+
 ## Known fixes
 
 1. **Max PNG rebuild cost** (in progress).
