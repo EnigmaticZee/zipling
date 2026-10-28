@@ -368,6 +368,23 @@ of 212 s). Remaining pack CPU: binary lane 145 s (xz-9e), preflate 24 + 12 s
 (verification now includes decoding pixels), Lepton 24 s, text 22 s, pixels 8 s.
 Extraction: pixel decoding adds ~7 s of CPU and LZMA decoding drops 3.4 s.
 
+**Max's critical path** (block timeline, `ARCA_DEBUG_TIMING=1` now prints each
+block's queue, start and end): files are done at 11.9 s, but each 64 MiB xz-9e
+block takes 17–32 s with ten running, the one text block 27.5 s, and most binary
+blocks were only created at 9.2 s because the in-order packer waited on slow
+PNG/PDF files ahead of them. Smaller blocks (busy Mac, so sizes only):
+
+| Blocks | Size | Text lane | Binary lane |
+|---|---:|---:|---:|
+| 64 MiB text and binary (Max) | 210.84 MiB | 5.97 | 92.34 |
+| text 32 MiB | 211.03 MiB | 6.16 | 92.34 |
+| text 16 MiB | 211.16 MiB | 6.29 | 92.34 |
+| binary 32 MiB, text 32 | 212.82 MiB | 6.16 | 94.12 |
+
+32 MiB binary blocks cost 2% of the binary lane: not the lever. Spreading one
+block over two threads with identical output (7-Zip's threaded match finder)
+is. The pixel codec's 16-entry table search and update now use NEON.
+
 (Earlier plan, kept for the record: build it into the engine as a PNG mode of the Deflate transform (pixels coded
 in the file task, routed to the store lane; layout, corrections and row filter
 types to the binary lane), at Max and Ultra first. Default would need faster
