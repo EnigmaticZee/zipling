@@ -93,9 +93,31 @@ fn unfilter(p: &Png) -> (Vec<u8>, Vec<u8>) {
 
 // ---------- binary range coder (LZMA style, 12-bit probabilities) ----------
 
-const PBITS: u32 = 12;
-const PONE: u16 = 1 << PBITS;
-const SHIFT: u32 = 4;
+/// A probability (of a 0 bit, out of 65536) tracked at two speeds and averaged.
+#[derive(Clone, Copy)]
+struct P {
+    fast: u16,
+    slow: u16,
+}
+
+const HALF: P = P { fast: 1 << 15, slow: 1 << 15 };
+
+impl P {
+    #[inline]
+    fn get(self) -> u32 {
+        ((self.fast as u32 + self.slow as u32) >> 1).clamp(32, 65536 - 32)
+    }
+    #[inline]
+    fn update(&mut self, bit: bool) {
+        if bit {
+            self.fast -= self.fast >> 4;
+            self.slow -= self.slow >> 7;
+        } else {
+            self.fast += (65535 - self.fast) >> 4;
+            self.slow += (65535 - self.slow) >> 7;
+        }
+    }
+}
 
 struct Enc {
     low: u64,
@@ -127,16 +149,15 @@ impl Enc {
         self.low = (self.low & 0x00FF_FFFF) << 8;
     }
     #[inline]
-    fn bit(&mut self, p: &mut u16, b: bool) {
-        let bound = (self.range >> PBITS) * *p as u32;
+    fn bit(&mut self, p: &mut P, b: bool) {
+        let bound = (self.range >> 16) * p.get();
         if !b {
             self.range = bound;
-            *p += (PONE - *p) >> SHIFT;
         } else {
             self.low += bound as u64;
             self.range -= bound;
-            *p -= *p >> SHIFT;
         }
+        p.update(b);
         while self.range < (1 << 24) {
             self.range <<= 8;
             self.shift_low();
@@ -172,18 +193,17 @@ impl<'a> Dec<'a> {
         b
     }
     #[inline]
-    fn bit(&mut self, p: &mut u16) -> bool {
-        let bound = (self.range >> PBITS) * *p as u32;
+    fn bit(&mut self, p: &mut P) -> bool {
+        let bound = (self.range >> 16) * p.get();
         let b = if self.code < bound {
             self.range = bound;
-            *p += (PONE - *p) >> SHIFT;
             false
         } else {
             self.code -= bound;
             self.range -= bound;
-            *p -= *p >> SHIFT;
             true
         };
+        p.update(b);
         while self.range < (1 << 24) {
             self.range <<= 8;
             self.code = (self.code << 8) | self.next() as u32;
@@ -197,18 +217,43 @@ impl<'a> Dec<'a> {
 const ACT: usize = 12;
 
 /// Adaptive probabilities for one channel's residuals.
+/// Second context: 0..3 from this channel's previous error, times 4 classes of
+/// the size of green's residual in the same pixel (0 for green itself).
+const C2: usize = 12;
+
 struct Model {
-    zero: [[u16; 3]; ACT],
-    sign: [[u16; 3]; ACT],
-    expo: [[[u16; 8]; 3]; ACT],
-    mant: [[[u16; 8]; 8]; ACT],
+    zero: [[P; C2]; ACT],
+    sign: [[P; C2]; ACT],
+    expo: [[[P; 8]; C2]; ACT],
+    mant: [[[P; 8]; 8]; ACT],
 }
 
 impl Model {
     fn new() -> Box<Self> {
-        let h = PONE / 2;
-        Box::new(Model { zero: [[h; 3]; ACT], sign: [[h; 3]; ACT], expo: [[[h; 8]; 3]; ACT], mant: [[[h; 8]; 8]; ACT] })
+        let h = HALF;
+        Box::new(Model { zero: [[h; C2]; ACT], sign: [[h; C2]; ACT], expo: [[[h; 8]; C2]; ACT], mant: [[[h; 8]; 8]; ACT] })
     }
+}
+
+#[inline]
+fn gclass(g: i32) -> usize {
+    match g.unsigned_abs() {
+        0 => 0,
+        1..=2 => 1,
+        3..=8 => 2,
+        _ => 3,
+    }
+}
+
+/// Context for the whole-pixel "no residual at all" flag.
+#[inline]
+fn pixel_ctx(px: &[u8], w: usize, ch: usize, x: usize, y: usize, prev_zero: bool) -> usize {
+    let s = w * ch;
+    let same = |a: usize, b: usize| px[a..a + ch] == px[b..b + ch];
+    let here = y * s + x * ch;
+    let flat_w = x > 0 && y > 0 && same(here - ch, here - s - ch);
+    let flat_n = y > 0 && x + 1 < w && x > 0 && same(here - s, here - s - ch);
+    prev_zero as usize + 2 * flat_w as usize + 4 * flat_n as usize
 }
 
 #[inline]
@@ -237,6 +282,89 @@ fn bucket(v: i32) -> usize {
         81..=130 => 9,
         131..=220 => 10,
         _ => 11,
+    }
+}
+
+/// Blended prediction: several simple predictors, each weighted by how small
+/// its errors were at the neighbouring pixels (W, N, NW, NE) of the same channel.
+const K: usize = 6;
+
+struct Blend {
+    w: usize,
+    ch: usize,
+    /// errs[(row & 1)][(x * ch + c) * K + k]
+    errs: [Vec<u16>; 2],
+    last: [[i32; K]; 4],
+    med_only: bool,
+}
+
+impl Blend {
+    fn new(w: usize, ch: usize) -> Self {
+        Blend {
+            w,
+            ch,
+            errs: [vec![0; w * ch * K], vec![0; w * ch * K]],
+            last: [[0; K]; 4],
+            med_only: std::env::var_os("PIX_MED").is_some(),
+        }
+    }
+
+    #[inline]
+    fn predict(&mut self, px: &[u8], x: usize, y: usize, c: usize, prev_err: i32) -> (i32, usize, usize) {
+        if self.med_only {
+            return predict(px, self.w, self.ch, x, y, c, prev_err);
+        }
+        let (w, ch) = (self.w, self.ch);
+        let s = w * ch;
+        let at = |xx: usize, yy: usize| px[yy * s + xx * ch + c] as i32;
+        let wv = if x > 0 { at(x - 1, y) } else if y > 0 { at(x, y - 1) } else { 0 };
+        let nv = if y > 0 { at(x, y - 1) } else { wv };
+        let nw = if x > 0 && y > 0 { at(x - 1, y - 1) } else { nv };
+        let ne = if y > 0 && x + 1 < w { at(x + 1, y - 1) } else { nv };
+        let p = [wv, nv, ne, (wv + nv - nw).clamp(0, 255), med(wv, nv, nw), (wv + ne + 1) >> 1];
+        let cur = &self.errs[y & 1];
+        let up = &self.errs[(y + 1) & 1];
+        let e = |row: &Vec<u16>, xx: usize, k: usize| row[(xx * ch + c) * K + k] as u32;
+        let mut num: u64 = 0;
+        let mut den: u64 = 0;
+        let mut exp: u64 = 0;
+        for k in 0..K {
+            let mut cost = 0u32;
+            if x > 0 {
+                cost += e(cur, x - 1, k);
+            }
+            if y > 0 {
+                cost += e(up, x, k);
+                if x > 0 {
+                    cost += e(up, x - 1, k);
+                }
+                if x + 1 < w {
+                    cost += e(up, x + 1, k);
+                }
+            }
+            let wt = (1u64 << 32) / ((1 + cost as u64) * (1 + cost as u64));
+            num += wt * p[k] as u64;
+            den += wt;
+            exp += wt * cost as u64;
+        }
+        self.last[c] = p;
+        let pred = ((num + den / 2) / den) as i32;
+        let act = (exp / den) as i32 + prev_err;
+        let ctx2 = if prev_err == 0 { 0 } else if prev_err < 8 { 1 } else { 2 };
+        (pred, bucket(act), ctx2)
+    }
+
+    /// Records each predictor's error once the true value is known.
+    #[inline]
+    fn update(&mut self, x: usize, y: usize, c: usize, actual: i32) {
+        if self.med_only {
+            return;
+        }
+        let p = self.last[c];
+        let row = &mut self.errs[y & 1];
+        for k in 0..K {
+            row[(x * self.ch + c) * K + k] = (p[k] - actual).unsigned_abs().min(255) as u16;
+        }
     }
 }
 
@@ -305,21 +433,38 @@ fn order(ch: usize) -> &'static [usize] {
 fn encode(px: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
     let mut e = Enc::new();
     let mut models: Vec<Box<Model>> = (0..ch).map(|_| Model::new()).collect();
+    let mut pz = [HALF; 8];
     let mut prev = vec![0i32; ch];
+    let mut prev_zero = false;
+    let mut preds = [(0i32, 0usize, 0usize); 4];
+    let mut res = [0i32; 4];
+    let mut blend = Blend::new(w, ch);
     for y in 0..h {
         for x in 0..w {
             let mut g_res = 0;
+            let mut all_zero = true;
             for &c in order(ch) {
-                let (pred, act, c2) = predict(px, w, ch, x, y, c, prev[c]);
+                let (pred, act, c2) = blend.predict(px, x, y, c, prev[c]);
                 let actual = px[(y * w + x) * ch + c] as i32;
+                blend.update(x, y, c, actual);
                 let mut r = (actual - pred) as i8 as i32;
                 if c == 1 && ch >= 3 {
                     g_res = r;
                 } else if (c == 0 || c == 2) && ch >= 3 {
                     r = (r - g_res) as i8 as i32;
                 }
-                encode_residual(&mut e, &mut models[c], act, c2, r);
-                prev[c] = r.abs().min(64);
+                preds[c] = (pred, act, c2 + 3 * if c == 1 { 0 } else { gclass(g_res) });
+                res[c] = r;
+                all_zero &= r == 0;
+            }
+            e.bit(&mut pz[pixel_ctx(px, w, ch, x, y, prev_zero)], !all_zero);
+            prev_zero = all_zero;
+            for &c in order(ch) {
+                if !all_zero {
+                    let (_, act, c2) = preds[c];
+                    encode_residual(&mut e, &mut models[c], act, c2, res[c]);
+                }
+                prev[c] = res[c].abs().min(64);
             }
         }
     }
@@ -329,21 +474,29 @@ fn encode(px: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
 fn decode(src: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
     let mut d = Dec::new(src);
     let mut models: Vec<Box<Model>> = (0..ch).map(|_| Model::new()).collect();
+    let mut pz = [HALF; 8];
     let mut px = vec![0u8; w * h * ch];
     let mut prev = vec![0i32; ch];
+    let mut prev_zero = false;
+    let mut blend = Blend::new(w, ch);
     for y in 0..h {
         for x in 0..w {
+            let any = d.bit(&mut pz[pixel_ctx(&px, w, ch, x, y, prev_zero)]);
+            prev_zero = !any;
             let mut g_res = 0;
             for &c in order(ch) {
-                let (pred, act, c2) = predict(&px, w, ch, x, y, c, prev[c]);
-                let mut r = decode_residual(&mut d, &mut models[c], act, c2);
-                prev[c] = (r as i8 as i32).abs().min(64);
+                let (pred, act, c2) = blend.predict(&px, x, y, c, prev[c]);
+                let c2 = c2 + 3 * if c == 1 { 0 } else { gclass(g_res) };
+                let coded = if any { decode_residual(&mut d, &mut models[c], act, c2) } else { 0 };
+                prev[c] = (coded as i8 as i32).abs().min(64);
+                let mut r = coded;
                 if c == 1 && ch >= 3 {
-                    g_res = r;
+                    g_res = coded;
                 } else if (c == 0 || c == 2) && ch >= 3 {
-                    r = (r + g_res) as i8 as i32;
+                    r = (coded + g_res) as i8 as i32;
                 }
                 px[(y * w + x) * ch + c] = (pred + r) as u8;
+                blend.update(x, y, c, px[(y * w + x) * ch + c] as i32);
             }
         }
     }

@@ -306,7 +306,28 @@ By type (xz ratio): under 3:1 ours is 0.894 of xz; 3–6: 0.854; 6–12: 0.940;
 12–30: 1.185; over 30: 1.753 (flat areas need a run mode). Decoding runs at ~48 MB/s
 per core, slower than LZMA's ~150 MB/s: a cost on extraction to keep in view.
 
-Next: run mode, a better predictor, then a real transform (pixels + row filter
+Iterations (docs PNGs, 1,042 MB of pixels; xz-9 per image = 70.44 MB):
+
+| Version | Change | Size | Best of codec/xz per image | Encode / decode CPU |
+|---|---|---:|---:|---:|
+| v0 | MED, per-channel zero flag | 70.62 MB | 61.77 MB | 22 s / 22 s |
+| v1 | whole-pixel zero flag; green's residual as context | 64.32 MB | 60.49 MB | 18 s / 19 s |
+| v2 | 16-bit probabilities, fast+slow rates averaged | 63.80 MB | 60.00 MB | 19 s / 21 s |
+| v3 | blend of 6 predictors weighted by neighbours' errors | 63.86 MB | 59.10 MB | 42 s / 63 s |
+
+v3 is better on photos (0.80 of xz) and worse on flat images, which go to LZMA
+anyway. **On the 439 PNGs Max actually expands** (the budget skips the costliest
+photo-like ones): xz-9 49.23 MB; MED codec 43.80 MB; blend 43.20 MB; better of
+blend/xz per image **39.75 MB (−19%)**, which would take ~9 MB (~4%) off Max and
+most of the pixel lane's 212 s of CPU.
+
+The catch is decoding: 13–30 MB/s per core (about ten adaptive binary decisions
+per byte) would add ~10 s of CPU to Max extraction, losing to Zipgeist there. The
+production design needs fast decoding: integer-only prediction, static per-stripe
+statistics, table-driven interleaved rANS for a combined zero/sign/exponent token
+with raw mantissa bits, aiming at 200+ MB/s.
+
+Next: that fast codec, then a real transform (pixels + row filter
 types + preflate corrections), choosing per image between the pixel codec and the
 LZMA image lane, measured in real archives (solid blocks find cross-image matches
 that standalone numbers miss).
