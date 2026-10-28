@@ -1,0 +1,1 @@
+{"rustc":4729267665118638530,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[11050506297539643678,"build_script_build",false,3559592356604795228]],"local":[{"RerunIfChanged":{"output":"release/build/crossbeam-utils-30e18dd78aac9663/output","paths":["no_atomic.rs"]}}],"rustflags":["-C","target-cpu=apple-m1"],"config":0,"compile_kind":0}

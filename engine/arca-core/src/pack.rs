@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::time::Instant;
@@ -53,6 +53,7 @@ pub struct PackOptions {
     pub probe: bool,
     pub text_codec: CodecConfig,
     pub binary_codec: CodecConfig,
+    pub image_codec: CodecConfig,
     /// zstd level for the index. 19 costs ~0.3 s on one thread for a 10,000-file
     /// folder and saves ~7% of an index that is under 0.1% of the archive.
     pub index_level: i32,
@@ -94,6 +95,7 @@ impl PackOptions {
             probe: matches!(level, Level::Fast | Level::Balanced),
             text_codec: text,
             binary_codec: binary,
+            image_codec: binary,
             index_level: if matches!(level, Level::Fast | Level::Balanced) { 9 } else { 19 },
             hooks: Hooks::default(),
         }
@@ -160,40 +162,12 @@ fn read_file(path: &Path, size: u64) -> Result<FileData> {
     }
 }
 
-/// Small files are read whole while sniffing, so each is opened only once.
-const SMALL_FILE: u64 = 64 << 10;
-/// Cap on small-file contents held between sniffing and packing.
-const SMALL_CACHE_BYTES: u64 = 256 << 20;
-
-/// Classifies a file from its first bytes; returns its whole content when small.
-fn sniff(path: &Path, size: u64, cache_left: &AtomicI64) -> (Class, Option<Vec<u8>>) {
-    let _p = prof::span("pack.sniff", size.min(SMALL_FILE));
-    let Ok(mut f) = File::open(path) else { return (Class::Binary, None) };
-    if size <= SMALL_FILE && cache_left.fetch_sub(size as i64, Ordering::Relaxed) >= size as i64 {
-        let mut v = Vec::with_capacity(size as usize);
-        if f.read_to_end(&mut v).is_ok() {
-            return (classify::classify(&v[..v.len().min(SNIFF_LEN)]), Some(v));
-        }
-        return (Class::Binary, None);
-    }
-    let mut head = [0u8; SNIFF_LEN];
-    let mut n = 0;
-    while n < head.len() {
-        match f.read(&mut head[n..]) {
-            Ok(0) | Err(_) => break,
-            Ok(k) => n += k,
-        }
-    }
-    (classify::classify(&head[..n]), None)
-}
-
 struct Job {
     entry: usize,
     source: PathBuf,
     size: u64,
-    class: Class,
-    /// Content read while sniffing (small files only); taken by the file task.
-    content: Mutex<Option<Vec<u8>>>,
+    /// Sort group guessed from the file name (see `name_group`).
+    group: u8,
 }
 
 struct OpenBlock {
@@ -215,10 +189,10 @@ struct BlockSink {
     slots_tx: Sender<()>,
     slots_rx: Receiver<()>,
     done_tx: Sender<Result<Done>>,
-    open: [Option<OpenBlock>; 3],
+    open: [Option<OpenBlock>; 4],
     next_id: u32,
-    block_sizes: [usize; 3],
-    codecs: [CodecConfig; 3],
+    block_sizes: [usize; 4],
+    codecs: [CodecConfig; 4],
     lanes: Vec<Lane>,
 }
 
@@ -256,6 +230,7 @@ impl BlockSink {
                 match (cfg.codec, block.lane) {
                     (Codec::Store, _) => "block.store",
                     (_, Lane::Text) => "block.text",
+                    (_, Lane::Image) => "block.image",
                     _ => "block.binary",
                 },
                 block.buf.len() as u64,
@@ -278,29 +253,51 @@ impl BlockSink {
     }
 
     fn flush(&mut self) {
-        for lane in [Lane::Text, Lane::Binary, Lane::Store] {
+        for lane in [Lane::Text, Lane::Binary, Lane::Image, Lane::Store] {
             self.flush_lane(lane);
         }
     }
 }
 
-/// Sort group: 0 feeds the text lane, 1 the binary lane, 2 mostly the store lane.
-fn order_group(class: Class) -> u8 {
-    match class {
-        Class::Text => 0,
-        Class::Compressed | Class::Jpeg => 2,
-        _ => 1,
+/// Sort group from the extension: 0 for text, 2 for media and other
+/// already-compressed formats, 1 for everything else. Files are ordered by name
+/// before anything is read, so reading, sniffing and packing all stream in one
+/// pass (a separate sniffing pass opened every file twice). The lane a file
+/// lands in still comes from its content.
+fn name_group(ext: &str) -> u8 {
+    const TEXT: &[&str] = &[
+        "txt", "md", "markdown", "rst", "tex", "csv", "tsv", "log", "rs", "c", "h", "cc", "cpp", "cxx", "hpp", "hh",
+        "m", "mm", "swift", "py", "rb", "pl", "php", "lua", "go", "java", "kt", "scala", "js", "mjs", "cjs", "ts",
+        "tsx", "jsx", "json", "toml", "yaml", "yml", "xml", "html", "htm", "css", "scss", "sh", "bash", "zsh", "fish",
+        "ini", "cfg", "conf", "lock", "sql", "s", "asm", "cmake", "mk", "am", "in", "ac", "svg", "proto", "gradle",
+        "properties", "bat", "ps1", "vue", "el", "hs", "ml", "erl", "ex", "exs", "clj", "dart", "r", "jl", "nim",
+        "zig", "v", "sv", "vhd", "d", "f90", "pas", "cs", "fs", "vb", "awk", "sed", "diff", "patch", "po", "pot",
+    ];
+    const MEDIA: &[&str] = &[
+        "jpg", "jpeg", "jpe", "heic", "heif", "avif", "webp", "gif", "jxl", "mp4", "m4v", "mov", "m4a", "mp3", "aac",
+        "flac", "ogg", "oga", "opus", "mkv", "webm", "avi", "zst", "xz", "bz2", "7z", "rar", "lz4", "lzma", "aar",
+    ];
+    if TEXT.contains(&ext) {
+        0
+    } else if MEDIA.contains(&ext) {
+        2
+    } else {
+        1
     }
 }
 
-fn order_key(job: &Job, entries: &[Entry]) -> (u8, Class, String, u64, String) {
+fn order_key(job: &Job, entries: &[Entry]) -> (u8, String, u64, String) {
     let path = &entries[job.entry].path;
     let name = path.rsplit('/').next().unwrap_or(path);
-    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    let ext = extension(name);
     // Lepton output is stored raw, so JPEG order can't affect size: biggest first
     // keeps the slowest files from finishing alone at the end.
-    let size_first = if job.class == Class::Jpeg { u64::MAX - job.size } else { 0 };
-    (order_group(job.class), job.class, ext, size_first, name.to_owned())
+    let size_first = if matches!(ext.as_str(), "jpg" | "jpeg" | "jpe") { u64::MAX - job.size } else { 0 };
+    (job.group, ext, size_first, name.to_owned())
+}
+
+fn extension(name: &str) -> String {
+    name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default()
 }
 
 /// Packs `inputs` into a new archive at `output`. The archive is written to a
@@ -329,7 +326,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     };
     let scanned = {
         let _p = prof::span("pack.scan", 0);
-        scan::scan(inputs)?
+        pool.install(|| scan::scan(inputs))?
     };
     phase("scanned");
     let mut entries: Vec<Entry> = Vec::with_capacity(scanned.len());
@@ -340,7 +337,8 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
             (EntryKind::File { size, .. }, Some(source)) => {
                 stats.files += 1;
                 stats.input_bytes += size;
-                jobs.push(Job { entry: i, source, size: *size, class: Class::Binary, content: Mutex::new(None) });
+                let name = s.entry.path.rsplit('/').next().unwrap_or(&s.entry.path);
+                jobs.push(Job { entry: i, source, size: *size, group: name_group(&extension(name)) });
             }
             (EntryKind::Dir, _) => stats.dirs += 1,
             _ => {}
@@ -348,21 +346,8 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         entries.push(s.entry);
     }
 
-    pool.install(|| {
-        use rayon::prelude::*;
-        let cache_left = AtomicI64::new(SMALL_CACHE_BYTES as i64);
-        jobs.par_iter_mut().with_max_len(64).for_each(|j| {
-            if j.size == 0 {
-                j.class = Class::Text;
-            } else {
-                let (class, content) = sniff(&j.source, j.size, &cache_left);
-                j.class = class;
-                *j.content.get_mut().unwrap() = content;
-            }
-        });
-    });
     jobs.sort_by_cached_key(|j| order_key(j, &entries));
-    phase("sniffed and sorted");
+    phase("sorted");
 
     let (mut block_size, mut text_block_size) = (opts.block_size, opts.text_block_size);
     if stats.input_bytes < opts.adaptive_below {
@@ -411,10 +396,10 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         slots_tx,
         slots_rx,
         done_tx,
-        open: [None, None, None],
+        open: [None, None, None, None],
         next_id: 0,
-        block_sizes: [text_block_size, block_size, block_size],
-        codecs: [opts.text_codec, opts.binary_codec, store],
+        block_sizes: [text_block_size, block_size, block_size, block_size],
+        codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec],
         lanes: Vec::new(),
     };
 
@@ -441,8 +426,8 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let (ready_tx, ready_rx) = crossbeam_channel::unbounded::<()>();
     // Sort groups feed lanes in order, so each lane's last block can be sealed,
     // and start compressing, as soon as its group has gone by.
-    let text_end = jobs.iter().position(|j| order_group(j.class) > 0).unwrap_or(n);
-    let binary_end = jobs.iter().position(|j| order_group(j.class) > 1).unwrap_or(n);
+    let text_end = jobs.iter().position(|j| j.group > 0).unwrap_or(n);
+    let binary_end = jobs.iter().position(|j| j.group > 1).unwrap_or(n);
 
     let jobs = &jobs;
     pool.in_place_scope(|scope| -> Result<()> {
@@ -502,7 +487,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                         let (transform, owned, lane, cuts, data) = prepared;
                         let stored: &[u8] = owned.as_deref().unwrap_or(&data);
                         if debug {
-                            eprintln!("{:?}\t{:?}\t{}\t{}\t{}\t{}", lane, job.class, transform.name(), data.len(), stored.len(), entries[job.entry].path);
+                            eprintln!("{:?}\t{:?}\t{}\t{}\t{}\t{}", lane, mine.class, transform.name(), data.len(), stored.len(), entries[job.entry].path);
                         }
                         let t = tstats.entry(transform.name()).or_default();
                         t.files += 1;
@@ -543,6 +528,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                 }
                 if k + 1 == binary_end {
                     sink.flush_lane(Lane::Binary);
+                    sink.flush_lane(Lane::Image);
                 }
             }
             Ok(())
@@ -565,7 +551,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     }
     let blocks: Vec<BlockInfo> = blocks.into_iter().collect::<Option<_>>().context("block missing from writer")?;
 
-    let mut lane_stats = [("text", 0u64, 0u64), ("binary", 0, 0), ("store", 0, 0)];
+    let mut lane_stats = [("text", 0u64, 0u64), ("binary", 0, 0), ("store", 0, 0), ("image", 0, 0)];
     for (b, lane) in blocks.iter().zip(&lanes) {
         lane_stats[*lane as usize].1 += b.raw_len;
         lane_stats[*lane as usize].2 += b.comp_len;
@@ -616,6 +602,7 @@ type Prepared = (Transform, Option<Vec<u8>>, Lane, Vec<Cut>, FileData);
 
 struct Hashed {
     hash: [u8; 32],
+    class: Class,
     /// Present when this task claimed the content (first to hash it).
     prepared: Option<Prepared>,
 }
@@ -623,21 +610,18 @@ struct Hashed {
 /// Reads, hashes and, unless another task already claimed the same content,
 /// transforms and chunks one file.
 fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>>, opts: &PackOptions) -> Result<Hashed> {
-    let cached = job.content.lock().unwrap().take();
-    let data = match cached {
-        Some(v) => FileData::Mem(v),
-        None => {
-            let _p = prof::span("file.read", job.size);
-            read_file(&job.source, job.size)?
-        }
+    let data = {
+        let _p = prof::span("file.read", job.size);
+        read_file(&job.source, job.size)?
     };
     if data.len() as u64 != job.size {
         bail!("{} changed size while archiving", job.source.display());
     }
+    let class = if data.is_empty() { Class::Text } else { classify::classify(&data[..data.len().min(SNIFF_LEN)]) };
     // Content identity. Files that will be transformed hash their original bytes
     // (the index keeps that hash to check the rebuilt file). Every other file is
     // only hashed once, chunk by chunk, and its identity comes from those hashes.
-    let transformable = transform::applies(job.class, &opts.transforms);
+    let transformable = transform::applies(class, &opts.transforms);
     let (hash, plain_cuts) = if transformable || data.is_empty() {
         let _h = prof::span("file.hash", job.size);
         (*blake3::hash(&data).as_bytes(), None)
@@ -660,12 +644,12 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
         }
     };
     if !claimed {
-        return Ok(Hashed { hash, prepared: None });
+        return Ok(Hashed { hash, class, prepared: None });
     }
     let (transform, owned, lane, cuts) = match plain_cuts {
-        Some(cuts) => (Transform::None, None, transform::plain_lane(job.class), cuts),
+        Some(cuts) => (Transform::None, None, transform::plain_lane(class), cuts),
         None => {
-            let p = transform::forward(&data, job.class, &opts.transforms);
+            let p = transform::forward(&data, class, &opts.transforms);
             let owned = match p.stored {
                 std::borrow::Cow::Owned(v) => Some(v),
                 std::borrow::Cow::Borrowed(_) => None,
@@ -682,14 +666,14 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
     let cuts = cuts
         .into_iter()
         .map(|(off, len, hash)| {
-            let incompressible = opts.probe && lane == Lane::Binary && {
+            let incompressible = opts.probe && matches!(lane, Lane::Binary | Lane::Image) && {
                 let _p = prof::span("file.probe", len as u64);
                 classify::probably_incompressible(&stored[off..off + len])
             };
             (off, len, hash, if incompressible { Lane::Store } else { lane })
         })
         .collect::<Vec<_>>();
-    Ok(Hashed { hash, prepared: Some((transform, owned, lane, cuts, data)) })
+    Ok(Hashed { hash, class, prepared: Some((transform, owned, lane, cuts, data)) })
 }
 
 /// Identity of untransformed content from its chunk hashes. One chunk is the

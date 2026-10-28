@@ -29,6 +29,8 @@ pub enum Lane {
     Text = 0,
     Binary = 1,
     Store = 2,
+    /// Pixel rows expanded from PNG: their own blocks and codec.
+    Image = 3,
 }
 
 pub const SNIFF_LEN: usize = 4096;

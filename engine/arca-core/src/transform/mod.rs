@@ -63,8 +63,8 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
     let attempt: Option<(Transform, Vec<u8>, Lane)> = match class {
         Class::Jpeg if opts.jpeg => jpeg::encode(data).map(|out| (Transform::Lepton, out, Lane::Store)),
         Class::DeflateContainer(kind) if opts.deflate => {
-            deflate::encode(data, kind, opts.deflate_chain, !opts.verify)
-                .map(|out| (Transform::Deflate, out, Lane::Binary))
+            let lane = if kind == crate::classify::DeflateKind::Png { Lane::Image } else { Lane::Binary };
+            deflate::encode(data, kind, opts.deflate_chain, !opts.verify).map(|out| (Transform::Deflate, out, lane))
         }
         Class::MachO if opts.arm64 => {
             let ranges = arm64::code_ranges(data);

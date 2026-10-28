@@ -1,0 +1,1 @@
+{"rustc":4729267665118638530,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[3746573929696391749,"build_script_build",false,2766049915446609289]],"local":[{"RerunIfChanged":{"output":"release/build/rayon-core-ce04852c76f5f351/output","paths":["build.rs"]}}],"rustflags":["-C","target-cpu=apple-m1"],"config":0,"compile_kind":0}
