@@ -9,6 +9,8 @@ struct EngineError: LocalizedError {
     var damaged = false
     var errorDescription: String? { message }
     var isCancellation: Bool { message == "cancelled" }
+    /// The engine doesn't handle this archive (see `Engine.extractZip`); another reader should.
+    var isUnsupported: Bool { message.hasPrefix("unsupported:") }
 }
 
 /// Cancellation handle for one engine operation.
@@ -76,6 +78,20 @@ enum Engine {
         }
     }
 
+    /// Extracts a ZIP archive with the engine's own reader: every core, every CRC
+    /// checked, Mac metadata from `__MACOSX` applied in memory, links that lead out
+    /// left out. Throws an error whose `isUnsupported` is true for archives it doesn't
+    /// handle (encryption, other methods, legacy name encodings, split archives).
+    static func extractZip(
+        _ archive: URL, to dest: URL, only: [String], task: EngineTask,
+        progress: @escaping @Sendable (UInt64, UInt64) -> Void
+    ) async throws -> ExtractResult {
+        let request = try json(ZipExtractRequest(archive: archive.path, dest: dest.path, only: only, overwrite: false))
+        return try await withProgress(progress) { ctx in
+            try decode(arca_zip_extract(request, task.handle, trampoline, ctx))
+        }
+    }
+
     static func verify(
         _ archive: URL, task: EngineTask, progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws -> ExtractResult {
@@ -136,6 +152,13 @@ enum Engine {
     }
 
     private struct ExtractRequest: Encodable {
+        let archive: String
+        let dest: String
+        let only: [String]
+        let overwrite: Bool
+    }
+
+    private struct ZipExtractRequest: Encodable {
         let archive: String
         let dest: String
         let only: [String]

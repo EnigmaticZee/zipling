@@ -163,6 +163,15 @@ enum Archives {
             }
             return ExtractResult(files: files, bytes: bytes, seconds: Date().timeIntervalSince(started))
         case .sevenZip:
+            // ZIP: the engine's own reader uses every core and applies Mac metadata in
+            // memory. It declines what it doesn't handle, and 7-Zip takes over.
+            if archive.password == nil, (archive.listing.format ?? "").lowercased() == "zip" {
+                do {
+                    return try await Engine.extractZip(archive.source, to: dest, only: only, task: task, progress: progress)
+                } catch let error as EngineError where error.isUnsupported {
+                    // Fall through to 7-Zip.
+                }
+            }
             let started = Date()
             // A ZIP made on a Mac holds a small "._" file of metadata for every file.
             // Read into memory while the files extract, and applied from there, they

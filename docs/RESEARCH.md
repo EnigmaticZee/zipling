@@ -8,14 +8,26 @@ everything below it is the record.
 
 ## State
 
-- Steps done: log, test sets (silesia pending a download OK), baseline profiles.
-- Known fixes: Fast mostly done (see 4); Max PNG rebuild mechanism done, size
-  trade-off needs the user's call (see 1); memory and blocks-vs-cores not started.
-- Done since: memory cap, rebuild budget (user OK'd ~3% growth for it), pixel
-  codec (won the size back), LZMA SDK codec (user OK'd the 7-Zip source download),
-  file order. Silesia downloaded (user OK).
-- Next: the user's call on Max's size/speed point; then Default extraction,
-  Lepton and preflate costs, ZIP reader/writer, app integration (quarantine).
+Where each level stands on the saved folder (CLI, busy Mac, so rough; rivals from
+the 2026-10-28 head-to-head):
+
+| Level | Make | Size | Extract | Rival (make / size / extract) |
+|---|---:|---:|---:|---|
+| Fast | 0.67–0.72 s | 301.33 MiB (316 MB) | ~0.9 s | Zipgeist tar.zst 1.24 s / 341 MB / 1.6–1.9 s |
+| Default | ~9.2 s | 245.43 MiB (257 MB) | ~2.6 s | Zipgeist 7z 17.2 s / 285 MB / 3.0 s |
+| Max | ~22–23.5 s | 212.85 MiB (223 MB) | 3.67–3.85 s | Zipgeist best 20.0 s / 284 MB / 3.7 s |
+| Ultra | not re-measured | | | as Max |
+| ZIP extract | 1.06–1.12 s | | | Zipgeist 2.1 s (app via 7-Zip: 4.7 s) |
+
+Done: log, test sets, profiles, the four known fixes, pixel codec, LZMA SDK
+codec, fast Max preset (user's choice), engine ZIP reader with FFI and app
+fallback (app tests running). User decisions so far: Max may grow ~3% for faster
+extraction (since won back), Silesia and the 7-Zip source downloaded, Max = the
+fastest measured setting.
+
+Next: app tests; Ultra; Max under 20 s (pixel codec branches, preflate, Lepton);
+Default extraction margin; maybe an engine ZIP writer; then final quiet-Mac
+benchmarks (ask the user first).
 
 ## The task, in short
 
@@ -521,6 +533,16 @@ tags, a resource fork, an attribute on a folder, a hidden file, an executable, a
 left out (intended) and the other link keeps its archived date (ditto doesn't
 restore link dates). That case is now `arca-core/tests/zip.rs`, with a damaged
 archive and an encrypted one (refused as unsupported).
+
+**In the app:** a tenth FFI function, `arca_zip_extract` (the other nine are
+unchanged), and `Engine.extractZip` in the Swift wrapper. `Archives.extract` tries
+it for password-less ZIPs and falls back to the existing 7-Zip path when the engine
+answers "unsupported:"; the safety pass afterwards is unchanged. The app's test
+`hostileZipStaysInside` showed that escaping entries must be left out and the rest
+extracted (as 7-Zip does), not the whole archive refused: fixed, reported in
+`skipped`, and covered by a new engine test. The inspector labels `lzma2` blocks
+"LZMA2" like `xz` ones. **All 58 app tests pass**; the test build was unregistered
+with `lsregister -u`.
 
 ## Dead ends
 

@@ -219,7 +219,8 @@ pub struct ZipExtractStats {
     pub files: u64,
     pub bytes: u64,
     pub seconds: f64,
-    /// Links that pointed outside the extracted items, left out for safety.
+    /// Entries left out for safety: paths that would land outside the destination
+    /// or beneath a link the archive makes, and links that point outside.
     pub skipped_links: Vec<String>,
 }
 
@@ -383,7 +384,10 @@ impl ZipArchive {
         };
 
         // Sort every entry into what it becomes, refusing what this reader can't do.
+        // Entries that would land outside the destination are left out and
+        // reported, as 7-Zip does, so the rest of the archive still comes out.
         let (mut dirs, mut files, mut links, mut doubles) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let mut skipped: Vec<String> = Vec::new();
         let mut seen: HashSet<&str> = HashSet::new();
         for e in &self.entries {
             if e.flags & 1 != 0 {
@@ -398,13 +402,17 @@ impl ZipArchive {
             match role(e) {
                 Role::Skip => {}
                 Role::AppleDouble(target) => {
-                    if wanted(&target) {
+                    if wanted(&target) && safe_join(dest, &target).is_ok() && safe_join(dest, &e.name).is_ok() {
                         doubles.push((e, target));
                     }
                 }
                 r => {
                     let path = e.name.trim_end_matches('/');
                     if path.is_empty() || !wanted(path) {
+                        continue;
+                    }
+                    if safe_join(dest, path).is_err() {
+                        skipped.push(e.name.clone());
                         continue;
                     }
                     // Two entries for one path would leave it to chance which wins.
@@ -421,18 +429,30 @@ impl ZipArchive {
             }
         }
 
-        // Paths: safe, not beneath a link the archive makes, nothing overwritten unasked.
-        let link_paths: HashSet<&str> = links.iter().map(|e| e.name.trim_end_matches('/')).collect();
-        let target_of = |name: &str| -> Result<PathBuf> {
-            let path = name.trim_end_matches('/');
-            let p = safe_join(dest, path)?;
-            let mut parent = path;
+        // Nothing goes beneath a link the archive makes.
+        let link_paths: HashSet<String> = links.iter().map(|e| e.name.trim_end_matches('/').to_owned()).collect();
+        let under_link = |name: &str| {
+            let mut parent = name.trim_end_matches('/');
             while let Some((head, _)) = parent.rsplit_once('/') {
-                ensure!(!link_paths.contains(head), "entry {path} lies beneath a symlink");
+                if link_paths.contains(head) {
+                    return true;
+                }
                 parent = head;
             }
-            Ok(p)
+            false
         };
+        for list in [&mut files, &mut links, &mut dirs] {
+            list.retain(|e| {
+                let keep = !under_link(&e.name);
+                if !keep {
+                    skipped.push(e.name.clone());
+                }
+                keep
+            });
+        }
+        doubles.retain(|(e, target)| !under_link(target) && !under_link(&e.name));
+        // Paths: safe (checked above), nothing overwritten unasked.
+        let target_of = |name: &str| -> Result<PathBuf> { safe_join(dest, name.trim_end_matches('/')) };
         let targets: Vec<PathBuf> = files.iter().chain(links.iter()).map(|e| target_of(&e.name)).collect::<Result<_>>()?;
         for p in &targets {
             if p.symlink_metadata().is_ok() {
@@ -552,7 +572,7 @@ impl ZipArchive {
             std::fs::create_dir_all(safe_join(dest, d)?)?;
         }
         // Symlinks last, and only those that stay inside.
-        let mut skipped_links = Vec::new();
+        let mut skipped_links = skipped;
         for (e, p) in links.iter().zip(&targets[files.len()..]) {
             let path = e.name.trim_end_matches('/');
             let mut target = Vec::new();

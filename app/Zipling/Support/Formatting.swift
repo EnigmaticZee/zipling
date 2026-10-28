@@ -58,7 +58,7 @@ enum Method {
     static func codecName(_ codec: String) -> String {
         switch codec {
         case "zstd": "Zstandard"
-        case "xz": "LZMA2"
+        case "xz", "lzma2": "LZMA2"
         case "ppmd": "PPMd"
         default: "Stored"
         }
