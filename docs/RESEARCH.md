@@ -193,7 +193,23 @@ packer. To check as part of the scheduling work.
    (`mf=hc4`, `mode=fast`, `nice=32`, `depth=12`) loses 2–18% and is still slow on
    pixels (6–22 s per block). **Conclusion: no xz setting reaches Max < 20 s on
    this folder; that needs a pixel codec and a faster LZMA match finder.**
-2. Max memory on 8 GB Macs: (to do)
+2. **Max memory on 8 GB Macs** (done). Peak was 8.3–10.3 GB: ten xz-9e encoders
+   (~674 MiB each, mostly BT4's tree for a 64 MiB dictionary), 20 queued 64 MiB
+   blocks, and a read-ahead window that counted files at their input size while an
+   expanded PNG waiting its turn holds ~15x that. Now:
+   - the number of block encoders comes from a memory budget (half of
+     `hw.memsize`; `ARCA_MEM_BYTES` simulates other Macs), using liblzma's own
+     `lzma_easy_encoder_memusage` plus the block and its output per encoder;
+   - queued blocks: encoders + 2 (was 2 x threads);
+   - read-ahead: min(512 MiB, budget/16), counting expanded bytes too.
+
+   | Simulated Mac | Encoders | Peak RSS | Max make (busy Mac) |
+   |---|---:|---:|---:|
+   | 8 GB | 3 | 4.8 GB | 124 s |
+   | 16 GB | 8 | 8.5 GB | 72 s |
+
+   Archives are byte-identical whatever the memory. The ~0.7 GB above budget is
+   page cache of mapped input files (reclaimable) and allocator slack.
 3. Max blocks vs cores: (to do)
 4. **Fast's duplicate and fingerprint cost** (mostly done). Fast make on the saved
    folder went from 1.46–1.9 s to 0.80–1.0 s (busy Mac, even at load 35), same
@@ -211,8 +227,16 @@ packer. To check as part of the scheduling work.
      not scale past ~2 threads on APFS (11,050 open+read+close: 0.26 s on 1
      thread, ~0.12 s on 2–10), so it is better overlapped with compression than
      done as a phase.
-   - Default after these changes: 245.72 MiB (was 245.55) in 9.2 s (was ~10.4 s).
-     The +0.17 MiB comes from the new image lane or the name-based order: to trace.
+   - Ordering by extension costs size at the bigger levels, so Default, Max and
+     Ultra still sniff (a 4 KiB head read per file, ~0.1 s) and Fast doesn't:
+
+     | Level | Extension order | Sniffed order | Before this work |
+     |---|---:|---:|---:|
+     | Fast | 301.33 MiB, 0.67 s | 301.33 MiB, 0.78 s | 301.31 MiB, 1.5–1.9 s |
+     | Default | 245.72 MiB | **245.34 MiB** | 245.55 MiB |
+     | Max (budget 64) | 219.05 MiB | **217.71 MiB** | — |
+
+     The separate image lane makes Default 0.21 MiB smaller than before.
    - Dead end: `-C target-cpu=apple-m1` (Lepton and preflate within noise).
 
 ## Deep research

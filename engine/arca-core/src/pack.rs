@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::time::Instant;
@@ -57,6 +57,11 @@ pub struct PackOptions {
     /// zstd level for the index. 19 costs ~0.3 s on one thread for a 10,000-file
     /// folder and saves ~7% of an index that is under 0.1% of the archive.
     pub index_level: i32,
+    /// Memory the pack may use, in bytes; 0 means half of the Mac's memory.
+    pub memory_budget: u64,
+    /// Order files by their sniffed content class (one extra pass that opens
+    /// every file) instead of by extension alone.
+    pub sniff_order: bool,
     pub hooks: Hooks,
 }
 
@@ -97,6 +102,10 @@ impl PackOptions {
             binary_codec: binary,
             image_codec: binary,
             index_level: if matches!(level, Level::Fast | Level::Balanced) { 9 } else { 19 },
+            memory_budget: 0,
+            // Ordering by content is 0.15% smaller at Default and costs ~0.1 s; at
+            // Fast (small blocks) it changes nothing and costs 15% of the time.
+            sniff_order: level != Level::Fast,
             hooks: Hooks::default(),
         }
     }
@@ -166,8 +175,39 @@ struct Job {
     entry: usize,
     source: PathBuf,
     size: u64,
-    /// Sort group guessed from the file name (see `name_group`).
+    /// Sort group guessed from the file name (see `name_group`), or from the
+    /// content class when sniffing.
     group: u8,
+    /// Content class, when sniffed before ordering.
+    class: Option<Class>,
+}
+
+/// Classifies a file from its first bytes.
+fn sniff(path: &Path) -> Class {
+    let _p = prof::span("pack.sniff", 0);
+    let Ok(mut f) = File::open(path) else { return Class::Binary };
+    let mut head = [0u8; SNIFF_LEN];
+    let mut n = 0;
+    while n < head.len() {
+        match f.read(&mut head[n..]) {
+            Ok(0) | Err(_) => break,
+            Ok(k) => n += k,
+        }
+    }
+    if n == 0 {
+        Class::Text
+    } else {
+        classify::classify(&head[..n])
+    }
+}
+
+/// Sort group from a sniffed class: 0 text, 1 binary lanes, 2 mostly stored.
+fn class_group(class: Class) -> u8 {
+    match class {
+        Class::Text => 0,
+        Class::Compressed | Class::Jpeg => 2,
+        _ => 1,
+    }
 }
 
 struct OpenBlock {
@@ -286,14 +326,15 @@ fn name_group(ext: &str) -> u8 {
     }
 }
 
-fn order_key(job: &Job, entries: &[Entry]) -> (u8, String, u64, String) {
+fn order_key(job: &Job, entries: &[Entry]) -> (u8, Option<Class>, String, u64, String) {
     let path = &entries[job.entry].path;
     let name = path.rsplit('/').next().unwrap_or(path);
     let ext = extension(name);
     // Lepton output is stored raw, so JPEG order can't affect size: biggest first
     // keeps the slowest files from finishing alone at the end.
-    let size_first = if matches!(ext.as_str(), "jpg" | "jpeg" | "jpe") { u64::MAX - job.size } else { 0 };
-    (job.group, ext, size_first, name.to_owned())
+    let jpeg = job.class.map_or(matches!(ext.as_str(), "jpg" | "jpeg" | "jpe"), |c| c == Class::Jpeg);
+    let size_first = if jpeg { u64::MAX - job.size } else { 0 };
+    (job.group, job.class, ext, size_first, name.to_owned())
 }
 
 fn extension(name: &str) -> String {
@@ -338,7 +379,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                 stats.files += 1;
                 stats.input_bytes += size;
                 let name = s.entry.path.rsplit('/').next().unwrap_or(&s.entry.path);
-                jobs.push(Job { entry: i, source, size: *size, group: name_group(&extension(name)) });
+                jobs.push(Job { entry: i, source, size: *size, group: name_group(&extension(name)), class: None });
             }
             (EntryKind::Dir, _) => stats.dirs += 1,
             _ => {}
@@ -346,6 +387,16 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         entries.push(s.entry);
     }
 
+    if opts.sniff_order {
+        pool.install(|| {
+            use rayon::prelude::*;
+            jobs.par_iter_mut().with_max_len(64).for_each(|j| {
+                let class = if j.size == 0 { Class::Text } else { sniff(&j.source) };
+                j.class = Some(class);
+                j.group = class_group(class);
+            });
+        });
+    }
     jobs.sort_by_cached_key(|j| order_key(j, &entries));
     phase("sorted");
 
@@ -360,7 +411,34 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let mut out = File::create(tmp_path).with_context(|| format!("creating {}", tmp_path.display()))?;
     out.write_all(&format::header_bytes(0))?;
 
-    let in_flight = opts.threads.max(1) * 2;
+    // Memory plan. Block encoders are the big consumers (xz -9e: ~0.67 GB each,
+    // plus the block and its output), so their number follows the memory
+    // budget, not just the core count: ten at once peaked at 8-10 GB, which an
+    // 8 GB Mac can't hold.
+    let budget = if opts.memory_budget > 0 { opts.memory_budget } else { codec::physical_memory() / 2 };
+    let lookahead = LOOKAHEAD_BYTES.min(budget / 16);
+    // Each encoder holds its block and its output; every lane fills one open block;
+    // file tasks hold their working copies (expanded Deflate, Lepton buffers).
+    let per_encoder = [(opts.text_codec, text_block_size), (opts.binary_codec, block_size), (opts.image_codec, block_size)]
+        .into_iter()
+        .map(|(c, b)| codec::encoder_memory(c, b) + 2 * b as u64)
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let open_blocks = 4 * (block_size.max(text_block_size) as u64 + CDC_MAX as u64);
+    let task_memory = opts.threads as u64 * (64 << 20);
+    let spare = budget.saturating_sub(lookahead + open_blocks + task_memory);
+    let block_threads = (spare / per_encoder).clamp(1, opts.threads.max(1) as u64) as usize;
+    if timing {
+        eprintln!(
+            "memory budget {} MiB: {block_threads} block encoders of {} MiB, lookahead {} MiB",
+            budget >> 20,
+            per_encoder >> 20,
+            lookahead >> 20
+        );
+    }
+    // Running blocks plus two queued: enough to keep every encoder fed.
+    let in_flight = block_threads + 2;
     let (slots_tx, slots_rx) = bounded::<()>(in_flight);
     for _ in 0..in_flight {
         slots_tx.send(()).unwrap();
@@ -392,7 +470,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let mut sink = BlockSink {
         // Its own pool: blocks must not queue behind file tasks, or compression
         // trails at the end instead of overlapping with the transforms.
-        pool: Arc::new(rayon::ThreadPoolBuilder::new().num_threads(opts.threads.max(1)).build()?),
+        pool: Arc::new(rayon::ThreadPoolBuilder::new().num_threads(block_threads).build()?),
         slots_tx,
         slots_rx,
         done_tx,
@@ -411,7 +489,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let debug = std::env::var_os("ARCA_DEBUG_ROUTING").is_some();
 
     // Streaming pipeline. Every file is its own task (read, hash, transform,
-    // chunk) running up to LOOKAHEAD_BYTES ahead of the packer, which consumes
+    // chunk) running up to `lookahead` bytes ahead of the packer, which consumes
     // results strictly in sort order. Blocks therefore fill, and start
     // compressing, continuously; no batch waits for its slowest file; and the
     // archive layout stays deterministic.
@@ -423,6 +501,9 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let slots: Vec<Mutex<Option<Result<Hashed>>>> = (0..n).map(|_| Mutex::new(None)).collect();
     let claims: Mutex<HashMap<[u8; 32], usize>> = Mutex::new(HashMap::new());
     let cancel = AtomicBool::new(false);
+    // Bytes that finished tasks hold beyond their input size (an expanded PNG can
+    // be 15x its file), so the lookahead bounds memory, not just input bytes.
+    let grown = AtomicU64::new(0);
     let (ready_tx, ready_rx) = crossbeam_channel::unbounded::<()>();
     // Sort groups feed lanes in order, so each lane's last block can be sealed,
     // and start compressing, as soon as its group has gone by.
@@ -444,17 +525,22 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         };
         let result = (|| -> Result<()> {
             for k in 0..n {
-                while spawned < n && (spawned == k || inflight + jobs[spawned].size <= LOOKAHEAD_BYTES) {
+                while spawned < n
+                    && (spawned == k || inflight + grown.load(Ordering::Relaxed) + jobs[spawned].size <= lookahead)
+                {
                     let i = spawned;
                     inflight += jobs[i].size;
                     spawned += 1;
-                    let (slots, claims, cancel, tx) = (&slots, &claims, &cancel, ready_tx.clone());
+                    let (slots, claims, cancel, grown, tx) = (&slots, &claims, &cancel, &grown, ready_tx.clone());
                     scope.spawn(move |_| {
                         let r = if cancel.load(Ordering::Relaxed) {
                             Err(anyhow::anyhow!("cancelled"))
                         } else {
                             process_file(&jobs[i], i, claims, opts)
                         };
+                        if let Ok(h) = &r {
+                            grown.fetch_add(h.extra, Ordering::Relaxed);
+                        }
                         *slots[i].lock().unwrap() = Some(r);
                         let _ = tx.send(());
                     });
@@ -463,6 +549,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                 let job = &jobs[k];
                 let mine = wait_for(k)?;
                 inflight -= job.size;
+                grown.fetch_sub(mine.extra, Ordering::Relaxed);
                 let obj = match by_hash.get(&mine.hash) {
                     Some(&o) if opts.dedup => {
                         stats.dup_file_bytes += job.size;
@@ -603,6 +690,8 @@ type Prepared = (Transform, Option<Vec<u8>>, Lane, Vec<Cut>, FileData);
 struct Hashed {
     hash: [u8; 32],
     class: Class,
+    /// Transformed bytes held beyond the input (for the lookahead's accounting).
+    extra: u64,
     /// Present when this task claimed the content (first to hash it).
     prepared: Option<Prepared>,
 }
@@ -644,7 +733,7 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
         }
     };
     if !claimed {
-        return Ok(Hashed { hash, class, prepared: None });
+        return Ok(Hashed { hash, class, extra: 0, prepared: None });
     }
     let (transform, owned, lane, cuts) = match plain_cuts {
         Some(cuts) => (Transform::None, None, transform::plain_lane(class), cuts),
@@ -673,7 +762,8 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
             (off, len, hash, if incompressible { Lane::Store } else { lane })
         })
         .collect::<Vec<_>>();
-    Ok(Hashed { hash, class, prepared: Some((transform, owned, lane, cuts, data)) })
+    let extra = owned.as_ref().map_or(0, |v| v.len() as u64);
+    Ok(Hashed { hash, class, extra, prepared: Some((transform, owned, lane, cuts, data)) })
 }
 
 /// Identity of untransformed content from its chunk hashes. One chunk is the

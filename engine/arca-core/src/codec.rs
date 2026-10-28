@@ -47,6 +47,45 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
     }
 }
 
+/// Memory one encoder of this codec needs for a block of `block` bytes,
+/// excluding the block itself.
+pub fn encoder_memory(cfg: CodecConfig, block: usize) -> u64 {
+    match cfg.codec {
+        Codec::Store => 0,
+        // Match-finder tables plus long-distance-matching state; the window is
+        // the block, which is already in memory.
+        Codec::Zstd => {
+            if cfg.level >= 12 {
+                160 << 20
+            } else {
+                48 << 20
+            }
+        }
+        Codec::Xz => {
+            let preset = cfg.level.clamp(0, 9) as u32 | if cfg.extreme { liblzma::stream::PRESET_EXTREME } else { 0 };
+            // SAFETY: a pure function of the preset.
+            let m = unsafe { liblzma_sys::lzma_easy_encoder_memusage(preset) };
+            if m == u64::MAX { 1 << 30 } else { m }
+        }
+        Codec::Ppmd => (block as u64 * 3).clamp(16 << 20, PPMD_MAX_MEM as u64) + (block as u64 / 2),
+    }
+}
+
+/// Physical memory of this Mac (`ARCA_MEM_BYTES` overrides it, for testing how
+/// the engine behaves on smaller machines).
+pub fn physical_memory() -> u64 {
+    if let Some(v) = std::env::var("ARCA_MEM_BYTES").ok().and_then(|v| v.parse().ok()) {
+        return v;
+    }
+    let mut mem: u64 = 0;
+    let mut len = std::mem::size_of::<u64>();
+    // SAFETY: hw.memsize is a u64; `len` holds the buffer size.
+    let rc = unsafe {
+        libc::sysctlbyname(c"hw.memsize".as_ptr(), (&mut mem as *mut u64).cast(), &mut len, std::ptr::null_mut(), 0)
+    };
+    if rc == 0 && mem > 0 { mem } else { 8 << 30 }
+}
+
 /// Largest PPMd model a block may request (the decoder allocates this much).
 pub const PPMD_MAX_MEM: u32 = 256 << 20;
 
