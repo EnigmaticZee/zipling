@@ -370,6 +370,20 @@ Further Max work:
   10 busy from 0.25 s to 3.25 s, so extraction is CPU-bound (Lepton 11.4 s,
   Deflate + pixels 10 s, LZMA2 3.2 s, writing 2.3 s).
 
+### Ultra, and Max on Silesia
+
+Ultra (PPMd order 16 for text, LZMA2 fb 273, pixel codec) on the saved folder:
+210.36 MiB in 34 s, extracting in 5.05 s; one 60 MB PPMd text block takes 4.1 s to
+decode on one core. Here PPMd gains nothing over LZMA2 fb 273 (both 5.96 MiB of
+text); on Silesia, prose, Ultra is 44.73 MiB against Max's 47.53. 16 MiB text
+blocks: 210.61 MiB, extraction 4.26 s (Silesia +0.9%). Ultra stays "smallest".
+
+The fast Max loses size on generic data: Silesia 47.53 MiB (49.8 MB) against 7-Zip
+Ultra's 48.7 MB (website, 2026-10-26). The text lane is small and cheap, so Max
+now gives it 64-byte matches: saved folder 212.85 → 212.65 MiB, Silesia 47.53 →
+47.03 MiB, no time cost. 273-byte text matches: 212.55 / 46.76 MiB but +2 s on
+the saved folder.
+
 ### A pixel codec for PNG data (most promising lead)
 
 Per-PNG study of the saved folder (644 PNGs, 1,106 MB of pixels; standalone xz-9 per

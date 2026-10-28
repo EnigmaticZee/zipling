@@ -78,8 +78,9 @@ impl PackOptions {
             Level::Balanced => (zstd(15), zstd(12), 16 << 20, 64 << 20, 64 << 20),
             // Max is the fast high-ratio level: LZMA2 with 32-byte matches (half the
             // CPU of 273-byte ones for 1-6% more output) and 32 MiB text blocks,
-            // so no single block holds the end back.
-            Level::Max => (lzma2(7, false), lzma2(7, false), 32 << 20, 64 << 20, 0),
+            // so no single block holds the end back. Text, a small and cheap lane,
+            // takes 64-byte matches: same time, 1% smaller on Silesia.
+            Level::Max => (lzma2(9, false), lzma2(7, false), 32 << 20, 64 << 20, 0),
             // Ultra is the smallest: context modelling for text (it beats LZ on
             // prose and source code, at the cost of decode speed) and the longest
             // LZMA2 matches.
