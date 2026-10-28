@@ -13,6 +13,7 @@ use crate::codec;
 use crate::hooks::Hooks;
 use crate::format::{self, BlockInfo, Codec, Entry, EntryKind, Footer, Index, Object, Transform, FOOTER_LEN, HEADER_LEN};
 use crate::transform;
+use crate::prof;
 use anyhow::{bail, ensure, Context, Result};
 use rayon::prelude::*;
 use std::cmp::Reverse;
@@ -82,7 +83,18 @@ impl Archive {
         let mut comp = vec![0u8; b.comp_len as usize];
         self.file.read_exact_at(&mut comp, b.file_offset)?;
         ensure!(format::hash16(&comp) == b.checksum, "block {id} is damaged (checksum mismatch)");
-        let raw = codec::decompress(&comp, b.codec, b.raw_len).with_context(|| format!("block {id}"))?;
+        let raw = {
+            let _p = prof::span(
+                match b.codec {
+                    Codec::Store => "decode.store",
+                    Codec::Zstd => "decode.zstd",
+                    Codec::Xz => "decode.xz",
+                    Codec::Ppmd => "decode.ppmd",
+                },
+                b.raw_len,
+            );
+            codec::decompress(&comp, b.codec, b.raw_len).with_context(|| format!("block {id}"))?
+        };
         ensure!(format::hash16(&raw) == b.raw_hash, "block {id} decoded to the wrong content");
         Ok(raw)
     }
@@ -356,6 +368,7 @@ impl Archive {
         }
         stats.files = idx.entries.iter().enumerate().filter(|(i, e)| sel[*i] && matches!(e.kind, EntryKind::File { .. })).count() as u64;
         stats.seconds = start.elapsed().as_secs_f64();
+        prof::report("unpack");
         Ok(stats)
     }
 }
@@ -527,6 +540,7 @@ impl Extraction<'_> {
         match w {
             Work::Decode(b) => return self.archive.read_block(b).map(Some),
             Work::Write(b, r) => {
+                let _p = prof::span("write.plain", 0);
                 let data = self.sched.lock().unwrap().data[b as usize].clone().expect("block decoded");
                 let (start, end) = self.runs[b as usize][r as usize];
                 for &(o, off, c) in &self.units[b as usize][start as usize..end as usize] {
@@ -557,9 +571,21 @@ impl Extraction<'_> {
                     stored.extend_from_slice(&blocks[&ch.block][ch.offset as usize..(ch.offset + ch.len) as usize]);
                 }
                 drop(blocks);
-                let content = transform::inverse(stored, &obj.transform, obj.size)?;
+                let content = {
+                    let _p = prof::span(
+                        match obj.transform {
+                            Transform::Lepton => "inverse.lepton",
+                            Transform::Deflate => "inverse.deflate",
+                            Transform::Arm64 { .. } => "inverse.arm64",
+                            Transform::None => "inverse.none",
+                        },
+                        obj.size,
+                    );
+                    transform::inverse(stored, &obj.transform, obj.size)?
+                };
                 ensure!(Some(format::hash16(&content)) == obj.hash, "object {o} failed verification");
                 if self.dest {
+                    let _p = prof::span("write.rebuilt", obj.size);
                     self.write_whole(o, &content)?;
                 }
                 self.advance(obj.size);

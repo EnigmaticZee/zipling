@@ -11,6 +11,7 @@ pub mod codec;
 pub mod format;
 pub mod hooks;
 pub mod pack;
+pub mod prof;
 pub mod scan;
 pub mod transform;
 pub mod unpack;

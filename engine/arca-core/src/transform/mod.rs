@@ -10,6 +10,7 @@ pub mod jpeg;
 
 use crate::classify::{Class, Lane};
 use crate::format::Transform;
+use crate::prof;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy)]
@@ -40,6 +41,15 @@ fn plain_lane(class: Class) -> Lane {
 }
 
 pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepared<'a> {
+    let fwd = prof::span(
+        match class {
+            Class::Jpeg if opts.jpeg => "fwd.lepton(+verify)",
+            Class::DeflateContainer(_) if opts.deflate => "fwd.deflate",
+            Class::MachO if opts.arm64 => "fwd.arm64",
+            _ => "fwd.none",
+        },
+        data.len() as u64,
+    );
     let attempt: Option<(Transform, Vec<u8>, Lane)> = match class {
         Class::Jpeg if opts.jpeg => jpeg::encode(data).map(|out| (Transform::Lepton, out, Lane::Store)),
         Class::DeflateContainer(kind) if opts.deflate => {
@@ -58,7 +68,9 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
         _ => None,
     };
 
+    drop(fwd);
     if let Some((transform, out, lane)) = attempt {
+        let _v = prof::span(if transform == Transform::Deflate { "verify.deflate" } else { "verify.other" }, data.len() as u64);
         // Lepton verifies its own round trip internally.
         let ok = !opts.verify
             || transform == Transform::Lepton

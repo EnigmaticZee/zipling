@@ -12,6 +12,7 @@ use crate::classify::{self, Class, Lane, SNIFF_LEN};
 use crate::codec::{self, CodecConfig};
 use crate::format::{self, BlockInfo, Chunk, Codec, Entry, EntryKind, Footer, Index, Object, Transform};
 use crate::hooks::Hooks;
+use crate::prof;
 use crate::scan;
 use crate::transform::{self, TransformOpts};
 use anyhow::{bail, ensure, Context, Result};
@@ -162,6 +163,7 @@ const SMALL_CACHE_BYTES: u64 = 256 << 20;
 
 /// Classifies a file from its first bytes; returns its whole content when small.
 fn sniff(path: &Path, size: u64, cache_left: &AtomicI64) -> (Class, Option<Vec<u8>>) {
+    let _p = prof::span("pack.sniff", size.min(SMALL_FILE));
     let Ok(mut f) = File::open(path) else { return (Class::Binary, None) };
     if size <= SMALL_FILE && cache_left.fetch_sub(size as i64, Ordering::Relaxed) >= size as i64 {
         let mut v = Vec::with_capacity(size as usize);
@@ -241,6 +243,14 @@ impl BlockSink {
         let cfg = self.codecs[block.lane as usize];
         let (done_tx, slots_tx) = (self.done_tx.clone(), self.slots_tx.clone());
         self.pool.spawn(move || {
+            let _p = prof::span(
+                match (cfg.codec, block.lane) {
+                    (Codec::Store, _) => "block.store",
+                    (_, Lane::Text) => "block.text",
+                    _ => "block.binary",
+                },
+                block.buf.len() as u64,
+            );
             let res = codec::compress(&block.buf, cfg).map(|comp| {
                 // Never let a codec expand data: fall back to storing the block.
                 let (comp, codec) =
@@ -308,7 +318,10 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
             eprintln!("[{:>7.3}s] {name}", start.elapsed().as_secs_f64());
         }
     };
-    let scanned = scan::scan(inputs)?;
+    let scanned = {
+        let _p = prof::span("pack.scan", 0);
+        scan::scan(inputs)?
+    };
     phase("scanned");
     let mut entries: Vec<Entry> = Vec::with_capacity(scanned.len());
     let mut jobs: Vec<Job> = Vec::new();
@@ -427,6 +440,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         let (mut spawned, mut inflight, mut done_bytes) = (0usize, 0u64, 0u64);
         let take = |k: usize| -> Option<Result<Hashed>> { slots[k].lock().unwrap().take() };
         let wait_for = |k: usize| -> Result<Hashed> {
+            let _p = prof::span("packer.wait", 0);
             loop {
                 if let Some(r) = take(k) {
                     return r;
@@ -553,7 +567,10 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let created = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
     let index = Index { created, entries, objects, chunks, blocks };
     let raw = index.encode();
-    let comp = zstd::bulk::compress(&raw, 19)?;
+    let comp = {
+        let _p = prof::span("index.compress", raw.len() as u64);
+        zstd::bulk::compress(&raw, 19)?
+    };
     let index_offset = index.blocks.iter().map(|b| b.file_offset + b.comp_len).max().unwrap_or(format::HEADER_LEN as u64);
     out.write_all(&comp)?;
     let footer = Footer {
@@ -563,7 +580,10 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         index_hash: format::hash16(&comp),
     };
     out.write_all(&footer.to_bytes())?;
-    out.sync_all()?;
+    {
+        let _p = prof::span("pack.sync", 0);
+        out.sync_all()?;
+    }
     drop(out);
     std::fs::rename(tmp_path, output)?;
     phase("index written, synced");
@@ -574,6 +594,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     stats.index_bytes = comp.len() as u64;
     stats.output_bytes = std::fs::metadata(output)?.len();
     stats.seconds = start.elapsed().as_secs_f64();
+    prof::report("pack");
     Ok(stats)
 }
 
@@ -593,16 +614,21 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
     let cached = job.content.lock().unwrap().take();
     let data = match cached {
         Some(v) => FileData::Mem(v),
-        None => read_file(&job.source, job.size)?,
+        None => {
+            let _p = prof::span("file.read", job.size);
+            read_file(&job.source, job.size)?
+        }
     };
     if data.len() as u64 != job.size {
         bail!("{} changed size while archiving", job.source.display());
     }
+    let _h = prof::span("file.hash", job.size);
     let hash = if data.len() > 1 << 20 {
         *blake3::Hasher::new().update_rayon(&data).finalize().as_bytes()
     } else {
         *blake3::hash(&data).as_bytes()
     };
+    drop(_h);
     let claimed = {
         let mut c = claims.lock().unwrap();
         match c.get(&hash) {
@@ -624,11 +650,17 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
         std::borrow::Cow::Borrowed(_) => None,
     };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
-    let cuts = cut_chunks(stored, opts.dedup)
+    let cuts = {
+        let _p = prof::span("file.chunk", stored.len() as u64);
+        cut_chunks(stored, opts.dedup)
+    };
+    let cuts = cuts
         .into_iter()
         .map(|(off, len, hash)| {
-            let incompressible =
-                opts.probe && lane == Lane::Binary && classify::probably_incompressible(&stored[off..off + len]);
+            let incompressible = opts.probe && lane == Lane::Binary && {
+                let _p = prof::span("file.probe", len as u64);
+                classify::probably_incompressible(&stored[off..off + len])
+            };
             (off, len, hash, if incompressible { Lane::Store } else { lane })
         })
         .collect::<Vec<_>>();
