@@ -119,7 +119,42 @@ packer. To check as part of the scheduling work.
 
 ## Known fixes
 
-1. Max PNG rebuild cost: (to do)
+1. **Max PNG rebuild cost** (in progress).
+
+   What the data is: at Max, 554 docs PNGs expand from 115 MB to **1,008 MB** of
+   filtered pixel rows, two-thirds of all lane data. Other lane data: Mach-O 159 MB,
+   source "binary" 104 MB, app binaries 81 MB, source text 58 MB, PDF streams 43 MB.
+
+   Max on the docs part alone (850 files, 138 MiB), varying preflate:
+
+   | Setting | Size | Make | Extract | Rebuild CPU |
+   |---|---:|---:|---:|---:|
+   | chain 256 (Default's) | 77.22 MiB | 51.6 s | 1.02 s | 2.8 s |
+   | chain 4096 (Max today) | 71.37 MiB | 90.2 s | 6.62 s | 59.0 s |
+   | chain 4096 capped to 256 (new patch) | 73.65 MiB | 86.1 s | 4.81 s | 40.9 s |
+   | chain 4096 capped to 1024 | 72.48 MiB | 86.1 s | 5.70 s | 49.8 s |
+   | chain 4096, budget 64 steps/byte | 77.00 MiB | 55.8 s | 1.05 s | 3.5 s |
+   | chain 4096, budget 160 steps/byte | 76.44 MiB | 62.4 s | 1.10 s | 4.7 s |
+
+   Rebuild cost is very lopsided: 72 of 793 Deflate files (13 MB) cause 42.7 s of the
+   60 s rebuild CPU; 140 files (23 MB) cause 55 s. They are photo-like images saved
+   by level-9 encoders: nearly every position starts a short match, so replaying the
+   encoder means millions of searches (sampling: all time in preflate's
+   `match_token_0/1`). Capping the search depth does not help much (40.9 s), so the
+   cost is the number of searches, not their depth.
+
+   A search step costs a steady ~3.1 ns (414 M steps = 1.28 s; 1,066 M = 3.28 s;
+   738 M = 2.36 s), and preflate's analysis at pack time performs exactly the same
+   searches as the rebuild. So **a step count measured while packing predicts the
+   rebuild cost exactly and deterministically**. Patches in the vendored
+   `engine/vendor/preflate-rs`: a step counter, a per-byte step budget checked every
+   1,024 tokens (a stream over budget is abandoned and stored as is; a rejected PNG
+   now costs 0.07 s at pack time instead of 0.43 s), and an optional chain cap.
+
+   But the size gain lives in exactly those costly files: a budget keeps almost none
+   of the 5.85 MiB (77.0 vs 77.2 MiB). So the honest trade at Max today is
+   about 2.7% of size against ~6x faster docs extraction and ~1.6x faster docs
+   packing. To win back the size cheaply, see "PNG token coding" under deep research.
 2. Max memory on 8 GB Macs: (to do)
 3. Max blocks vs cores: (to do)
 4. Fast's duplicate and fingerprint cost: (to do)
@@ -127,6 +162,26 @@ packer. To check as part of the scheduling work.
 ## Deep research
 
 (to fill: codecs, transforms, dedup, scheduling, writing files, GPU, lzraven)
+
+Ideas queued, with why:
+
+- **PNG token coding.** For costly PNGs, instead of replaying the encoder, store the
+  Deflate token stream (literal / match) coded with a model that sees the image
+  rebuilt so far, and rebuild by Huffman-coding the tokens again. Rebuild cost
+  becomes entropy decoding (no searches). Could recover the 5.85 MiB without the
+  59 s of rebuild CPU.
+- **Parallel rebuild of one Deflate stream.** Preflate's only state across Deflate
+  blocks is the hash chain (pending lazy match resets per block; the CABAC coder
+  is already fresh per chunk). Priming a predictor with the 32 KB before a block
+  lets segments of one stream rebuild on all cores. Removes the single-PNG critical
+  path (3 s for one 16.7 MB image). Pack-time verification guarantees exactness.
+- **A pixel codec for PNG data** instead of LZMA on filtered rows (1 GB of lane data
+  at Max; LZMA-9e there is most of Max's pack time).
+- **App extraction overhead.** The app measured Fast extraction at 2.21 s against
+  0.93 s for the CLI. After the engine finishes, `SafeExtraction.finalize` walks
+  every extracted item and sets the quarantine attribute by path (~14,500 calls on
+  the saved folder). The engine could set it through the descriptor it already
+  holds. Needs an optional field in the extract request (FFI stays 9 functions).
 
 ## Engine ZIP reader and writer
 

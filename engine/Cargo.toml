@@ -17,3 +17,4 @@ debug = 1
 # vendor/liblzma-sys/ARCA-PATCHES.md.
 [patch.crates-io]
 liblzma-sys = { path = "vendor/liblzma-sys" }
+preflate-rs = { path = "vendor/preflate-rs" }

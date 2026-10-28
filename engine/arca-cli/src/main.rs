@@ -51,6 +51,9 @@ enum Cmd {
         /// Override the text-lane block size in MiB.
         #[arg(long)]
         text_block_mib: Option<usize>,
+        /// Override preflate's match-search depth (research).
+        #[arg(long)]
+        deflate_chain: Option<u32>,
         /// Print a machine-readable stats line.
         #[arg(long)]
         json: bool,
@@ -96,7 +99,7 @@ fn human(n: u64) -> String {
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
-        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, json } => {
+        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, deflate_chain, json } => {
             let level = match level {
                 LevelArg::Fast => Level::Fast,
                 LevelArg::Balanced => Level::Balanced,
@@ -135,6 +138,9 @@ fn main() -> Result<()> {
             }
             if let Some(b) = text_block_mib {
                 o.text_block_size = b << 20;
+            }
+            if let Some(c) = deflate_chain {
+                o.transforms.deflate_chain = c;
             }
             let s = arca_core::pack(&inputs, &output, &o)?;
             if json {

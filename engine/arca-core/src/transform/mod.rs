@@ -30,9 +30,19 @@ pub struct Prepared<'a> {
     pub lane: Lane,
 }
 
+/// Whether `forward` will attempt a transform for this class.
+pub fn applies(class: Class, opts: &TransformOpts) -> bool {
+    match class {
+        Class::Jpeg => opts.jpeg,
+        Class::DeflateContainer(_) => opts.deflate,
+        Class::MachO => opts.arm64,
+        _ => false,
+    }
+}
+
 /// Picks the lane for bytes that are stored without a transform. Binary data is
 /// refined per chunk later (see `pack`), so it is not probed here.
-fn plain_lane(class: Class) -> Lane {
+pub fn plain_lane(class: Class) -> Lane {
     match class {
         Class::Compressed | Class::Jpeg => Lane::Store,
         Class::Text => Lane::Text,

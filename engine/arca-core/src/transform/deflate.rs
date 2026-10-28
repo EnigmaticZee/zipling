@@ -72,6 +72,9 @@ impl Scanner<'_> {
         let res = catch_unwind(AssertUnwindSafe(|| preflate_whole_deflate_stream(input, &config))).ok()?.ok()?;
         let (chunk, plain) = res;
         let consumed = chunk.compressed_size;
+        if std::env::var_os("ARCA_DEBUG_DEFLATE").is_some() {
+            eprintln!("deflate\t{consumed}\t{}\t{}\t{}", plain.text().len(), chunk.corrections.len(), chunk.steps);
+        }
         // A stream that needs many corrections came from an exotic encoder;
         // expanding it would cost more than it gains.
         if consumed < MIN_STREAM || chunk.corrections.len() * 4 > consumed {
@@ -296,6 +299,8 @@ pub fn encode(data: &[u8], kind: DeflateKind, max_chain: u32, self_check: bool) 
             plain_text_limit: 256 << 20,
             verify_compression: self_check,
             max_chain_length: max_chain,
+            cap_max_chain: std::env::var_os("ARCA_EXP_CAP").is_some(),
+            max_steps_per_byte: std::env::var("ARCA_EXP_STEPS").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
         },
         budget: AtomicIsize::new(MAX_PLAIN_TOTAL as isize),
     };

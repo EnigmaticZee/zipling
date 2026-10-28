@@ -53,6 +53,9 @@ pub struct PackOptions {
     pub probe: bool,
     pub text_codec: CodecConfig,
     pub binary_codec: CodecConfig,
+    /// zstd level for the index. 19 costs ~0.3 s on one thread for a 10,000-file
+    /// folder and saves ~7% of an index that is under 0.1% of the archive.
+    pub index_level: i32,
     pub hooks: Hooks,
 }
 
@@ -91,6 +94,7 @@ impl PackOptions {
             probe: matches!(level, Level::Fast | Level::Balanced),
             text_codec: text,
             binary_codec: binary,
+            index_level: if matches!(level, Level::Fast | Level::Balanced) { 9 } else { 19 },
             hooks: Hooks::default(),
         }
     }
@@ -238,6 +242,11 @@ impl BlockSink {
     }
 
     fn close(&mut self, block: OpenBlock) {
+        // Research hook: keep each block's raw bytes for codec experiments.
+        if let Some(dir) = std::env::var_os("ARCA_DUMP_BLOCKS") {
+            let name = format!("{:03}-{:?}.bin", block.id, block.lane);
+            let _ = std::fs::write(Path::new(&dir).join(name), &block.buf);
+        }
         // Bound blocks in flight so memory stays flat on huge inputs.
         self.slots_rx.recv().expect("slot channel");
         let cfg = self.codecs[block.lane as usize];
@@ -493,7 +502,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                         let (transform, owned, lane, cuts, data) = prepared;
                         let stored: &[u8] = owned.as_deref().unwrap_or(&data);
                         if debug {
-                            eprintln!("{:?}\t{:?}\t{}\t{}\t{}", lane, job.class, transform.name(), data.len(), entries[job.entry].path);
+                            eprintln!("{:?}\t{:?}\t{}\t{}\t{}\t{}", lane, job.class, transform.name(), data.len(), stored.len(), entries[job.entry].path);
                         }
                         let t = tstats.entry(transform.name()).or_default();
                         t.files += 1;
@@ -567,9 +576,12 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let created = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
     let index = Index { created, entries, objects, chunks, blocks };
     let raw = index.encode();
+    if let Some(p) = std::env::var_os("ARCA_DUMP_INDEX") {
+        let _ = std::fs::write(p, &raw);
+    }
     let comp = {
         let _p = prof::span("index.compress", raw.len() as u64);
-        zstd::bulk::compress(&raw, 19)?
+        zstd::bulk::compress(&raw, opts.index_level)?
     };
     let index_offset = index.blocks.iter().map(|b| b.file_offset + b.comp_len).max().unwrap_or(format::HEADER_LEN as u64);
     out.write_all(&comp)?;
@@ -622,13 +634,20 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
     if data.len() as u64 != job.size {
         bail!("{} changed size while archiving", job.source.display());
     }
-    let _h = prof::span("file.hash", job.size);
-    let hash = if data.len() > 1 << 20 {
-        *blake3::Hasher::new().update_rayon(&data).finalize().as_bytes()
+    // Content identity. Files that will be transformed hash their original bytes
+    // (the index keeps that hash to check the rebuilt file). Every other file is
+    // only hashed once, chunk by chunk, and its identity comes from those hashes.
+    let transformable = transform::applies(job.class, &opts.transforms);
+    let (hash, plain_cuts) = if transformable || data.is_empty() {
+        let _h = prof::span("file.hash", job.size);
+        (*blake3::hash(&data).as_bytes(), None)
     } else {
-        *blake3::hash(&data).as_bytes()
+        let cuts = {
+            let _p = prof::span("file.chunk", data.len() as u64);
+            cut_chunks(&data, opts.dedup)
+        };
+        (content_key(&cuts), Some(cuts))
     };
-    drop(_h);
     let claimed = {
         let mut c = claims.lock().unwrap();
         match c.get(&hash) {
@@ -643,17 +662,23 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
     if !claimed {
         return Ok(Hashed { hash, prepared: None });
     }
-    let p = transform::forward(&data, job.class, &opts.transforms);
-    let (transform, lane) = (p.transform, p.lane);
-    let owned = match p.stored {
-        std::borrow::Cow::Owned(v) => Some(v),
-        std::borrow::Cow::Borrowed(_) => None,
+    let (transform, owned, lane, cuts) = match plain_cuts {
+        Some(cuts) => (Transform::None, None, transform::plain_lane(job.class), cuts),
+        None => {
+            let p = transform::forward(&data, job.class, &opts.transforms);
+            let owned = match p.stored {
+                std::borrow::Cow::Owned(v) => Some(v),
+                std::borrow::Cow::Borrowed(_) => None,
+            };
+            let stored: &[u8] = owned.as_deref().unwrap_or(&data);
+            let cuts = {
+                let _p = prof::span("file.chunk", stored.len() as u64);
+                cut_chunks(stored, opts.dedup)
+            };
+            (p.transform, owned, p.lane, cuts)
+        }
     };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
-    let cuts = {
-        let _p = prof::span("file.chunk", stored.len() as u64);
-        cut_chunks(stored, opts.dedup)
-    };
     let cuts = cuts
         .into_iter()
         .map(|(off, len, hash)| {
@@ -665,6 +690,25 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
         })
         .collect::<Vec<_>>();
     Ok(Hashed { hash, prepared: Some((transform, owned, lane, cuts, data)) })
+}
+
+/// Identity of untransformed content from its chunk hashes. One chunk is the
+/// content's own BLAKE3, the same as for a transformed file; several chunks are
+/// hashed as a list in a separate key domain, so no file's bytes can pose as
+/// another file's chunk list.
+fn content_key(cuts: &[(usize, usize, [u8; 32])]) -> [u8; 32] {
+    match cuts {
+        [] => *blake3::hash(&[]).as_bytes(),
+        [(_, _, h)] => *h,
+        _ => {
+            let mut k = blake3::Hasher::new_derive_key("Arca 2026-10 content key from chunk hashes");
+            for (_, len, h) in cuts {
+                k.update(&(*len as u64).to_le_bytes());
+                k.update(h);
+            }
+            *k.finalize().as_bytes()
+        }
+    }
 }
 
 /// Chunk boundaries with full 256-bit hashes (the dedup key; the index keeps 128 bits).
