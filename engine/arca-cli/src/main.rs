@@ -91,6 +91,20 @@ enum Cmd {
     },
     /// Check every entry of a ZIP archive with Arca's own ZIP reader.
     Ziptest { archive: PathBuf },
+    /// Make a ZIP archive with Arca's own ZIP writer.
+    Zip {
+        output: PathBuf,
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// Deflate level 1-9 (0 stores).
+        #[arg(short, long, default_value_t = 6)]
+        level: u32,
+        #[arg(short = 'j', long)]
+        threads: Option<usize>,
+        /// Keep .DS_Store, ._ files and other Mac-only files.
+        #[arg(long)]
+        keep_mac_files: bool,
+    },
     /// Decode everything and check every hash, writing nothing.
     Verify {
         archive: PathBuf,
@@ -239,6 +253,16 @@ fn main() -> Result<()> {
             let s = z.extract(&dest, &opts)?;
             println!("extracted {} files ({}) in {:.2}s, CRCs checked{}", s.files, human(s.bytes), s.seconds,
                 if s.skipped_links.is_empty() { String::new() } else { format!("; {} unsafe links left out", s.skipped_links.len()) });
+        }
+        Cmd::Zip { output, inputs, level, threads, keep_mac_files } => {
+            let opts = arca_core::zipwrite::ZipWriteOptions {
+                level,
+                threads: threads.unwrap_or(0),
+                leave_out_mac_files: !keep_mac_files,
+                ..Default::default()
+            };
+            let s = arca_core::zipwrite::write_zip(&inputs, &output, &opts)?;
+            println!("{} files, {} → {} in {:.2}s", s.files, human(s.input_bytes), human(s.output_bytes), s.seconds);
         }
         Cmd::Ziptest { archive } => {
             let t = std::time::Instant::now();
