@@ -1,0 +1,1 @@
+{"rustc":4729267665118638530,"features":"[]","declared_features":"[]","target":14520901741915772287,"profile":9198276461274172092,"path":7862168714462191983,"deps":[],"local":[{"CheckDepInfo":{"dep_info":"release/.fingerprint/strsim-6e51c597def36aa1/dep-lib-strsim","checksum":false}}],"rustflags":["-C","target-cpu=apple-m1"],"config":9396254390672932401,"compile_kind":0}

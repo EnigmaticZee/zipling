@@ -1,0 +1,10 @@
+/Users/zee/Documents/Building/Tools/Zip Project/.claude/worktrees/arca-research-77726f/engine/target-dev/release/deps/bitcode_derive-b0251f7a061b2b7f.d: /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/lib.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/attribute.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/bound.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/decode.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/encode.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/shared.rs
+
+/Users/zee/Documents/Building/Tools/Zip Project/.claude/worktrees/arca-research-77726f/engine/target-dev/release/deps/libbitcode_derive-b0251f7a061b2b7f.dylib: /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/lib.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/attribute.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/bound.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/decode.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/encode.rs /Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/shared.rs
+
+/Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/lib.rs:
+/Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/attribute.rs:
+/Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/bound.rs:
+/Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/decode.rs:
+/Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/encode.rs:
+/Users/zee/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bitcode_derive-0.6.9/src/shared.rs:

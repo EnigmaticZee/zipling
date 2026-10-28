@@ -1,0 +1,1 @@
+{"rustc":4729267665118638530,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[4035921245901842924,"build_script_build",false,13049670446594532925],[15580775420293231975,"build_script_build",false,16975837877168447228]],"local":[{"Precalculated":"7.3.0"}],"rustflags":["-C","target-cpu=apple-m1"],"config":0,"compile_kind":0}

@@ -54,6 +54,10 @@ enum Cmd {
         /// Override preflate's match-search depth (research).
         #[arg(long)]
         deflate_chain: Option<u32>,
+        /// Research: set a lane's codec, e.g. `--lane image=zstd:19` or
+        /// `--lane binary=xz:9e` (lanes: text, binary, image).
+        #[arg(long)]
+        lane: Vec<String>,
         /// Print a machine-readable stats line.
         #[arg(long)]
         json: bool,
@@ -99,7 +103,7 @@ fn human(n: u64) -> String {
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
-        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, deflate_chain, json } => {
+        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, deflate_chain, lane, json } => {
             let level = match level {
                 LevelArg::Fast => Level::Fast,
                 LevelArg::Balanced => Level::Balanced,
@@ -141,6 +145,28 @@ fn main() -> Result<()> {
             }
             if let Some(c) = deflate_chain {
                 o.transforms.deflate_chain = c;
+            }
+            for spec in lane {
+                let (name, rest) = spec.split_once('=').ok_or_else(|| anyhow::anyhow!("bad --lane {spec}"))?;
+                let (codec, level) = rest.split_once(':').unwrap_or((rest, "0"));
+                let extreme = level.ends_with('e');
+                let cfg = arca_core::codec::CodecConfig {
+                    codec: match codec {
+                        "zstd" => arca_core::Codec::Zstd,
+                        "xz" => arca_core::Codec::Xz,
+                        "ppmd" => arca_core::Codec::Ppmd,
+                        "store" => arca_core::Codec::Store,
+                        other => anyhow::bail!("unknown codec {other}"),
+                    },
+                    level: level.trim_end_matches('e').parse()?,
+                    extreme,
+                };
+                match name {
+                    "text" => o.text_codec = cfg,
+                    "binary" => o.binary_codec = cfg,
+                    "image" => o.image_codec = cfg,
+                    other => anyhow::bail!("unknown lane {other}"),
+                }
             }
             let s = arca_core::pack(&inputs, &output, &o)?;
             if json {
