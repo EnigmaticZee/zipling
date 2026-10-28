@@ -8,9 +8,13 @@ everything below it is the record.
 
 ## State
 
-- Step: 1 (log) done; 2 (test sets) in progress.
-- Next: rebuild the website sets, then profile every level.
-- Waiting on the user: nothing yet.
+- Steps done: log, test sets (silesia pending a download OK), baseline profiles.
+- Known fixes: Fast mostly done (see 4); Max PNG rebuild mechanism done, size
+  trade-off needs the user's call (see 1); memory and blocks-vs-cores not started.
+- Next: memory cap for Max; then deep research on Max make time (pixel codec,
+  faster LZMA match finding), PNG token coding to win back size.
+- Asked the user (2026-10-28): may Max grow ~3% for 2.7x faster extraction, and
+  may I download Silesia?
 
 ## The task, in short
 
@@ -155,9 +159,61 @@ packer. To check as part of the scheduling work.
    of the 5.85 MiB (77.0 vs 77.2 MiB). So the honest trade at Max today is
    about 2.7% of size against ~6x faster docs extraction and ~1.6x faster docs
    packing. To win back the size cheaply, see "PNG token coding" under deep research.
+
+   Whole saved folder at Max (busy Mac; times rough), with a separate image lane
+   for PNG pixels (`--lane`):
+
+   | Variant | Size | Make | Extract | Pack CPU |
+   |---|---:|---:|---:|---:|
+   | Max today | 211.47 MiB | 105 s | 9.6 s | 722 s |
+   | A: budget 64 steps/byte | 217.71 MiB | 80 s | 3.6 s | 403 s |
+   | B: A + xz-9 for binary and image lanes | 218.67 MiB | 56 s | 3.7 s | 286 s |
+   | C: B + xz-9 text, zstd-19 image | 221.17 MiB | 51 s | 3.9 s | 280 s |
+   | D: A + zstd-19 image | 220.45 MiB | 51 s | 5.7 s* | 328 s |
+
+   (*D's extraction ran under heavy load.) In A, the image lane (546 MiB raw) took
+   275 s of CPU with xz-9e, 167 s with xz-9 and 156–170 s with zstd-19; the binary
+   lane (400 MiB) 224 s with xz-9e and 138 s with xz-9.
+
+   Codec comparison on one 64 MiB block per data type (single thread, 4 jobs at
+   once), compressed MB / seconds:
+
+   | Block | xz-9e | xz-9 | xz-6 | zstd-19 | zstd-15 | zstd-12 |
+   |---|---|---|---|---|---|---|
+   | 000 source text | 6.26 / 20.3 | 6.37 / 15.3 | 6.65 / 12.8 | 6.61 / 17.3 | 7.41 / 4.8 | 7.60 / 1.2 |
+   | 001 Mach-O | 10.20 / 25.8 | 10.25 / 22.4 | 12.09 / 20.3 | 12.10 / 23.2 | 14.47 / 7.8 | 14.70 / 1.8 |
+   | 008 synthetic PNG pixels | 0.68 / 17.4 | 0.77 / 2.6 | 0.80 / 2.5 | 0.77 / 4.1 | 0.84 / 0.7 | 0.86 / 0.4 |
+   | 011 photo-like PNG pixels | 14.47 / 45.4 | 14.53 / 39.7 | 14.59 / 25.7 | 15.47 / 27.6 | 16.37 / 10.7 | 16.65 / 2.4 |
+   | 013 PNG tail + PDF | 6.48 / 24.0 | 6.67 / 14.1 | 6.78 / 12.6 | 6.98 / 23.8 | 7.94 / 3.8 | 8.14 / 1.1 |
+   | 015 other binaries | 20.60 / 20.2 | 20.66 / 15.9 | 20.80 / 12.8 | 21.52 / 16.0 | 22.93 / 4.9 | 23.06 / 1.1 |
+
+   Over these six blocks -9e is 0.95% smaller than -9 for 1.39x the time; zstd-19
+   is never worth it; LZMA pays most on Mach-O (30% under zstd-12) and least on
+   photo-like pixels (13%), where it is also slowest. Cheaper LZMA match finding
+   (`mf=hc4`, `mode=fast`, `nice=32`, `depth=12`) loses 2–18% and is still slow on
+   pixels (6–22 s per block). **Conclusion: no xz setting reaches Max < 20 s on
+   this folder; that needs a pixel codec and a faster LZMA match finder.**
 2. Max memory on 8 GB Macs: (to do)
 3. Max blocks vs cores: (to do)
-4. Fast's duplicate and fingerprint cost: (to do)
+4. **Fast's duplicate and fingerprint cost** (mostly done). Fast make on the saved
+   folder went from 1.46–1.9 s to 0.80–1.0 s (busy Mac, even at load 35), same
+   size (301.33 MiB; +0.02 from the index level), round trip byte-identical:
+   - Each file is hashed once. Untransformed files are hashed only chunk by chunk;
+     the file's identity is the single chunk's BLAKE3, or for several chunks a
+     hash of the (length, hash) list under its own derive-key domain, so no file's
+     bytes can pose as another file's chunk list. Large files no longer hash with
+     `update_rayon` inside the busy pool (it stole unrelated tasks).
+   - The index uses zstd-9 at Fast and Default: 0.01 s instead of 0.31 s for
+     257.5 KB instead of 238.5 KB.
+   - The folder walk runs on the pack pool (0.20 s → 0.07–0.09 s).
+   - No separate sniffing pass: files are ordered by extension before anything is
+     read, and each task reads, classifies and packs its file. Opening files does
+     not scale past ~2 threads on APFS (11,050 open+read+close: 0.26 s on 1
+     thread, ~0.12 s on 2–10), so it is better overlapped with compression than
+     done as a phase.
+   - Default after these changes: 245.72 MiB (was 245.55) in 9.2 s (was ~10.4 s).
+     The +0.17 MiB comes from the new image lane or the name-based order: to trace.
+   - Dead end: `-C target-cpu=apple-m1` (Lepton and preflate within noise).
 
 ## Deep research
 
