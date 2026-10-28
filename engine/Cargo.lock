@@ -80,6 +80,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "blake3",
+ "crc32fast",
  "crossbeam-channel",
  "fastcdc",
  "filetime",

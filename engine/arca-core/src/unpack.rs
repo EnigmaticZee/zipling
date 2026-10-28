@@ -675,7 +675,7 @@ fn blocks_of(idx: &Index, o: u32) -> Vec<u32> {
 /// directories. Creating directories as files need them spreads that work over
 /// the whole extraction: APFS serialises `mkdir`, and doing them all up front
 /// cost ~0.1-1 s with every core waiting.
-fn create_file(p: &Path) -> Result<File> {
+pub(crate) fn create_file(p: &Path) -> Result<File> {
     let open = || OpenOptions::new().write(true).create(true).truncate(false).custom_flags(libc::O_NOFOLLOW).open(p);
     let f = match open() {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -690,7 +690,7 @@ fn create_file(p: &Path) -> Result<File> {
 }
 
 /// Joins an archive path onto `dest`, rejecting anything that could escape it.
-fn safe_join(dest: &Path, rel: &str) -> Result<PathBuf> {
+pub(crate) fn safe_join(dest: &Path, rel: &str) -> Result<PathBuf> {
     let rp = Path::new(rel);
     ensure!(!rel.is_empty() && !rel.contains('\0'), "invalid entry path");
     for c in rp.components() {
@@ -717,7 +717,7 @@ fn clone_or_copy(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-fn mtime_of(e: &Entry) -> std::time::SystemTime {
+pub(crate) fn mtime_of(e: &Entry) -> std::time::SystemTime {
     let (secs, nanos) = e.mtime;
     let base = std::time::UNIX_EPOCH;
     if secs >= 0 {
@@ -728,7 +728,7 @@ fn mtime_of(e: &Entry) -> std::time::SystemTime {
 }
 
 /// Metadata through an open descriptor: no path lookups, no symlink races.
-fn apply_metadata_fd(f: &File, e: &Entry) -> Result<()> {
+pub(crate) fn apply_metadata_fd(f: &File, e: &Entry) -> Result<()> {
     use xattr::FileExt as _;
     for (k, v) in &e.xattrs {
         let _ = f.set_xattr(k, v);
@@ -739,7 +739,7 @@ fn apply_metadata_fd(f: &File, e: &Entry) -> Result<()> {
     Ok(())
 }
 
-fn apply_metadata(p: &Path, e: &Entry) -> Result<()> {
+pub(crate) fn apply_metadata(p: &Path, e: &Entry) -> Result<()> {
     let is_link = matches!(e.kind, EntryKind::Symlink { .. });
     // A clone inherits its source's attributes; keep only this entry's own.
     if matches!(e.kind, EntryKind::File { .. }) {

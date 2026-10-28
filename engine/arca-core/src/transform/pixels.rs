@@ -165,12 +165,12 @@ impl Models {
     /// context `c2` (< C2); masking keeps the index in range at no cost.
     #[inline(always)]
     fn tok(&mut self, c: usize, act: usize, c2: usize) -> &mut Cdf16 {
-        &mut self.tok[(tok_index(c & 3, act, c2) % (4 * ACT * C2))]
+        &mut self.tok[tok_index(c & 3, act, c2) % (4 * ACT * C2)]
     }
 
     #[inline(always)]
     fn top(&mut self, c: usize, k: u32, act: usize) -> &mut Bin {
-        &mut self.top[(top_index(c & 3, k & 7, act) % (4 * 8 * ACT))]
+        &mut self.top[top_index(c & 3, k & 7, act) % (4 * 8 * ACT)]
     }
 }
 

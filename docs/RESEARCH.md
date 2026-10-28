@@ -491,7 +491,36 @@ Ideas queued, with why:
 
 ## Engine ZIP reader and writer
 
-(to do)
+**Reader** (`arca-core/src/zip.rs`, CLI `arca unzip` / `arca ziptest`): parses the
+central directory (ZIP64, extended-timestamp and Info-ZIP Unix time fields),
+inflates stored and Deflate entries on every core with zlib-rs (flate2's
+`zlib-rs` backend, already in the local registry), checks every CRC-32, streams
+entries over 64 MiB piece by piece, decodes `._` AppleDouble twins in memory
+(ported from the app's Swift parser: no quarantine, no ACLs, Finder's hidden bit
+becomes `UF_HIDDEN`) and applies them through each file's descriptor, creates
+links last and leaves out any that point outside, and can set the archive's own
+quarantine on everything. Anything else (encryption, methods other than store
+and Deflate, names that aren't UTF-8, backslashes, duplicate names, split
+archives) fails with "unsupported: ...", for the app to fall back to 7-Zip.
+
+On the saved Mac-made ZIP (`ditto-mixed.zip`: 30,682 entries, 632 MiB):
+
+| | Time |
+|---|---:|
+| check every CRC, nothing written (`ziptest`) | 0.36 s |
+| **extract** (`unzip`) | **1.06–1.12 s** |
+| `ditto -x -k` (Finder's engine) | 11.8 s |
+| the app through 7-Zip, metadata in memory (main, 2026-10-28) | 4.7 s |
+| Zipgeist | 2.1 s |
+
+Compared item by item with ditto's extraction (contents, mode, mtime, BSD flags,
+extended attributes): 0 differences over 14,506 items. The saved ZIP's twins only
+carry `com.apple.provenance`, so a second test folder has a Finder colour label,
+tags, a resource fork, an attribute on a folder, a hidden file, an executable, an
+80 MB file and two links: identical to ditto except that the escaping link is
+left out (intended) and the other link keeps its archived date (ditto doesn't
+restore link dates). That case is now `arca-core/tests/zip.rs`, with a damaged
+archive and an encrypted one (refused as unsupported).
 
 ## Dead ends
 
