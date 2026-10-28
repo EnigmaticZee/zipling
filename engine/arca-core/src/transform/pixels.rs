@@ -58,19 +58,29 @@ impl Cdf16 {
         if s == 15 { SCALE } else { self.c[s + 1] as u32 }
     }
 
-    /// The symbol whose interval holds `slot` (branch-free; vectorises).
-    #[inline]
+    /// The symbol whose interval holds `slot`: how many of entries 1..=15 are at
+    /// or below it.
+    #[inline(always)]
     fn find(&self, slot: u32) -> usize {
-        let slot = slot as u16;
-        let mut n = 0u16;
-        for i in 1..16 {
-            n += (self.c[i] <= slot) as u16;
+        #[cfg(target_arch = "aarch64")]
+        // SAFETY: NEON is part of every aarch64 target; `c` is 16 u16s.
+        unsafe {
+            use std::arch::aarch64::*;
+            let v = vdupq_n_u16(slot as u16);
+            let a = vcleq_u16(vld1q_u16(self.c.as_ptr()), v);
+            let b = vcleq_u16(vld1q_u16(self.c.as_ptr().add(8)), v);
+            // Entry 0 is 0, always <= slot: subtract it.
+            ((vaddvq_u16(vshrq_n_u16::<15>(a)) + vaddvq_u16(vshrq_n_u16::<15>(b))) - 1) as usize
         }
-        n as usize
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            let slot = slot as u16;
+            (1..16).map(|i| (self.c[i] <= slot) as usize).sum()
+        }
     }
 
-    #[inline]
-    fn update(&mut self, s: usize) {
+    #[inline(always)]
+    fn rate(&mut self) -> u32 {
         let rate = match self.n {
             0..=3 => 2,
             4..=15 => 3,
@@ -79,8 +89,35 @@ impl Cdf16 {
             _ => RATE,
         };
         self.n = self.n.saturating_add(1);
-        // Targets: i up to s, SCALE - 16 + i above it. Offset by 2^14 so the
-        // arithmetic fits in i16 and vectorises.
+        rate
+    }
+
+    /// Moves the table toward one with almost everything on `s`: targets are i
+    /// up to `s` and SCALE - 16 + i above it, so every frequency stays >= 1.
+    #[inline(always)]
+    fn update(&mut self, s: usize) {
+        let rate = self.rate();
+        #[cfg(target_arch = "aarch64")]
+        // SAFETY: NEON is part of every aarch64 target; `c` is 16 u16s. Values
+        // are offset by 2^14 so the arithmetic fits in i16.
+        unsafe {
+            use std::arch::aarch64::*;
+            const IDX: [i16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+            let off = vdupq_n_s16(16384);
+            let shift = vdupq_n_s16(-(rate as i16));
+            let sv = vdupq_n_s16(s as i16);
+            let hi_add = vdupq_n_s16((SCALE as i32 - 16) as i16);
+            for half in 0..2 {
+                let idx = vld1q_s16(IDX.as_ptr().add(half * 8));
+                let above = vcgtq_s16(idx, sv);
+                let target = vsubq_s16(vbslq_s16(above, vaddq_s16(idx, hi_add), idx), off);
+                let ptr = self.c.as_mut_ptr().add(half * 8);
+                let cur = vsubq_s16(vreinterpretq_s16_u16(vld1q_u16(ptr)), off);
+                let next = vaddq_s16(cur, vshlq_s16(vsubq_s16(target, cur), shift));
+                vst1q_u16(ptr, vreinterpretq_u16_s16(vaddq_s16(next, off)));
+            }
+        }
+        #[cfg(not(target_arch = "aarch64"))]
         for i in 1..16 {
             let target = if i > s { (SCALE as i32 - 16 + i as i32 - 16384) as i16 } else { i as i16 - 16384 };
             let cur = (self.c[i] as i16).wrapping_sub(16384);
@@ -222,13 +259,22 @@ impl Padded {
     #[inline(always)]
     fn context(&self, i: usize, c: usize, prev_err: i32, lut: &[u8; 1024]) -> (i32, usize, usize) {
         let (b, s, ch) = (&self.buf, self.stride, self.ch);
-        let wv = b[i - ch + c] as i32;
-        let nv = b[i - s + c] as i32;
-        let nw = b[i - s - ch + c] as i32;
-        let ne = b[i - s + ch + c] as i32;
+        // `i` is an interior pixel of the padded image (from `at`), so its west,
+        // north, north-west and north-east neighbours are all inside `buf`.
+        debug_assert!(i >= s + ch && i + ch + c < b.len() && c < ch);
+        // SAFETY: see above.
+        let (wv, nv, nw, ne) = unsafe {
+            (
+                *b.get_unchecked(i - ch + c) as i32,
+                *b.get_unchecked(i - s + c) as i32,
+                *b.get_unchecked(i - s - ch + c) as i32,
+                *b.get_unchecked(i - s + ch + c) as i32,
+            )
+        };
         let act = (wv - nw).abs() + (nv - nw).abs() + (nv - ne).abs() + prev_err;
         let ctx2 = if prev_err == 0 { 0 } else if prev_err < 8 { 1 } else { 2 };
-        (med(wv, nv, nw), lut[act as usize] as usize, ctx2)
+        // act <= 3 * 255 + 64 < 1024.
+        (med(wv, nv, nw), lut[act as usize & 1023] as usize, ctx2)
     }
 }
 

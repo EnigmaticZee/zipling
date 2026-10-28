@@ -912,10 +912,27 @@ fn main() {
             let (_types, px) = unfilter(&png);
             let t = Instant::now();
             let v4 = std::env::var_os("PIX_V4").is_some();
-            let ours = if v4 { encode4(&px, png.w, png.h, png.ch) } else { encode(&px, png.w, png.h, png.ch) };
+            let engine = std::env::var_os("PIX_ENGINE").is_some();
+            let ours = if engine {
+                arca_core::transform::pixels::encode(&px, png.w, png.h, png.ch)
+            } else if v4 {
+                encode4(&px, png.w, png.h, png.ch)
+            } else {
+                encode(&px, png.w, png.h, png.ch)
+            };
             let te = t.elapsed().as_secs_f64();
             let t = Instant::now();
-            let back = if v4 { decode4(&ours, png.w, png.h, png.ch) } else { decode(&ours, png.w, png.h, png.ch) };
+            let reps: usize = std::env::var("PIX_DEC_REPS").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+            let mut back = Vec::new();
+            for _ in 0..reps {
+                back = if engine {
+                    arca_core::transform::pixels::decode(&ours, png.w, png.h, png.ch).unwrap()
+                } else if v4 {
+                    decode4(&ours, png.w, png.h, png.ch)
+                } else {
+                    decode(&ours, png.w, png.h, png.ch)
+                };
+            }
             let td = t.elapsed().as_secs_f64();
             assert!(back == px, "round trip failed: {}", f.display());
             let t = Instant::now();

@@ -229,6 +229,32 @@ struct Done {
     codec: Codec,
 }
 
+/// Prints one block's queue, start and end times when dropped (debug timing).
+struct Timeline {
+    start: Option<Instant>,
+    id: u32,
+    lane: Lane,
+    len: usize,
+    queued: Option<f64>,
+    began: Option<f64>,
+}
+
+impl Drop for Timeline {
+    fn drop(&mut self) {
+        if let (Some(s), Some(q), Some(b)) = (self.start, self.queued, self.began) {
+            eprintln!(
+                "  block {:>3} {:<6} {:>5.1} MiB  queued {:>6.2}s  start {:>6.2}s  end {:>6.2}s",
+                self.id,
+                format!("{:?}", self.lane),
+                self.len as f64 / 1048576.0,
+                q,
+                b,
+                s.elapsed().as_secs_f64()
+            );
+        }
+    }
+}
+
 struct BlockSink {
     pool: Arc<rayon::ThreadPool>,
     slots_tx: Sender<()>,
@@ -239,6 +265,8 @@ struct BlockSink {
     block_sizes: [usize; 4],
     codecs: [CodecConfig; 4],
     lanes: Vec<Lane>,
+    /// Pack start, for the block timeline `ARCA_DEBUG_TIMING` prints.
+    start: Option<Instant>,
 }
 
 impl BlockSink {
@@ -270,7 +298,11 @@ impl BlockSink {
         self.slots_rx.recv().expect("slot channel");
         let cfg = self.codecs[block.lane as usize];
         let (done_tx, slots_tx) = (self.done_tx.clone(), self.slots_tx.clone());
+        let start = self.start;
+        let queued = start.map(|s| s.elapsed().as_secs_f64());
         self.pool.spawn(move || {
+            let began = start.map(|s| s.elapsed().as_secs_f64());
+            let _timeline = Timeline { start, id: block.id, lane: block.lane, len: block.buf.len(), queued, began };
             let _p = prof::span(
                 match (cfg.codec, block.lane) {
                     (Codec::Store, _) => "block.store",
@@ -484,6 +516,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         block_sizes: [text_block_size, block_size, block_size, block_size],
         codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec],
         lanes: Vec::new(),
+        start: timing.then_some(start),
     };
 
     let mut objects: Vec<Object> = Vec::new();
