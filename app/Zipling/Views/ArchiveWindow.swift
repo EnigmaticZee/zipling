@@ -39,6 +39,8 @@ struct ArchiveWindow: View {
             }
         }
         .navigationTitle(model.name)
+        // The title's icon: ⌘-click it for the archive's folders, or drag it like the file.
+        .navigationDocument(url)
         .frame(minWidth: 860, minHeight: 440)
         .task { await model.load() }
         .onDisappear { model.close() }
@@ -56,6 +58,8 @@ struct BrowserView: View {
     @Bindable var model: ArchiveModel
     @AppStorage("showInspector") private var showInspector = true
     @FocusState private var searchFocused: Bool
+    /// The list starts with the keyboard, so space opens Quick Look straight away.
+    @FocusState private var listFocused: Bool
 
     var body: some View {
         NavigationSplitView {
@@ -197,6 +201,10 @@ struct BrowserView: View {
         } primaryAction: { ids in
             model.activate(ids)
         }
+        .focused($listFocused)
+        .onAppear { listFocused = true }
+        // An archive opened inside this one: back to the list it shows.
+        .onChange(of: model.levels.count) { listFocused = true }
         // Finder's keys: space for Quick Look, typing selects by name.
         .onKeyPress(.space) {
             model.toggleQuickLook()
@@ -307,6 +315,7 @@ private struct PathBar: View {
                 Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
             }
             crumb(model.levelNames.last ?? model.name, path: "", icon: "shippingbox")
+                .contextMenu { ArchiveMenu(model: model) }
             ForEach(model.crumbs, id: \.path) { c in
                 Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
                 crumb(c.name, path: c.path, icon: nil)

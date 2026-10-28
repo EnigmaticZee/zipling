@@ -89,8 +89,13 @@ final class ArchiveModel {
     private(set) var searchingInside: (done: Int, total: Int)?
 
     /// The Quick Look panel's file, and the files it can page through.
-    var quickLookURL: URL?
+    var quickLookURL: URL? { didSet { if quickLookURL != oldValue { quickLookMoved() } } }
     private(set) var quickLookURLs: [URL] = []
+    /// The item each previewed file came from.
+    @ObservationIgnored private var quickLookItems: [URL: Item.ID] = [:]
+    @ObservationIgnored private var quickLookFill: Task<Void, Never>?
+    /// True while the selection moves to follow the panel, not the other way round.
+    @ObservationIgnored private var followingPanel = false
 
     /// The most recent job started here; `jobs` has them all.
     private(set) var job: Job?
@@ -270,6 +275,26 @@ final class ArchiveModel {
 
     func subfolders(of path: String) -> [String] {
         level?.subfolders[path] ?? []
+    }
+
+    /// Archives stored directly in a folder, listed in the sidebar beside its subfolders.
+    func archives(in path: String) -> [Item] {
+        (level?.children[path] ?? []).filter { $0.isArchive && $0.inArchive == nil }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// A click in the sidebar: a folder shows its contents, an archive opens in place.
+    func sidebarSelect(_ path: String) {
+        if let item = level?.byID[path], item.isArchive {
+            openNested(item)
+        } else {
+            show(folder: path)
+        }
+    }
+
+    /// The archive's own file, selected in Finder (the outermost one, when nested).
+    func showInFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func item(_ id: Item.ID) -> Item? {
@@ -514,33 +539,73 @@ final class ArchiveModel {
         previewSelectionInQuickLook()
     }
 
+    /// Shows the first selected file at once, then gives the panel the rest to page
+    /// through: the other selected files, or with one selected, the files around it
+    /// in the list, as in Finder. Only files small enough to pull out quietly join.
     private func previewSelectionInQuickLook() {
-        let items = selectedItems.filter { !$0.isFolder }.prefix(64)
-        guard !items.isEmpty else { return }
-        Task {
+        let selected = selectedItems.filter { !$0.isFolder }
+        guard let first = selected.first else { return }
+        let files = visibleItems.filter { !$0.isFolder }
+        let pages: [Item]
+        if selected.count > 1 {
+            pages = Array(selected.prefix(64))
+        } else {
+            let at = files.firstIndex { $0.id == first.id } ?? 0
+            pages = Array(files[max(0, at - 24)..<min(files.count, at + 25)])
+        }
+        quickLookFill?.cancel()
+        quickLookFill = Task {
+            let shown: URL
+            do {
+                shown = try await materialize(first)
+            } catch let p as PasswordRequired {
+                askPassword(for: level?.name ?? name, wrong: p.wrong) { password in
+                    self.setPassword(password)
+                    self.previewSelectionInQuickLook()
+                }
+                return
+            } catch {
+                return
+            }
+            if Task.isCancelled { return }
+            quickLookItems = [shown: first.id]
+            quickLookURLs = [shown]
+            quickLookURL = shown
             var urls: [URL] = []
-            for item in items {
-                do {
-                    urls.append(try await materialize(item))
-                } catch let p as PasswordRequired {
-                    askPassword(for: level?.name ?? name, wrong: p.wrong) { password in
-                        self.setPassword(password)
-                        self.previewSelectionInQuickLook()
-                    }
-                    return
-                } catch {
-                    continue
+            for item in pages {
+                if Task.isCancelled || quickLookURL == nil { return }
+                if item.id == first.id {
+                    urls.append(shown)
+                } else if item.size <= Self.autoPreviewLimit, let url = try? await materialize(item) {
+                    quickLookItems[url] = item.id
+                    urls.append(url)
                 }
             }
-            guard !urls.isEmpty else { return }
-            quickLookURLs = urls
-            quickLookURL = urls[0]
+            if !Task.isCancelled, quickLookURL != nil { quickLookURLs = urls }
         }
+    }
+
+    /// The panel paged to another file: the list's selection follows it.
+    private func quickLookMoved() {
+        guard let url = quickLookURL else {
+            quickLookFill?.cancel()
+            return
+        }
+        guard let id = quickLookItems[url], !selection.contains(id) else { return }
+        followingPanel = true
+        selection = [id]
+        followingPanel = false
     }
 
     private func selectionChanged() {
         // Like Finder, an open Quick Look panel follows the selection.
-        if quickLookURL != nil { previewSelectionInQuickLook() }
+        guard quickLookURL != nil, !followingPanel else { return }
+        if selection.count == 1, let id = selection.first,
+           let url = quickLookItems.first(where: { $0.value == id })?.key, quickLookURLs.contains(url) {
+            quickLookURL = url
+        } else {
+            previewSelectionInQuickLook()
+        }
     }
 
     var hasPassword: Bool { level?.archive.password != nil }

@@ -80,6 +80,25 @@ struct BrowserTests {
         model.close()
     }
 
+    @Test func theSidebarListsArchivesInsideAndOpensThem() async throws {
+        let root = try makeTree()
+        try sh(sevenZip, ["a", root.appending(path: "inner.7z").path, "Project"], in: root)
+        let outer = root.appending(path: "Outer.zip")
+        try sh(sevenZip, ["a", "-tzip", outer.path, "inner.7z", "Project"], in: root)
+
+        let model = ArchiveModel(url: outer)
+        await model.load()
+        #expect(model.archives(in: "").map(\.name) == ["inner.7z"], "beside the folders at the top")
+        #expect(model.archives(in: "Project").isEmpty)
+        model.sidebarSelect("Project")
+        #expect(model.folder == "Project" && model.levels.count == 1, "a folder just shows its contents")
+        model.sidebarSelect("inner.7z")
+        try await until { model.levels.count == 2 }
+        #expect(model.levelNames == ["Outer.zip", "inner.7z"])
+        #expect(model.subfolders(of: "") == ["Project"], "the sidebar now shows the inner archive")
+        model.close()
+    }
+
     @Test func previewsComeFromTheArchive() async throws {
         let root = try makeTree()
         let archive = root.appending(path: "Project.7z")

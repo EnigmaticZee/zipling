@@ -53,6 +53,9 @@ struct AppCommands: Commands {
                 .disabled(model?.selection.isEmpty ?? true)
             Button("Verify Archive") { model?.verify() }
                 .disabled(model?.listing == nil)
+            Button("Show in Finder") { model?.showInFinder() }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+                .disabled(model == nil)
             Button("Convert…") { model?.converting = true }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
                 .disabled(!(model?.canConvert ?? false))
