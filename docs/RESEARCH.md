@@ -290,8 +290,10 @@ With the user's OK, 7-Zip 26.05's public-domain LZMA SDK files are vendored in
 "Public domain"; see its ARCA-NOTES.md). New block codec `lzma2` (tag 4): raw
 LZMA2 behind its property byte, no xz container or CRC-64 (blocks carry BLAKE3).
 Max and Ultra use it (fb 273 = xz -9e's long matches; match finder in its own
-thread, which the SDK's tests show gives identical output). Decoding uses
-7-Zip's ARM64 assembly loop.
+thread). Decoding uses 7-Zip's ARM64 assembly loop. Measured on the Mach-O block
+at fb 32, nothing else running: one thread 21.2 s wall / 21.2 s CPU, two threads
+12.4 s wall / **17.7 s CPU**, output 10,529,319 vs 10,535,673 bytes (+0.06%; the
+same on every run, so archives stay deterministic).
 
 Whole saved folder, Max, busy Mac:
 - size 210.84 → **210.60 MiB**; **LZMA decoding 4.76 → 3.18 s of CPU**; extraction
@@ -333,6 +335,28 @@ Whole folder (Mac at load ~20):
 
 Under 20 s on a quiet Mac likely needs fb 32-ish and cheaper preflate/Lepton
 work (34 s and 22 s of CPU), or a new idea for LZMA itself.
+
+**The user chose "Max = fastest"** (2026-10-28): Max is now LZMA2 fb 32 with
+32 MiB text blocks: **212.85 MiB in 23.3 s** on the saved folder (CPU 168 s),
+extraction 3.67–3.85 s, round trip byte-identical. Ultra keeps fb 273 + PPMd text.
+
+Further Max work:
+- preflate checks the step budget proportionally (four times the share so far):
+  PNG analysis 21.9 → 18.9 s CPU on the docs part, same size. Twice the share was
+  21.9 → 15.5 s but rejected one more PNG (+0.10 MiB); exactly the share,
+  14.1 s and +0.29 MiB.
+- Dead end: running only the leading hash candidate after 2 MB of plain text
+  (estimation was 25% of preflate's samples): 2% faster, 2 PNGs lost.
+- Dead end: thread QoS. Block threads at user-interactive alone: no change
+  (23.5 vs 23.6 s). Block threads high and file tasks at utility: 21.5 vs 23.1 s
+  once, then 33–38 s vs 23 s in three alternating rounds (macOS moves utility
+  threads to the efficiency cores under load). Too unpredictable.
+- Max's floor: 168 s of CPU over 8 performance + 2 efficiency cores is ~19 s at
+  perfect packing. The app-code blocks start first but are starved by 20+
+  runnable threads and finish last, leaving cores idle for ~5 s.
+- Extraction timeline (`ARCA_DEBUG_TIMING`, busy cores per quarter second): all
+  10 busy from 0.25 s to 3.25 s, so extraction is CPU-bound (Lepton 11.4 s,
+  Deflate + pixels 10 s, LZMA2 3.2 s, writing 2.3 s).
 
 ### A pixel codec for PNG data (most promising lead)
 
