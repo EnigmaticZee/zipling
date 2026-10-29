@@ -164,3 +164,40 @@ fn refuses_what_it_does_not_handle() {
     let err = ZipArchive::open(&zip).unwrap().extract(&tmp.path().join("o"), &ZipExtractOptions::default()).unwrap_err();
     assert!(err.to_string().starts_with("unsupported:"), "{err}");
 }
+
+#[test]
+fn written_zips_read_back_everywhere() {
+    // The writer's output through Arca's reader and through ditto (Apple's own):
+    // a file large enough to be compressed in pieces on several cores, one that
+    // doesn't compress, a small one, an empty one, an executable and a link.
+    use arca_core::zipwrite::{write_zip, ZipWriteOptions};
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("in/Tree");
+    fs::create_dir_all(src.join("sub")).unwrap();
+    let text: Vec<u8> = (0..9_000_000u32).map(|i| b"the quick brown fox "[(i % 20) as usize] ^ ((i / 997) % 3) as u8).collect();
+    fs::write(src.join("big.txt"), &text).unwrap();
+    fs::write(src.join("noise.bin"), noise(5 << 20, 3)).unwrap();
+    fs::write(src.join("sub/small.txt"), b"small\n").unwrap();
+    fs::write(src.join("sub/empty"), b"").unwrap();
+    fs::write(src.join("run.sh"), b"#!/bin/sh\n").unwrap();
+    fs::set_permissions(src.join("run.sh"), fs::Permissions::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink("sub/small.txt", src.join("link")).unwrap();
+
+    let zip = tmp.path().join("t.zip");
+    write_zip(&[src.clone()], &zip, &ZipWriteOptions { level: 7, ..Default::default() }).unwrap();
+    let z = ZipArchive::open(&zip).unwrap();
+    assert!(z.verify(4).unwrap() >= 14_000_000);
+
+    let out = tmp.path().join("arca");
+    z.extract(&out, &ZipExtractOptions::default()).unwrap();
+    let dit = tmp.path().join("ditto");
+    assert!(Command::new("ditto").args(["-x", "-k"]).arg(&zip).arg(&dit).status().unwrap().success());
+    for root in [&out, &dit] {
+        let got = root.join("Tree");
+        for name in ["big.txt", "noise.bin", "sub/small.txt", "sub/empty", "run.sh"] {
+            assert_eq!(fs::read(got.join(name)).unwrap(), fs::read(src.join(name)).unwrap(), "{name} in {}", root.display());
+        }
+        assert_eq!(fs::metadata(got.join("run.sh")).unwrap().mode() & 0o777, 0o755);
+        assert_eq!(fs::read_link(got.join("link")).unwrap(), Path::new("sub/small.txt"));
+    }
+}

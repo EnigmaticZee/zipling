@@ -344,6 +344,86 @@ pub unsafe extern "C" fn arca_zip_extract(
     })
 }
 
+fn yes() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
+struct ZipCreateRequest {
+    inputs: Vec<PathBuf>,
+    output: PathBuf,
+    /// Deflate level, 1-9 (0 stores).
+    level: u32,
+    #[serde(default = "yes")]
+    leave_out_mac_files: bool,
+}
+
+#[derive(Serialize)]
+struct ZipCreateResult {
+    files: u64,
+    dirs: u64,
+    input_bytes: u64,
+    output_bytes: u64,
+    seconds: f64,
+}
+
+/// Makes a ZIP archive with Arca's own writer: every file compressed on its own
+/// core (large ones in pieces), UTF-8 names, Unix permissions, exact times,
+/// links as links, ZIP64 only when needed. No passwords, no split volumes.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated JSON string; `task` null or live.
+#[no_mangle]
+pub unsafe extern "C" fn arca_zip_create(
+    request: *const c_char,
+    task: *mut ArcaTask,
+    progress: ArcaProgress,
+    ctx: *mut c_void,
+) -> *mut c_char {
+    let hooks = hooks(task, progress, ctx);
+    respond(|| {
+        let req: ZipCreateRequest = serde_json::from_str(&arg(request)?).context("bad zip create request")?;
+        let opts = arca_core::zipwrite::ZipWriteOptions {
+            level: req.level,
+            threads: 0,
+            leave_out_mac_files: req.leave_out_mac_files,
+            hooks,
+        };
+        let s = arca_core::zipwrite::write_zip(&req.inputs, &req.output, &opts)?;
+        Ok(ZipCreateResult { files: s.files, dirs: s.dirs, input_bytes: s.input_bytes, output_bytes: s.output_bytes, seconds: s.seconds })
+    })
+}
+
+#[derive(Serialize)]
+struct ZipVerifyResult {
+    entries: u64,
+    bytes: u64,
+    seconds: f64,
+}
+
+/// Checks every entry of a ZIP archive (inflates it and compares its CRC-32)
+/// without writing anything. Fails with "unsupported: ..." for archives the
+/// reader doesn't handle (encryption, other methods, split archives).
+///
+/// # Safety
+/// `archive_path` must be a valid NUL-terminated string; `task` null or live.
+#[no_mangle]
+pub unsafe extern "C" fn arca_zip_verify(
+    archive_path: *const c_char,
+    task: *mut ArcaTask,
+    progress: ArcaProgress,
+    ctx: *mut c_void,
+) -> *mut c_char {
+    let hooks = hooks(task, progress, ctx);
+    respond(|| {
+        hooks.check()?;
+        let t = std::time::Instant::now();
+        let z = arca_core::zip::ZipArchive::open(&PathBuf::from(arg(archive_path)?))?;
+        let bytes = z.verify(std::thread::available_parallelism().map_or(4, |n| n.get()))?;
+        Ok(ZipVerifyResult { entries: z.entries.len() as u64, bytes, seconds: t.elapsed().as_secs_f64() })
+    })
+}
+
 /// Decodes the whole archive and checks every hash without writing anything.
 ///
 /// # Safety

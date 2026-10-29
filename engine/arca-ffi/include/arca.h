@@ -46,6 +46,18 @@ char *arca_verify(const char *archive_path, ArcaTask *task, ArcaProgress progres
 // encodings, split archives): use another reader for those.
 char *arca_zip_extract(const char *request, ArcaTask *task, ArcaProgress progress, void *ctx);
 
+// Makes a ZIP archive with Arca's own writer (every core; no passwords or split
+// volumes).
+// request: {"inputs": [paths], "output": path, "level": 1-9,
+//           "leave_out_mac_files": bool}
+// {"ok": {files, dirs, input_bytes, output_bytes, seconds}}
+char *arca_zip_create(const char *request, ArcaTask *task, ArcaProgress progress, void *ctx);
+
+// Checks every entry of a ZIP archive (CRC-32 of everything), writing nothing.
+// {"ok": {entries, bytes, seconds}}, or {"error": "unsupported: ..."} for archives
+// the reader doesn't handle.
+char *arca_zip_verify(const char *archive_path, ArcaTask *task, ArcaProgress progress, void *ctx);
+
 #ifdef __cplusplus
 }
 #endif

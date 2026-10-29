@@ -625,6 +625,7 @@
 				OTHER_LDFLAGS = (
 					"-larca_ffi",
 					"-liconv",
+					"-lc++",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.observantsystems.zipling.quicklook;
 				SDKROOT = macosx;
@@ -709,6 +710,7 @@
 				OTHER_LDFLAGS = (
 					"-larca_ffi",
 					"-liconv",
+					"-lc++",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.observantsystems.zipling.quicklook;
 				SDKROOT = macosx;
@@ -753,6 +755,7 @@
 				OTHER_LDFLAGS = (
 					"-larca_ffi",
 					"-liconv",
+					"-lc++",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.observantsystems.zipling;
 				PRODUCT_NAME = Zipling;
@@ -782,6 +785,7 @@
 				OTHER_LDFLAGS = (
 					"-larca_ffi",
 					"-liconv",
+					"-lc++",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.observantsystems.zipling;
 				PRODUCT_NAME = Zipling;

@@ -1034,6 +1034,35 @@ Ranked leads from 2024–26 papers and projects; each still needs a test here:
 
 ## Engine ZIP reader and writer
 
+**Writer in the app** (2026-10-28 late evening). The engine's writer against the
+7-Zip settings the app uses, saved folder:
+
+| ZIP | Size | Time |
+|---|---:|---:|
+| engine, Deflate level 6 | 352.0 MB | 1.20-1.38 s |
+| **engine, level 7** | **351.56 MB** | **1.39-1.42 s** |
+| engine, level 8 | 351.11 MB | 1.75-1.78 s |
+| engine, level 9 | 347.8 MB | 2.35 s |
+| 7-Zip -mx1 (app's Fast and Default) | 351.80 MB | 1.71-1.74 s |
+| 7-Zip -mx7 (app's Max) | 344.3 MB | 14.1 s |
+| 7-Zip -mx9 (app's Ultra) | 343.6 MB | 35.4 s |
+
+Files of 4 MiB and up are now compressed in 1 MiB pieces on several cores, as
+pigz does (each primed with the 32 KiB before it, joined by sync flushes into
+one ordinary Deflate stream): level 7 went from 1.80 to 1.4 s at the same size
+(the 49 MB Maps binary had been compressing on one core). Checking afterwards:
+the engine's reader takes 0.22 s against 1.86 s for 7-Zip's test. So the app
+now makes Fast and Default ZIPs without a password or split volumes with the
+engine at level 7 (3.6 → 1.6 s including the check, slightly smaller), and
+checks every password-less ZIP with the engine's reader first, falling back to
+7-Zip's test if it declines or finds damage. Max and Ultra ZIPs stay with 7-Zip,
+whose optimal-parsing Deflate is 1% smaller. Two FFI functions were added
+(`arca_zip_create`, `arca_zip_verify`); an engine test reads a written ZIP back
+with Arca's reader and with ditto.
+
+The app also needs `-lc++` now: libbsc is C++ (the app build broke at the bsc
+commit; fixed in the same change).
+
 **Reader** (`arca-core/src/zip.rs`, CLI `arca unzip` / `arca ziptest`): parses the
 central directory (ZIP64, extended-timestamp and Info-ZIP Unix time fields),
 inflates stored and Deflate entries on every core with zlib-rs (flate2's
