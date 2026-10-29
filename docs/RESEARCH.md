@@ -29,6 +29,26 @@ Next: app tests; Ultra; Max under 20 s (pixel codec branches, preflate, Lepton);
 Default extraction margin; maybe an engine ZIP writer; then final quiet-Mac
 benchmarks (ask the user first).
 
+## Deep research agenda (from the user, 2026-10-28 evening)
+
+The goal is a breakthrough, not tuning: beat every archiver (7-Zip, Zipgeist,
+Keka, BetterZip, WinRAR, Finder, zstd, xz) at every level on speed and size,
+aiming for multiples. Keep what works (pixel codec, ZIP reader and writer, LZMA
+SDK, memory fix); replace a part only if a test shows the new one is faster and
+at least as small. Steps before the final benchmarks:
+
+1. Default several times faster: Lepton, preflate and zstd are its time; e.g.
+   the pixel codec with fast decoding.
+2. Max under 20 s; Ultra extracting on all cores.
+3. PNG token coding; re-creating one Deflate stream on several cores.
+4. Apple Silicon GPU: can it take any stage? It must help ordinary Macs, not
+   only big-GPU ones.
+5. Duplicate detection, scheduling, writing files, and the app's extraction
+   overhead (2.2 s in the app vs 0.9 s in the engine).
+6. The newest papers and techniques: codecs and transforms nobody else ships.
+
+Status of each is kept under its own heading below as it progresses.
+
 ## The task, in short
 
 Make Arca much faster at every level (aim: ~50%+, "unimaginably fast"), while at
@@ -196,6 +216,32 @@ previous path, times and object numbers delta-coded (version 1 archives still
 open). Saved folder at Fast: index 251.37 KiB (v1, zstd-9) / 232.61 KiB (v1,
 zstd-19) → **206.75 KiB** (v2, zstd-9, 5 ms); raw index 1.3 MB → 0.5 MB. Fast on
 the source set is now within 858 bytes of this morning (was +24.8 KB).
+
+### Max: a code lane (the user's direction, 2026-10-28)
+
+User: keep the fastest Max, but give code and text long matches so Max beats 7-Zip
+Ultra on source (under 8.5 MB) and Silesia (under 48.7 MB), with a small time cost.
+New `Class::Code` (by content: ELF, PE, static libraries `!<arch>`, Java class,
+WebAssembly, LLVM bitcode, tar) and a code lane with its own codec and block size
+(Max and Ultra only; Fast and Default keep it in the binary lane, unchanged).
+
+| Max variant | source | Silesia | saved folder |
+|---|---|---|---|
+| fast preset (text fb 64 / 32 MiB, binary fb 32) | 9.28 MB | 49.31 MB | 212.61 MiB, 21.8 s |
+| + code lane fb 273 incl. Mach-O | 8.53 MB | 49.02 MB | 212.55 MiB, 37.4 s |
+| + code and text fb 273, 64 MiB, Mach-O in code | 8.23 MB | 48.63 MB | 212.26 MiB, 41.9 s |
+| **code and text fb 273, 64 MiB, Mach-O stays binary** | **8.23 MB** | **48.63 MB** | **211.69 MiB, 33.4 s** |
+| same, text in 32 MiB blocks | 8.42 MB | 48.74 MB | 211.88 MiB, 33.3 s |
+| code fb 64 | 8.77 MB | 48.71 MB | 212.20 MiB, 24.1 s |
+| code fb 273 in 32 MiB blocks | 8.46 MB | 48.76 MB | 211.91 MiB, 32.4 s |
+
+Mach-O gained almost nothing from long matches on real apps (−0.06 MiB for +15 s),
+so it stays in the binary lane. The code lane on the saved folder is ~99 MiB of
+static libraries that compress 46:1; at fb 273 one 64 MiB block of it takes ~31 s,
+which is the +11 s. **Chosen:** text and code fb 273 in 64 MiB blocks (both targets
+met; saved folder 211.69 MiB, smaller than this morning's 211.47 MiB-in-105 s Max
+0.1%, in ~33 s instead of 105 s). Next: a long-range pre-pass to take that repetition
+off LZMA (see deep research).
 
 ## Known fixes
 

@@ -55,6 +55,11 @@ pub fn plain_lane(class: Class) -> Lane {
     match class {
         Class::Compressed | Class::Jpeg => Lane::Store,
         Class::Text => Lane::Text,
+        // Mac app code is arm64-filtered and gains little from long matches on
+        // real apps (212.61 → 212.55 MiB on the saved folder for +15 s), so it
+        // stays in the binary lane; libraries, ELF/PE executables and tar
+        // bundles gain a lot (source trees: 9.3 → 8.5 MB).
+        Class::Code => Lane::Code,
         _ => Lane::Binary,
     }
 }
