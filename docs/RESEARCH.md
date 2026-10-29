@@ -1047,6 +1047,13 @@ with `lsregister -u`.
 
 - Long-range pre-pass before LZMA (2x faster on code, 13% bigger): see Deep research.
 - Multi-symbol size classes inside Lepton: +0.63% for ~25% less coder work.
+- One LZMA2 block encoded in parallel segments (state reset, no dictionary
+  reset; each segment's match finder first indexes the 24-32 MiB before it; a
+  shim including LzmaEnc.c, tried and removed). A 32 MiB window alone costs only
+  +0.03-0.08% on Mach-O (16 MiB: +3.5-17%, universal binaries repeat 16-32 MiB
+  apart), but indexing the preload costs as much as coding it: 64 MiB Mach-O
+  block, 16 MiB segments, 32 MiB window: 10.538 MB, 42.7 s CPU, 12.3 s wall,
+  against 10.536 MB, 17.3 s CPU, 12.2 s wall with the two-thread match finder.
 - ARM64 code in byte planes (57.6 MB of the apps' `__text`): LZMA fb 273 13.15 →
   17.79 MB, bsc 17.26 → 22.03 MB. LZMA stays best on raw machine code.
 - Code-signature page hashes: only 0.19 MB in 99.5 MB of app binaries (16 KB
