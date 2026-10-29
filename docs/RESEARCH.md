@@ -9,25 +9,28 @@ everything below it is the record.
 ## State
 
 Where each level stands on the saved folder (CLI, busy Mac, so rough; rivals from
-the 2026-10-28 head-to-head):
+the 2026-10-28 head-to-head). Updated 2026-10-28 late evening:
 
 | Level | Make | Size | Extract | Rival (make / size / extract) |
 |---|---:|---:|---:|---|
-| Fast | 0.67–0.72 s | 301.33 MiB (316 MB) | ~0.9 s | Zipgeist tar.zst 1.24 s / 341 MB / 1.6–1.9 s |
-| Default | ~9.2 s | 245.43 MiB (257 MB) | ~2.6 s | Zipgeist 7z 17.2 s / 285 MB / 3.0 s |
-| Max | ~22–23.5 s | 212.85 MiB (223 MB) | 3.67–3.85 s | Zipgeist best 20.0 s / 284 MB / 3.7 s |
-| Ultra | not re-measured | | | as Max |
-| ZIP extract | 1.06–1.12 s | | | Zipgeist 2.1 s (app via 7-Zip: 4.7 s) |
+| Fast | 0.7–1.2 s | 301.3 MiB (316 MB) | **0.74–0.88 s** | Zipgeist tar.zst 1.24 s / 341 MB / 1.6–1.9 s |
+| Default | 8.5–8.6 s | 245.48 MiB (257 MB) | **2.19–2.28 s** | Zipgeist 7z 17.2 s / 285 MB / 3.0 s |
+| Max | 31–33 s | 211.69 MiB (222 MB) | **2.92–3.02 s** | Zipgeist best 20.0 s / 284 MB / 3.7 s |
+| Ultra | 34 s | 210.36 MiB | 5.05 s (PPMd text) | as Max |
+| ZIP extract | **0.91–0.99 s** | | | Zipgeist 2.1 s (app via 7-Zip: 4.7 s) |
 
-Done: log, test sets, profiles, the four known fixes, pixel codec, LZMA SDK
-codec, fast Max preset (user's choice), engine ZIP reader with FFI and app
-fallback (app tests running). User decisions so far: Max may grow ~3% for faster
-extraction (since won back), Silesia and the 7-Zip source downloaded, Max = the
-fastest measured setting.
+Done: log, test sets, profiles, the four known fixes, pixel codec (now 2x faster
+to decode), LZMA SDK codec, Max code lane, engine ZIP reader and writer, index v2,
+extraction writes (creation gate, write queue, one-call metadata), Lepton built
+without LLVM's memset idiom. Dead ends: long-range pre-pass, hint-guided LZMA,
+LZMA match finders, band-parallel pixel decoding, LZRAVEN.
 
-Next: app tests; Ultra; Max under 20 s (pixel codec branches, preflate, Lepton);
-Default extraction margin; maybe an engine ZIP writer; then final quiet-Mac
-benchmarks (ask the user first).
+Waiting on the user: Default with the pixel codec (smaller, faster to make,
+extraction ~0.05 s slower); downloads of libbsc + libsais (BWT text, parallel
+Ultra extraction) and a pinned zlib (replaying stock-zlib PNGs).
+
+Next: app extraction overhead (measured in a temporary test); Max make time;
+Ultra extraction; final quiet-Mac benchmarks (ask the user first).
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
@@ -790,6 +793,30 @@ repeats, and its optimal parse codes them ~10% better than one long match each
 (repeat distances and split points). The time is the parse over long repeats,
 not missed matches.
 
+### Apple Silicon GPU (agenda item 4): no stage worth moving
+
+Measured CPU by stage (saved folder, thread seconds):
+
+| Work | Max make (~210 s) | Max extract (~25 s) | Default make (~62 s) | Fast make (~3.4 s) |
+|---|---:|---:|---:|---:|
+| LZMA / zstd blocks (adaptive range coding, match search) | ~75% | 13% | ~38% | ~75% |
+| Lepton (adaptive binary arithmetic coding per coefficient) | ~10% | 41% | ~33% | — |
+| preflate (replays a Deflate encoder byte by byte) | ~8% | 18% | ~20% | — |
+| pixel codec (adaptive rANS; prediction is the cheap part) | ~4% | 10% | — | — |
+| hashing, chunking, sniffing (data-parallel) | ~2% | — | ~5% | ~35% |
+| writing files (kernel, serialised by APFS) | — | ~12% | — | — |
+
+Everything heavy is a serial adaptive model: each symbol's probabilities depend
+on the one before, which is what makes these coders small, and is exactly what a
+GPU cannot spread out. Published GPU codecs (DietGPU, GPULZ, Recoil; all CUDA, no
+Metal) get their speed from static tables and independent tiles, at a cost in
+size the brief rules out. The data-parallel part is small: BLAKE3 with NEON on
+the CPU cores already hashes the 660 MB in well under 0.1 s, and Fast is bound by
+file I/O and serial phases, not hashing. A base M1's 7–8 GPU cores share the CPU's
+memory bandwidth, so moving that ~2–5% would add transfers and launch latency for
+no wall-clock gain. Revisit only if a GPU-friendly coder (static-table rANS over
+independent tiles, or a GPU suffix sort for BWT) is ever adopted for size reasons.
+
 ### Long-range pre-pass before LZMA (dead end on size)
 
 Goal: take the code lane's repetition (static libraries, 46:1) off LZMA fb 273,
@@ -894,6 +921,8 @@ with `lsregister -u`.
 ## Dead ends
 
 - Long-range pre-pass before LZMA (2x faster on code, 13% bigger): see Deep research.
+- GPU: every heavy stage is a serial adaptive coder; the data-parallel 2–5%
+  is not worth moving (see Deep research).
 - Hint-guided LZMA (the pre-pass's repeats taken as single matches): +1.3–10%
   for 17–31% less CPU; other match finders: +3–4% for ≤18%. See Deep research.
 - Decoding image bands side by side on one core, and branchless top-bit decoding:
