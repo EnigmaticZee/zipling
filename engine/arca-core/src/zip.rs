@@ -553,7 +553,7 @@ impl ZipArchive {
                 }
                 ensure!(crc.finalize() == e.crc, "{}: CRC mismatch, the archive is damaged", e.name);
                 let entry = entry_for(e, EntryKind::File { size: e.size, object: 0 });
-                apply_metadata_fd(&f, &entry)?;
+                apply_metadata_fd(&f, &entry, None)?;
                 if meta.get(&entry.path).is_some_and(|m| m.1) {
                     hide(&f);
                 }
@@ -587,14 +587,14 @@ impl ZipArchive {
             }
             use std::os::unix::ffi::OsStrExt;
             std::os::unix::fs::symlink(std::ffi::OsStr::from_bytes(&target), p)?;
-            apply_metadata(p, &entry_for(e, EntryKind::Symlink { target }))?;
+            apply_metadata(p, &entry_for(e, EntryKind::Symlink { target }), None)?;
         }
         // Folder metadata deepest first, so writing inside doesn't change it later.
         dir_paths.sort_by_key(|(d, _)| std::cmp::Reverse(d.matches('/').count()));
         for (d, e) in &dir_paths {
             if let Some(e) = e {
                 let p = safe_join(dest, d)?;
-                apply_metadata(&p, &entry_for(e, EntryKind::Dir))?;
+                apply_metadata(&p, &entry_for(e, EntryKind::Dir), None)?;
             }
         }
         if let Some(q) = quarantine {

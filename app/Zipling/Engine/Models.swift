@@ -97,4 +97,7 @@ struct ExtractResult: Decodable, Sendable {
     let seconds: Double
     /// Entries left out because writing them would have been unsafe.
     var skipped: [String]?
+    /// Set by the app, not the engine: the engine already gave every item the
+    /// archive's quarantine.
+    var quarantined: Bool?
 }

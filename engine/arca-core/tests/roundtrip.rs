@@ -218,3 +218,37 @@ fn rejects_path_traversal() {
     assert!(format!("{err:#}").contains("unsafe entry path"), "{err:#}");
     assert!(!tmp.path().join("evil").exists());
 }
+
+/// A downloaded archive's quarantine reaches every extracted item: files written
+/// whole or in chunks, small duplicates written again, large ones cloned, the
+/// empty file, folders, links (the link itself) and hard links. Each file's own
+/// attributes stay.
+#[test]
+fn quarantine_reaches_every_item() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("tree");
+    build_tree(&src);
+    let big = noise(300 << 10, 11);
+    write(&src.join("big/one.bin"), &big);
+    write(&src.join("big/two.bin"), &big);
+    let archive = tmp.path().join("q.arca");
+    pack(std::slice::from_ref(&src), &archive, &PackOptions::preset(Level::Fast)).unwrap();
+
+    let value = b"0083;6720f3f2;Safari;".to_vec();
+    let out = tmp.path().join("out");
+    let opts = ExtractOptions { quarantine: Some(value.clone()), ..Default::default() };
+    Archive::open(&archive).unwrap().extract(&out, &opts).unwrap();
+    let mut items = vec![out.join("tree")];
+    let mut n = 0;
+    while let Some(p) = items.pop() {
+        let m = fs::symlink_metadata(&p).unwrap();
+        if m.is_dir() {
+            items.extend(fs::read_dir(&p).unwrap().map(|e| e.unwrap().path()));
+        }
+        assert_eq!(xattr::get(&p, "com.apple.quarantine").unwrap().as_deref(), Some(&value[..]), "{}", p.display());
+        n += 1;
+    }
+    assert!(n >= 14, "walked {n} items");
+    assert_eq!(xattr::get(out.join("tree/docs/readme.txt"), "com.example.tag").unwrap().unwrap(), b"blue");
+    assert_eq!(fs::read(out.join("tree/big/two.bin")).unwrap(), big);
+}

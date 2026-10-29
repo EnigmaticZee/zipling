@@ -37,6 +37,9 @@ pub struct ExtractOptions {
     pub overwrite: bool,
     /// Extract only entries whose path equals or lies under one of these.
     pub only: Vec<String>,
+    /// Set as `com.apple.quarantine` on everything extracted (the archive's own),
+    /// through each file's descriptor as it is written.
+    pub quarantine: Option<Vec<u8>>,
     pub hooks: Hooks,
 }
 
@@ -270,8 +273,10 @@ impl Archive {
         let wanted = order.len() as u64;
 
         let total: u64 = objs.iter().map(|&o| idx.objects[o as usize].size).sum();
+        let quarantine = opts.quarantine.as_deref();
         let x = Extraction {
             archive: self,
+            quarantine,
             dest: dest.is_some(),
             targets: &targets,
             receivers: &receivers,
@@ -401,7 +406,7 @@ impl Archive {
                     .filter(|(i, e)| {
                         targets[*i].is_some() && !matches!(e.kind, EntryKind::Dir) && !x.fd_done[*i].load(Ordering::Relaxed)
                     })
-                    .try_for_each(|(i, e)| apply_metadata(targets[i].as_ref().unwrap(), e))
+                    .try_for_each(|(i, e)| apply_metadata(targets[i].as_ref().unwrap(), e, quarantine))
             })?;
             // One depth at a time (a parent's mode could bar access to its
             // children), each depth on every core.
@@ -412,7 +417,9 @@ impl Archive {
             dirs.sort_unstable_by_key(|&(depth, i)| (std::cmp::Reverse(depth), i));
             for level in dirs.chunk_by(|a, b| a.0 == b.0) {
                 pool.install(|| {
-                    level.par_iter().try_for_each(|&(_, i)| apply_metadata(targets[i].as_ref().unwrap(), &idx.entries[i]))
+                    level
+                        .par_iter()
+                        .try_for_each(|&(_, i)| apply_metadata(targets[i].as_ref().unwrap(), &idx.entries[i], quarantine))
                 })?;
             }
             phase("metadata applied");
@@ -536,6 +543,7 @@ impl Sched {
 
 struct Extraction<'a> {
     archive: &'a Archive,
+    quarantine: Option<&'a [u8]>,
     dest: bool,
     targets: &'a [Option<PathBuf>],
     receivers: &'a HashMap<u32, Vec<usize>>,
@@ -576,7 +584,7 @@ impl Extraction<'_> {
         for &i in &all[..n] {
             let f = create_file(self.targets[i].as_ref().unwrap())?;
             f.write_all_at(content, 0)?;
-            apply_metadata_fd(&f, &self.archive.index.entries[i])?;
+            apply_metadata_fd(&f, &self.archive.index.entries[i], self.quarantine)?;
             self.fd_done[i].store(true, Ordering::Relaxed);
         }
         Ok(())
@@ -833,13 +841,19 @@ fn mode_times(e: &Entry) -> (libc::attrlist, ModeTimes) {
     (list, ModeTimes { modified: t, accessed: t, mode: e.mode & 0o7777 })
 }
 
+pub(crate) const QUARANTINE: &str = "com.apple.quarantine";
+
 /// Metadata through an open descriptor: no path lookups, no symlink races.
-/// Mode and times go in one call (a chmod and a utimes cost two).
-pub(crate) fn apply_metadata_fd(f: &File, e: &Entry) -> Result<()> {
+/// Mode and times go in one call (a chmod and a utimes cost two). `quarantine`,
+/// when given, is set too.
+pub(crate) fn apply_metadata_fd(f: &File, e: &Entry, quarantine: Option<&[u8]>) -> Result<()> {
     use std::os::fd::AsRawFd;
     use xattr::FileExt as _;
     for (k, v) in &e.xattrs {
         let _ = f.set_xattr(k, v);
+    }
+    if let Some(q) = quarantine {
+        let _ = f.set_xattr(QUARANTINE, q);
     }
     let (mut list, mut buf) = mode_times(e);
     // SAFETY: `list` describes exactly the attributes `buf` holds, in order.
@@ -879,13 +893,15 @@ fn set_dir_mode_times(p: &Path, e: &Entry) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn apply_metadata(p: &Path, e: &Entry) -> Result<()> {
+pub(crate) fn apply_metadata(p: &Path, e: &Entry, quarantine: Option<&[u8]>) -> Result<()> {
     let is_link = matches!(e.kind, EntryKind::Symlink { .. });
     // A clone inherits its source's attributes; keep only this entry's own.
     if matches!(e.kind, EntryKind::File { .. }) {
         if let Ok(names) = xattr::list(p) {
             for name in names {
-                if !e.xattrs.iter().any(|(k, _)| std::ffi::OsStr::new(k) == name) {
+                let own = e.xattrs.iter().any(|(k, _)| std::ffi::OsStr::new(k) == name)
+                    || (quarantine.is_some() && name == QUARANTINE);
+                if !own {
                     let _ = xattr::remove(p, &name);
                 }
             }
@@ -894,6 +910,10 @@ pub(crate) fn apply_metadata(p: &Path, e: &Entry) -> Result<()> {
     for (k, v) in &e.xattrs {
         // Best effort: some attributes are not settable on every filesystem.
         let _ = xattr::set(p, k, v);
+    }
+    if let Some(q) = quarantine {
+        // On a link itself, not what it points at.
+        let _ = xattr::set(p, QUARANTINE, q);
     }
     if matches!(e.kind, EntryKind::Dir) {
         return set_dir_mode_times(p, e);

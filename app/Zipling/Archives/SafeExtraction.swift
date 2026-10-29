@@ -27,13 +27,16 @@ enum SafeExtraction {
         xattr(quarantineName, of: url.path)
     }
 
-    static func finalize(_ staging: URL, quarantine: Data?) throws -> Report {
+    /// `alreadyQuarantined`: the engine set the quarantine while writing, so it is
+    /// only set again here if merging AppleDouble files took it off some items.
+    static func finalize(_ staging: URL, quarantine: Data?, alreadyQuarantined: Bool = false) throws -> Report {
         let root = staging.standardizedFileURL.path
         let realRoot = realPath(root) ?? root
         var report = Report()
         // One walk for every step: the directory listing already says what each item is.
         var items = allItems(under: root)
-        if mergeAppleDouble(items, in: root) {
+        let merged = mergeAppleDouble(items, in: root)
+        if merged {
             let sequestered = root + "/__MACOSX"
             items.removeAll { item in
                 (item.path as NSString).lastPathComponent.hasPrefix("._")
@@ -47,7 +50,7 @@ enum SafeExtraction {
             unsafe.insert(item.path)
             report.removedLinks.append(String(item.path.dropFirst(root.count + 1)))
         }
-        if let quarantine {
+        if let quarantine, !alreadyQuarantined || merged {
             let marked = unsafe.isEmpty ? items : items.filter { !unsafe.contains($0.path) }
             quarantine.withUnsafeBytes { value in
                 DispatchQueue.concurrentPerform(iterations: marked.count) { i in

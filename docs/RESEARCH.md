@@ -762,6 +762,17 @@ time, the other threads decode and rebuild. Saved folder, three alternating runs
 | Default | 2.38–2.50 s | **2.19–2.28 s** |
 | Max | 3.05–3.20 s | **2.92–3.02 s** |
 
+**The app's own overhead**, measured with a temporary test in the app's test
+target (optimised build, saved folder, not committed): Fast extraction through
+`Automation.extract` takes 0.99–1.15 s, of which the engine is 0.87 s, opening
+the archive (its listing) 0.09 s and the safety walk 0.10 s. The 2.21 s measured
+on 2026-10-26 is gone with the engine's own speed-ups. For a downloaded archive,
+setting the quarantine on all 14,505 items by path added 0.15–0.4 s; the engine
+now sets it through each file's descriptor as it writes (`ExtractOptions::
+quarantine`, also in the FFI requests for `.zlg` and ZIP), and the app's pass
+runs again only if it merged AppleDouble files. All 58 app tests pass; a new
+engine test checks every kind of item gets the quarantine.
+
 Kernel CPU 3.6 → 2.9 s at Default and Max. Max's extraction is CPU-bound from
 0.25 s to the end with no single-file tail (Lepton 10.4 s, Deflate 4.4 s, LZMA2
 3.3 s, pixels 2.6 s), so re-creating one Deflate stream on several cores would
