@@ -1088,6 +1088,8 @@ with `lsregister -u`.
   against 10.536 MB, 17.3 s CPU, 12.2 s wall with the two-thread match finder.
 - Hash-chain match finders on Mach-O (fb 32, one thread): hc4 10.800 MB / 18.7 s,
   hc5 11.005 MB / 18.4 s against bt4 10.529 MB / 22.6 s: +2.6-4.5% for 17-19% less CPU.
+- Fewer LZMA search cycles on Mach-O (fb 32, one thread; default 32): 24 cycles
+  +0.28% for 2.4% less CPU, 16 +0.85% for 10%, 8 +3.0% for 29%.
 - ARM64 code in byte planes (57.6 MB of the apps' `__text`): LZMA fb 273 13.15 →
   17.79 MB, bsc 17.26 → 22.03 MB. LZMA stays best on raw machine code.
 - Code-signature page hashes: only 0.19 MB in 99.5 MB of app binaries (16 KB
