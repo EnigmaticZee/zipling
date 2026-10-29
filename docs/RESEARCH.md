@@ -45,8 +45,9 @@ only with bsc). PGO measured (−1 to −4% CPU; for release builds). Later:
 real-world sets added (`dmgs`, `thirdparty`, the user's own files, local only),
 and an exact, faster match search in the pinned zlib for levels 8-9 (same
 output, 2-5.7x faster): level-9 app installer DMGs now re-run at Max and Ultra
-(Discord −5.0%, faster both ways; dmgs set −1.6%). At Default it would be −18%
-for 4x/7x the time: a checkpoint question (`ARCA_EXP_DMG_DEEP=1`). Leads:
+(Discord −5.0%, faster both ways; dmgs set −1.6%). DMG expansion is now a switch
+per level (`--disk-images on|off`; on at Max and Ultra); the checkpoint measures
+Default both ways. Leads:
 WebP-style tools in the pixel codec for flat images, similarity ordering, bzip2
 (UDBZ) and LZMA (ULMO) DMG chunks.
 
@@ -1164,6 +1165,12 @@ not into re-creating the chunks. Off, compressing already-compressed bytes saves
 almost nothing (−0.1% / −1.5%), so no archiver that stores DMGs as they are can
 get near the "on" sizes.
 
+**A switch per level (user, 2026-10-29).** DMG expansion is now an option of
+its own (`TransformOpts::disk_images`; CLI `--disk-images on|off`): on at Max
+and Ultra, off at Fast and Default, and any level can turn it either way. When
+on, the level 6-9 probe runs at every level. The checkpoint measures Default
+both ways on the dmgs set: the goal is to beat every rival at every level.
+
 ### zlib levels 8-9: an exact, faster match search (in the engine, 2026-10-29)
 
 The real-world sets brought app installers made with `hdiutil -imagekey
@@ -1211,7 +1218,8 @@ refused analysis at Default, 3.5x faster but 0.45% bigger.)
 
 **In the engine: Max and Ultra.** At Max it is smaller and faster both ways. At
 Default it is a trade (18% smaller, 4x the time to make, 7x to extract), so it
-stays off there (`ARCA_EXP_DMG_DEEP=1` turns it on; a checkpoint question).
+stays off there (now with all DMG expansion at Default; `--disk-images on`
+turns it on).
 The dmgs set, round trips identical:
 
 | Level | Before | Now | Make | Extract |

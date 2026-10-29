@@ -37,6 +37,10 @@ pub struct TransformOpts {
     /// images are ~17x the stored bytes: smaller with LZMA or bsc, but LZMA
     /// spends ~9x the CPU on them and zstd does worse than LZFSE (see RESEARCH.md).
     pub asset_catalogs: bool,
+    /// Expand the zlib and LZFSE chunks of disk images (`.dmg`). 10-26% smaller
+    /// DMGs, but the expanded data takes 4-10x the time to compress; on at Max
+    /// and Ultra (see RESEARCH.md), and a switch for any level.
+    pub disk_images: bool,
 }
 
 pub struct Prepared<'a> {
@@ -52,6 +56,7 @@ pub fn applies(class: Class, opts: &TransformOpts) -> bool {
     match class {
         Class::Jpeg => opts.jpeg,
         Class::DeflateContainer(crate::classify::DeflateKind::AssetCatalog) => opts.deflate && opts.asset_catalogs,
+        Class::DeflateContainer(crate::classify::DeflateKind::Dmg) => opts.disk_images,
         Class::DeflateContainer(_) => opts.deflate,
         Class::MachO => opts.arm64,
         _ => false,
