@@ -311,6 +311,34 @@ Lepton's 1.2 s today, zstd -3's 0.27 s and WinRAR's 0.37 s. Not enough yet:
 Coding runs of zeros won't help: zeros are 47% of coefficient symbols, so a
 run symbol plus a value symbol isn't fewer symbols.
 
+**Photos, round 5: closer to the floor.** Size unchanged (69.01 MB with
+headers against Lepton's 70.79 MB; 382/382 exact). One core:
+
+| Step | Decode | Notes |
+|---|---:|---|
+| Round 4 | 35 MB/s | |
+| Bucket entries packed (symbol, start, last slot in one u32) + 4 rANS states | **38 MB/s** | one dependent load in the common case |
+| 256 buckets instead of 64 | 32 MB/s | table setup 0.27 → 0.47 s for no gain; reverted |
+| Lazy context groups, direct writes into the image, NEON nonzero mask in the Huffman writer | no change | the chain, not the work, sets the pace |
+
+A replay that decodes the symbols with their contexts given takes 1.07 s of
+the 2.55 s decode (4.2 ns per symbol). The model's own work (contexts, raw bits,
+value assembly, per-block bookkeeping) is about 1.2 s. Neither dominates.
+
+Unpacking whole files, 382 photos, on a busy Mac (load ~4): one thread 3.40 s
+(28 MB/s), 10 threads **0.57 s**, every file exact. Lepton's Default today:
+1.2 s; zstd -3 0.27 s, WinRAR 0.30-0.38 s, zstd -19 0.28 s. The largest photo
+is 4.74 MB (~0.17 s), so the scaling loss is the busy Mac, not one big file.
+
+Still to get past the fastest rivals at this size:
+
+1. Decode two block rows at once with their own streams. The contexts allow a
+   staggered wavefront, and independent chains run side by side in one core.
+2. A table-driven Huffman reader for packing (today's is a bit-at-a-time test
+   reader).
+3. A light JPEG mode for Fast, where the size bar is the fast rivals' 85.7-92.5 MB
+   rather than Lepton: contexted static Huffman tables at Huffman speed.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64

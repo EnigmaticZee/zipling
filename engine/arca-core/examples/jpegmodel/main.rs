@@ -662,7 +662,8 @@ impl BW {
     /// Appends `l` bits of `v`; whole bytes leave 32 bits at a time, 0xFF bytes stuffed.
     #[inline(always)]
     fn put(&mut self, v: u32, l: u32) {
-        self.acc = (self.acc << l) | (v as u64 & ((1u64 << l) - 1));
+        // callers pass exactly `l` bits
+        self.acc = (self.acc << l) | v as u64;
         self.n += l;
         if self.n >= 32 {
             self.n -= 32;
@@ -670,8 +671,15 @@ impl BW {
             let bytes = w.to_be_bytes();
             // any 0xFF byte? (haszero trick on the inverted word)
             let inv = !w;
+            if self.out.capacity() - self.out.len() < 8 {
+                self.out.reserve(1 << 16);
+            }
             if (inv.wrapping_sub(0x0101_0101) & !inv & 0x8080_8080) == 0 {
-                self.out.extend_from_slice(&bytes);
+                unsafe {
+                    let l = self.out.len();
+                    std::ptr::write_unaligned(self.out.as_mut_ptr().add(l) as *mut u32, w.to_be());
+                    self.out.set_len(l + 4);
+                }
             } else {
                 for b in bytes {
                     self.out.push(b);
@@ -713,25 +721,37 @@ fn enc_block(w: &mut BW, blk: &[i16; 64], pred: &mut i32, dct: &[(u32, u32); 256
     let (s, b) = mag(diff);
     let (c, l) = dct[s as usize];
     w.put((c << s) | b, l + s);
-    // walk the nonzero positions via a bitmask
-    let mut nzmask = 0u64;
-    for k in 1..64 {
-        nzmask |= ((blk[k] != 0) as u64) << k;
-    }
-    let mut last = 0u32;
-    while nzmask != 0 {
-        let k = nzmask.trailing_zeros();
-        nzmask &= nzmask - 1;
-        let mut run = k - last - 1;
-        while run > 15 {
-            let (c, l) = act[0xF0];
-            w.put(c, l);
-            run -= 16;
+    // nonzero positions as 4-bit lanes, 16 coefficients per mask (NEON)
+    let mut masks = [0u64; 4];
+    unsafe {
+        use std::arch::aarch64::*;
+        let p = blk.as_ptr();
+        for q in 0..4 {
+            let a = vtstq_s16(vld1q_s16(p.add(16 * q)), vld1q_s16(p.add(16 * q)));
+            let b = vtstq_s16(vld1q_s16(p.add(16 * q + 8)), vld1q_s16(p.add(16 * q + 8)));
+            let bytes = vcombine_u8(vmovn_u16(a), vmovn_u16(b));
+            masks[q] = vget_lane_u64::<0>(vreinterpret_u64_u8(vshrn_n_u16::<4>(vreinterpretq_u16_u8(bytes))));
         }
-        let (s, b) = mag(blk[k as usize] as i32);
-        let (c, l) = act[((run << 4) | s) as usize];
-        w.put((c << s) | b, l + s);
-        last = k;
+    }
+    masks[0] &= !0xF; // the DC lane
+    let mut last = 0u32;
+    for q in 0..4 {
+        let mut m = masks[q];
+        while m != 0 {
+            let tz = m.trailing_zeros();
+            m &= !(0xFu64 << (tz & !3));
+            let k = 16 * q as u32 + tz / 4;
+            let mut run = k - last - 1;
+            while run > 15 {
+                let (c, l) = act[0xF0];
+                w.put(c, l);
+                run -= 16;
+            }
+            let (s, b) = mag(unsafe { *blk.get_unchecked(k as usize) } as i32);
+            let (c, l) = act[((run << 4) | s) as usize];
+            w.put((c << s) | b, l + s);
+            last = k;
+        }
     }
     if last < 63 {
         let (c, l) = act[0];
@@ -740,7 +760,7 @@ fn enc_block(w: &mut BW, blk: &[i16; 64], pred: &mut i32, dct: &[(u32, u32); 256
 }
 
 fn reencode(img: &Image, sc: &Scan) -> Vec<u8> {
-    let mut w = BW { out: vec![], acc: 0, n: 0 };
+    let mut w = BW { out: Vec::with_capacity(sc.end - sc.start + 4096), acc: 0, n: 0 };
     let mut pred = vec![0i32; img.comps.len()];
     let tabs: Vec<_> = sc.comps.iter().map(|&(_, td, ta)| (codes(&img.dc[&td].0, &img.dc[&td].1), codes(&img.ac[&ta].0, &img.ac[&ta].1))).collect();
     let mut mcu = 0usize;
@@ -879,6 +899,59 @@ fn run_lepton(files: &[std::path::PathBuf]) {
     println!("  headers: {:.2} MB raw, zstd-19 per file {:.2} MB, solid {:.2} MB", hdr_raw.len() as f64 / 1e6, hdr_files as f64 / 1e6, solid as f64 / 1e6);
 }
 
+fn run_parallel(files: &[std::path::PathBuf], threads: usize) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
+    // prepare: every image encoded (one thread, not timed as a parallel figure)
+    let mut jobs = Vec::new();
+    for f in files {
+        let d = fs::read(f).unwrap();
+        let Ok(img) = read_jpeg(&d) else { continue };
+        let mut coefs: Vec<Vec<[i16; 64]>> = img.comps.iter().map(|c| c.coef.clone()).collect();
+        let bytes = {
+            let mut planes: Vec<fast::Plane> = coefs.iter_mut().zip(&img.comps).map(|(cf, c)| fast::Plane { coef: cf, bw: c.bw, bh: c.bh }).collect();
+            fast::encode(&mut planes)
+        };
+        jobs.push((d, img, bytes));
+    }
+    // biggest first, as a scheduler would
+    jobs.sort_by_key(|j| std::cmp::Reverse(j.0.len()));
+    let total: u64 = jobs.iter().map(|j| j.0.len() as u64).sum();
+    for &t in &[1usize, threads] {
+        let next = AtomicUsize::new(0);
+        let bad = AtomicUsize::new(0);
+        let start = Instant::now();
+        std::thread::scope(|sc| {
+            for _ in 0..t {
+                sc.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    if i >= jobs.len() { break; }
+                    let (d, img, bytes) = &jobs[i];
+                    let mut dec: Vec<Vec<[i16; 64]>> = img.comps.iter().map(|c| vec![[0i16; 64]; c.coef.len()]).collect();
+                    {
+                        let mut planes: Vec<fast::Plane> = dec.iter_mut().zip(&img.comps).map(|(cf, c)| fast::Plane { coef: cf, bw: c.bw, bh: c.bh }).collect();
+                        fast::decode(bytes, &mut planes);
+                    }
+                    let img2 = Image { comps: img.comps.iter().zip(dec).map(|(c, cf)| Comp { id: c.id, tq: c.tq, h: c.h, v: c.v, bw: c.bw, bh: c.bh, coef: cf }).collect(),
+                        scans: vec![], dc: img.dc.clone(), ac: img.ac.clone(), dri: img.dri, width: img.width, height: img.height, hmax: img.hmax, vmax: img.vmax, qt: img.qt.clone() };
+                    // the whole file: headers as they were, scans re-written
+                    let mut out = Vec::with_capacity(d.len());
+                    let mut at = 0;
+                    for s in &img.scans {
+                        out.extend_from_slice(&d[at..s.start]);
+                        out.extend_from_slice(&reencode(&img2, s));
+                        at = s.end;
+                    }
+                    out.extend_from_slice(&d[at..]);
+                    if out != *d { bad.fetch_add(1, Ordering::Relaxed); }
+                });
+            }
+        });
+        let el = start.elapsed().as_secs_f64();
+        println!("unpack {} files on {t} thread(s): {:.3} s ({:.0} MB/s), mismatches {}", jobs.len(), el, total as f64 / 1e6 / el, bad.load(Ordering::Relaxed));
+    }
+}
+
 fn run_fast(files: &[std::path::PathBuf]) {
     use std::time::Instant;
     let (mut inb, mut outb, mut side, mut raw, mut ra) = (0u64, 0u64, 0u64, 0u64, 0u64);
@@ -916,6 +989,12 @@ fn run_fast(files: &[std::path::PathBuf]) {
             fast::decode(&bytes, &mut planes);
         }
         td += t.elapsed().as_secs_f64();
+        if std::env::var_os("REPLAY").is_some() {
+            let mut cf2: Vec<Vec<[i16; 64]>> = img.comps.iter().map(|c| c.coef.clone()).collect();
+            let mut planes: Vec<fast::Plane> = cf2.iter_mut().zip(&img.comps).map(|(cf, c)| fast::Plane { coef: cf, bw: c.bw, bh: c.bh }).collect();
+            let ev = fast::events_of(&mut planes);
+            std::hint::black_box(fast::replay(&bytes, &ev));
+        }
         let t = Instant::now();
         let img2 = Image { comps: img.comps.iter().zip(dec).map(|(c, cf)| Comp { id: c.id, tq: c.tq, h: c.h, v: c.v, bw: c.bw, bh: c.bh, coef: cf }).collect(),
             scans: vec![], dc: img.dc.clone(), ac: img.ac.clone(), dri: img.dri, width: img.width, height: img.height, hmax: img.hmax, vmax: img.vmax, qt: img.qt.clone() };
@@ -935,6 +1014,7 @@ fn run_fast(files: &[std::path::PathBuf]) {
         te, inb as f64 / 1e6 / te, td, inb as f64 / 1e6 / td, th, inb as f64 / 1e6 / th);
     println!("  AC symbols {}, zeros among them {:.1}%", fast::N_AC.load(std::sync::atomic::Ordering::Relaxed),
         100.0 * fast::T_ZERO.load(std::sync::atomic::Ordering::Relaxed) as f64 / fast::N_AC.load(std::sync::atomic::Ordering::Relaxed) as f64);
+    println!("  replay (symbols only, contexts given): {:.2} s", fast::REPLAY_NS.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9);
     println!("  decode: tables {:.2} s, symbols {} ({:.2} per input byte)", fast::T_TABLES.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9,
         fast::T_SYMS.load(std::sync::atomic::Ordering::Relaxed), fast::T_SYMS.load(std::sync::atomic::Ordering::Relaxed) as f64 / inb as f64);
 }
@@ -1006,6 +1086,10 @@ fn main() {
     files.sort();
     if std::env::var_os("UNIQUE").is_some() {
         files = uniq(files);
+    }
+    if std::env::args().any(|a| a == "--par") {
+        run_parallel(&files, 10);
+        return;
     }
     if std::env::args().any(|a| a == "--lepton") {
         run_lepton(&files);

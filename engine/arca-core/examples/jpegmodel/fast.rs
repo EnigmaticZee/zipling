@@ -128,12 +128,13 @@ pub fn walk<I: Io>(io: &mut I, planes: &mut [Plane]) {
                 let n_enc = if I::ENC { coef[b][1..].iter().filter(|&&v| v != 0).count() } else { 0 };
                 let n = io.sym::<64>(T_N, cc * 9 + nctx, n_enc) as u32;
                 nzs[b] = n as u8;
-                let mut blk = if I::ENC { coef[b] } else { [0i16; 64] };
+                // decode straight into the image (its blocks start zeroed); the encoder reads from it
+                let bp: *mut i16 = coef[b].as_mut_ptr();
                 let mut copied = false;
                 if n >= 6 {
                     let mut key = [0i16; 63];
                     if I::ENC {
-                        key.copy_from_slice(&blk[1..]);
+                        key.copy_from_slice(&coef[b][1..]);
                     }
                     let hit = if I::ENC { seen.get(&key).copied() } else { None };
                     let fctx = cc * 16 + bucket(n).min(7) * 2 + prev_match;
@@ -146,8 +147,7 @@ pub fn walk<I: Io>(io: &mut I, planes: &mut [Plane]) {
                         let d = (1u32 << (e - 1)) | low;
                         let src = list[list.len() - d as usize] as usize;
                         if !I::ENC {
-                            let ac = coef[src];
-                            blk[1..].copy_from_slice(&ac[1..]);
+                            unsafe { std::ptr::copy_nonoverlapping(coef[src].as_ptr().add(1), bp.add(1), 63) };
                         }
                         copied = true;
                     }
@@ -205,8 +205,8 @@ pub fn walk<I: Io>(io: &mut I, planes: &mut [Plane]) {
                     let mut left = n;
                     let mut k = 1;
                     while left > 0 {
-                        let v = value(io, ctxs[k] as usize, cc, k, blk[k] as i32, 5);
-                        blk[k] = v as i16;
+                        let v = value(io, ctxs[k] as usize, cc, k, (unsafe { *bp.add(k) }) as i32, 5);
+                        unsafe { *bp.add(k) = v as i16 };
                         left -= (v != 0) as u32;
                         k += 1;
                     }
@@ -222,7 +222,7 @@ pub fn walk<I: Io>(io: &mut I, planes: &mut [Plane]) {
                     _ => 0,
                 };
                 let act = bucket(((a - c).unsigned_abs() + (bb - c).unsigned_abs()) as u32).min(10);
-                let r_enc = if I::ENC { blk[0] as i32 - pred } else { 0 };
+                let r_enc = if I::ENC { (unsafe { *bp }) as i32 - pred } else { 0 };
                 let ra = r_enc.unsigned_abs();
                 let sy = io.sym::<32>(T_DC, (cc * 11 + act) * 8 + bucket(n).min(7), if I::ENC { joint(ra).0 } else { 0 });
                 let mut r = 0i32;
@@ -232,10 +232,8 @@ pub fn walk<I: Io>(io: &mut I, planes: &mut [Plane]) {
                     let neg = io.raw((r_enc < 0) as u32, 1) == 1;
                     r = if neg { -(m as i32) } else { m as i32 };
                 }
-                blk[0] = (pred + r) as i16;
-                if !I::ENC {
-                    coef[b] = blk;
-                }
+                unsafe { *bp = (pred + r) as i16 };
+
             }
         }
     }
@@ -373,14 +371,14 @@ pub fn encode(planes: &mut [Plane]) -> Vec<u8> {
     let side = be.finish();
     let (freqs, cums) = build(&q, &used);
     // rANS, backwards, two states
-    let mut x = [L, L];
+    let mut x = [L; 4];
     let mut words: Vec<u16> = Vec::with_capacity(rec.events.len());
     for (i, &(t, ctx, s)) in rec.events.iter().enumerate().rev() {
         let a = TYPES[t as usize].1;
         let base = ctx as usize * a + s as usize;
         let f = freqs[t as usize][base];
         let st = cums[t as usize][ctx as usize * (a + 1) + s as usize] as u32;
-        let xs = &mut x[i & 1];
+        let xs = &mut x[i & 3];
         let xmax = (((L >> PB) << 16) as u64) * f as u64;
         if *xs as u64 >= xmax {
             words.push(*xs as u16);
@@ -388,7 +386,7 @@ pub fn encode(planes: &mut [Plane]) -> Vec<u8> {
         }
         *xs = ((*xs / f) << PB) + (*xs % f) + st;
     }
-    for xs in [x[1], x[0]] {
+    for xs in [x[3], x[2], x[1], x[0]] {
         words.push((xs >> 16) as u16);
         words.push(xs as u16);
     }
@@ -439,14 +437,17 @@ pub struct Decoder<'a> {
     map: Vec<Vec<u16>>,
     flat: Vec<u16>,
     base: [usize; 8],
-    bk: Vec<u8>,
+    bk: Vec<u32>,
     bbase: [usize; 8],
     x0: u32,
     x1: u32,
+    x2: u32,
+    x3: u32,
     i: usize,
-    words: &'a [u8],
+    words: Vec<u8>,
+    _p: std::marker::PhantomData<&'a ()>,
     wp: usize,
-    raw: &'a [u8],
+    raw: Vec<u8>,
     rp: usize,
     acc: u64,
     n: u32,
@@ -465,17 +466,29 @@ impl<'a> Io for Decoder<'a> {
         let nx;
         unsafe {
             let p = self.flat.as_ptr().add(base);
+            let st: u32;
+            let f: u32;
             if A == 2 {
                 s = (*p.add(1) <= slot) as usize;
+                st = *p.add(s) as u32;
+                f = *p.add(s + 1) as u32 - st;
             } else {
-                // bucket table: first symbol of the 64-slot bucket, then step forward
-                s = *self.bk.as_ptr().add(self.bbase[t] + ctx * 64 + (slot >> 6) as usize) as usize;
-                while *p.add(s + 1) <= slot {
-                    s += 1;
+                // bucket entry: first symbol of the 64-slot bucket with its start and last slot
+                let e = *self.bk.as_ptr().add(self.bbase[t] + ctx * 64 + (slot >> 6) as usize);
+                let last = e >> 20;
+                if slot as u32 <= last {
+                    s = (e & 0xFF) as usize;
+                    st = (e >> 8) & 0xFFF;
+                    f = last - st + 1;
+                } else {
+                    s = (e & 0xFF) as usize + 1;
+                    while *p.add(s + 1) <= slot {
+                        s += 1;
+                    }
+                    st = *p.add(s) as u32;
+                    f = *p.add(s + 1) as u32 - st;
                 }
             }
-            let st = *p.add(s) as u32;
-            let f = *p.add(s + 1) as u32 - st;
             let mut x = f * (xs >> PB) + slot as u32 - st;
             if x < L {
                 let w = u16::from_le_bytes([*self.words.get_unchecked(self.wp), *self.words.get_unchecked(self.wp + 1)]);
@@ -485,7 +498,9 @@ impl<'a> Io for Decoder<'a> {
             nx = x;
         }
         self.x0 = self.x1;
-        self.x1 = nx;
+        self.x1 = self.x2;
+        self.x2 = self.x3;
+        self.x3 = nx;
         s
     }
     #[inline(always)]
@@ -510,7 +525,41 @@ pub static T_ZERO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 pub static N_AC: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static T_SYMS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+pub static REPLAY_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Decodes the symbol stream alone, contexts given (no model), and returns the checksum.
+pub fn replay(data: &[u8], events: &[(u8, u32)]) -> usize {
+    let mut dec = setup(data);
+    let t0 = std::time::Instant::now();
+    let mut sum = 0usize;
+    for &(t, ctx) in events {
+        let t = t as usize;
+        sum += match TYPES[t].1 {
+            2 => dec.sym::<2>(t, ctx as usize, 0),
+            16 => dec.sym::<16>(t, ctx as usize, 0),
+            32 => dec.sym::<32>(t, ctx as usize, 0),
+            _ => dec.sym::<64>(t, ctx as usize, 0),
+        };
+    }
+    REPLAY_NS.fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+    sum
+}
+
+pub fn events_of(planes: &mut [Plane]) -> Vec<(u8, u32)> {
+    let mut rec = Recorder { events: Vec::new(), counts: TYPES.iter().map(|&(s, a)| vec![0; s * a]).collect(), raw: BitW::new() };
+    walk(&mut rec, planes);
+    rec.events.iter().map(|e| (e.0, e.1)).collect()
+}
+
 pub fn decode(data: &[u8], planes: &mut [Plane]) {
+    let mut d = setup(data);
+    walk(&mut d, planes);
+    T_SYMS.fetch_add(d.i as u64, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn setup(data: &[u8]) -> Decoder<'static> {
+    let planes: &mut [Plane] = &mut [];
+    let _ = planes;
     let t0 = std::time::Instant::now();
     let sl = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
     let side = &data[4..4 + sl];
@@ -526,7 +575,7 @@ pub fn decode(data: &[u8], planes: &mut [Plane]) {
     let mut base = [0usize; 8];
     let mut bbase = [0usize; 8];
     let mut flat: Vec<u16> = Vec::new();
-    let mut bk: Vec<u8> = Vec::new();
+    let mut bk: Vec<u32> = Vec::new();
     let mut w = [0u32; 64];
     let mut f = [0u32; 64];
     for t in 0..8 {
@@ -554,7 +603,9 @@ pub fn decode(data: &[u8], planes: &mut [Plane]) {
                 for b in 0..64 {
                     let lo = (b * 64) as u16;
                     while c[sym + 1] <= lo { sym += 1; }
-                    bk.push(sym as u8);
+                    let st = c[sym] as u32;
+                    let last = c[sym + 1] as u32 - 1;
+                    bk.push(sym as u32 | (st << 8) | (last << 20));
                 }
             }
         }
@@ -564,13 +615,15 @@ pub fn decode(data: &[u8], planes: &mut [Plane]) {
     let rd = |p: usize| (u16::from_le_bytes([words[p], words[p + 1]]) as u32);
     let x0 = rd(0) | (rd(2) << 16);
     let x1 = rd(4) | (rd(6) << 16);
+    let x2 = rd(8) | (rd(10) << 16);
+    let x3 = rd(12) | (rd(14) << 16);
     let mut words = words.to_vec();
     words.extend_from_slice(&[0; 8]);
-    let words: &[u8] = &words;
-    let mut d = Decoder { map, flat, base, bk, bbase, x0, x1, i: 0, words, wp: 8, raw, rp: 0, acc: 0, n: 0 };
+    let mut raw = raw.to_vec();
+    raw.extend_from_slice(&[0; 8]);
+    let d = Decoder { map, flat, base, bk, bbase, x0, x1, x2, x3, i: 0, words, _p: std::marker::PhantomData, wp: 16, raw, rp: 0, acc: 0, n: 0 };
     T_TABLES.fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
-    walk(&mut d, planes);
-    T_SYMS.fetch_add(d.i as u64, std::sync::atomic::Ordering::Relaxed);
+    d
 }
 
 pub fn sizes(data: &[u8]) -> (usize, usize, usize) {
