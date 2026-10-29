@@ -667,6 +667,26 @@ header's FLEVEL (3 for levels 7-9) now skips them up front when the limit is
 under 1024. Saved folder, three alternating runs: PNG analysis 11.0 → 6.3 s of
 CPU, pack CPU 63.2 → 57.9 s, size 245.48 → 245.47 MiB; wall 9.1-9.2 → 8.8-9.2 s.
 
+**Default's tail is two image blocks.** The block timeline shows every file
+transformed at 6.5 s, then two 64 MiB image blocks (zstd-12 on flat PNG rows,
+where its binary-tree search slows down) finishing at 7.7 and 9.0 s. Options
+(saved folder, three runs each; image lane / total / make):
+
+| Image lane | Image lane | Total | Make |
+|---|---:|---:|---:|
+| zstd-12, 64 MiB blocks (Default) | 46.69 MiB | 245.47 MiB | 9.1-9.5 s |
+| zstd-12, **32 MiB blocks** | 46.80 | 245.59 (+0.05%) | **7.8-7.9 s** |
+| zstd-12, 16 MiB blocks | 46.86 | 245.65 (+0.07%) | 7.4-7.7 s |
+| zstd-12, 8 MiB blocks | 46.99 | 245.78 (+0.13%) | 7.2-7.8 s |
+| zstd-11 | 46.73 | | 8.8 s |
+| zstd-9 | 47.44 | | 7.0 s |
+| LZMA2 fb 32 | 41.04 | | 43 s |
+
+Smaller blocks for every lane cost the binary lane +1.35 MiB at 32 MiB, so the
+image lane got its own block size (`image_block_size`, `--image-block-mib`).
+Not switched on (it trades 0.05% of size for 16% of time): for the final
+decision, with the pixel codec at Default, which removes most of this lane.
+
 **The pixel codec at Default** (`ARCA_EXP_PIXELS=1`): 245.48 → **233.57 MiB**
 (−4.9%) and make 9.4 → 7.8–8.2 s (the codec replaces zstd-12 on 536 MB of
 pixels), but extraction 2.74 → 3.0–3.3 s, behind Zipgeist's 3.0 s. Extraction is

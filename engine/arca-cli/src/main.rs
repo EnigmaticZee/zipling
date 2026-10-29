@@ -54,6 +54,9 @@ enum Cmd {
         /// Override the code-lane block size in MiB.
         #[arg(long)]
         code_block_mib: Option<usize>,
+        /// Override the image-lane block size in MiB.
+        #[arg(long)]
+        image_block_mib: Option<usize>,
         /// Override preflate's match-search depth (research).
         #[arg(long)]
         deflate_chain: Option<u32>,
@@ -133,7 +136,7 @@ fn human(n: u64) -> String {
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
-        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, code_block_mib, deflate_chain, lane, json } => {
+        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, code_block_mib, image_block_mib, deflate_chain, lane, json } => {
             let level = match level {
                 LevelArg::Fast => Level::Fast,
                 LevelArg::Balanced => Level::Balanced,
@@ -175,6 +178,9 @@ fn main() -> Result<()> {
             }
             if let Some(b) = code_block_mib {
                 o.code_block_size = b << 20;
+            }
+            if let Some(b) = image_block_mib {
+                o.image_block_size = b << 20;
             }
             if let Some(c) = deflate_chain {
                 o.transforms.deflate_chain = c;
