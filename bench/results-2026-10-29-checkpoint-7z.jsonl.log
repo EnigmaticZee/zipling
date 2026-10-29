@@ -1,0 +1,10 @@
+14:19:31 thirdparty: start (load 2.5), 4 tools x 2 rounds
+14:19:40 thirdparty r1 arca-balanced: 411699897 7.01s / 0.80s
+14:20:56 thirdparty r1 7z-normal: 371228588 74.17s / 2.16s
+14:21:47 thirdparty r1 arca-max-bsc: 339479613 48.41s / 1.97s
+14:23:21 thirdparty r1 7z-ultra: 355519066 89.43s / 3.52s
+14:24:54 thirdparty r2 7z-ultra: 355519066 88.94s / 3.53s
+14:25:44 thirdparty r2 arca-max-bsc: 339479611 48.55s / 1.92s
+14:27:01 thirdparty r2 7z-normal: 371228588 74.35s / 2.16s
+14:27:09 thirdparty r2 arca-balanced: 411699896 7.40s / 0.78s
+14:27:10 done
