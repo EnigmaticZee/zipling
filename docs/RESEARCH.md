@@ -898,8 +898,25 @@ decodes text at ~1 GB/s).
 prediction 7%, DC 6%, non-zero counts 14%. The coding parts are ~67%: a coder
 with multi-symbol decisions instead of one binary decision per bit could make
 Lepton ~1.5-1.8x faster. Its bool decoder and count-based probabilities (64 KB
-lookup) are already lean. Next: measure whether multi-symbol models with
-Lepton's contexts reach Lepton's size before building one.
+lookup) are already lean.
+
+**Multi-symbol size classes for Lepton (measured, dead end).** A shadow model in
+a scratchpad copy of Lepton: wherever Lepton codes a coefficient's size class as
+a unary chain of binary decisions, a 16-symbol adaptive table for the same
+context records what it would cost (ideal code lengths). Photos, 98.4 MB → 73.8 MB:
+
+| Size classes | Lepton | 16-symbol tables | Size |
+|---|---|---|---:|
+| 7x7 | 22.233 MB, 249 M decisions | 22.596 MB, 134 M symbols | +1.6% |
+| edge | 10.952 MB, 148 M decisions | 11.052 MB, 58 M symbols | +0.9% |
+| DC | 3.754 MB, 46 M decisions | 3.754 MB, 21 M symbols | 0.0% |
+
+Best variant +0.63% of Lepton's output (final rate 7); finer warm-up +0.83%,
+two-speed tables +0.70%, count-based tables with halving +0.63%. Lepton's binary
+chain learns each node with its own counts, which this data rewards. And size
+classes are only 443 M of Lepton's 930 M decisions (signs, residual bits and
+counts are the rest), so the coder would do ~25% less work, not a multiple.
+Fails "at least as small"; the JPEG lever needs a different idea.
 
 ### Apple Silicon GPU (agenda item 4): no stage worth moving
 
@@ -1029,6 +1046,7 @@ with `lsregister -u`.
 ## Dead ends
 
 - Long-range pre-pass before LZMA (2x faster on code, 13% bigger): see Deep research.
+- Multi-symbol size classes inside Lepton: +0.63% for ~25% less coder work.
 - GPU: every heavy stage is a serial adaptive coder; the data-parallel 2–5%
   is not worth moving (see Deep research).
 - Hint-guided LZMA (the pre-pass's repeats taken as single matches): +1.3–10%
