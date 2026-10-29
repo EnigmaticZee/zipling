@@ -1,0 +1,11 @@
+[package]
+name = "zlib-pinned"
+version = "1.3.2"
+edition = "2021"
+publish = false
+description = "zlib 1.3.2's Deflate encoder, pinned, for re-creating streams stock zlib wrote"
+license = "Zlib"
+build = "build.rs"
+
+[build-dependencies]
+cc = "1"

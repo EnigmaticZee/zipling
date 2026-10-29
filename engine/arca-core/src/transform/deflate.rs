@@ -20,6 +20,13 @@
 //! version-1 fields up to literal_len | width | height | u8 channels | coded_len
 //! [corrections][literal][row filter types: height bytes][coded pixels]
 //! ```
+//!
+//! With bit `REPLAY` (0x10) set in the version byte, each stream's two lengths are
+//! followed by how it is re-created: `u8 0` preflate (with its corrections, as
+//! above), or `u8 1 | level | window bits | memory level | strategy` for a stream
+//! that stock zlib wrote, which running zlib 1.3.2 again re-creates byte for byte
+//! (no corrections). Most PNGs made on a Mac are such streams (ImageIO writes
+//! zlib level 1), and the re-run costs less than preflate's analysis.
 
 use crate::classify::DeflateKind;
 use crate::transform::pixels;
@@ -28,13 +35,19 @@ use anyhow::{ensure, Result};
 use memchr::memmem;
 use preflate_rs::{preflate_whole_deflate_stream, recreate_whole_deflate_stream, PreflateConfig};
 use rayon::prelude::*;
+use zlib_pinned::Params as ZlibParams;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicIsize, Ordering};
 
 const MIN_STREAM: usize = 64;
 const MAX_PLAIN_TOTAL: usize = 512 << 20;
+/// Version-byte flag: streams carry their re-creation method (see the module docs).
+const REPLAY: u8 = 0x10;
 
 struct StreamRec {
+    /// Stock zlib's settings when re-running it re-creates the stream exactly
+    /// (then there are no corrections).
+    zlib: Option<ZlibParams>,
     corrections: Vec<u8>,
     plain: Vec<u8>,
     /// File ranges (offset, len) covered by this stream's compressed bytes, in order.
@@ -77,19 +90,24 @@ impl Scanner<'_> {
         if input.len() < MIN_STREAM {
             return None;
         }
-        let config = self.config;
-        let res = catch_unwind(AssertUnwindSafe(|| preflate_whole_deflate_stream(input, &config))).ok()?.ok()?;
-        let (chunk, plain) = res;
-        let consumed = chunk.compressed_size;
-        if std::env::var_os("ARCA_DEBUG_DEFLATE").is_some() {
-            eprintln!("deflate\t{consumed}\t{}\t{}\t{}", plain.text().len(), chunk.corrections.len(), chunk.steps);
-        }
-        // A stream that needs many corrections came from an exotic encoder;
-        // expanding it would cost more than it gains.
-        if consumed < MIN_STREAM || chunk.corrections.len() * 4 > consumed {
-            return None;
-        }
-        let plain = plain.text().to_vec();
+        let (zlib, corrections, plain, consumed) = match self.replay(virt, skip) {
+            Some((params, plain, consumed)) => (Some(params), Vec::new(), plain, consumed),
+            None => {
+                let config = self.config;
+                let res = catch_unwind(AssertUnwindSafe(|| preflate_whole_deflate_stream(input, &config))).ok()?.ok()?;
+                let (chunk, plain) = res;
+                let consumed = chunk.compressed_size;
+                if std::env::var_os("ARCA_DEBUG_DEFLATE").is_some() {
+                    eprintln!("deflate\t{consumed}\t{}\t{}\t{}", plain.text().len(), chunk.corrections.len(), chunk.steps);
+                }
+                // A stream that needs many corrections came from an exotic encoder;
+                // expanding it would cost more than it gains.
+                if consumed < MIN_STREAM || chunk.corrections.len() * 4 > consumed {
+                    return None;
+                }
+                (None, chunk.corrections, plain.text().to_vec(), consumed)
+            }
+        };
         if self.budget.fetch_sub(plain.len() as isize, Ordering::Relaxed) < plain.len() as isize {
             return None;
         }
@@ -111,7 +129,54 @@ impl Scanner<'_> {
                 break;
             }
         }
-        Some(StreamRec { corrections: chunk.corrections, plain, spans })
+        Some(StreamRec { zlib, corrections, plain, spans })
+    }
+
+    /// Re-creates a zlib-wrapped stream (`skip` = 2: the header comes first) by
+    /// running stock zlib again, when its header says level 1-5. Returns the
+    /// settings, the plain text and the Deflate stream's length. Levels 6-9 are
+    /// left to preflate, which rebuilds them faster than zlib re-runs them.
+    fn replay(&self, virt: &[u8], skip: usize) -> Option<(ZlibParams, Vec<u8>, usize)> {
+        if skip != 2 || std::env::var_os("ARCA_EXP_NO_REPLAY").is_some() {
+            return None;
+        }
+        let (cmf, flg) = (virt[0], virt[1]);
+        let (flevel, window_bits) = (flg >> 6, (cmf >> 4) + 8);
+        if cmf & 0x0F != 8 || flg & 0x20 != 0 || (u16::from(cmf) << 8 | u16::from(flg)) % 31 != 0 || flevel > 1 || !(9..=15).contains(&window_bits) {
+            return None;
+        }
+        let input = &virt[skip..];
+        let limit = self.config.plain_text_limit.min(self.budget.load(Ordering::Relaxed).max(0) as usize);
+        let mut d = flate2::Decompress::new(false);
+        let mut plain = Vec::with_capacity((input.len() * 4).clamp(1 << 16, limit.max(1 << 16)));
+        loop {
+            let at = d.total_in() as usize;
+            let before = d.total_out();
+            match d.decompress_vec(&input[at..], &mut plain, flate2::FlushDecompress::Finish).ok()? {
+                flate2::Status::StreamEnd => break,
+                _ if plain.len() >= limit => return None,
+                _ if plain.len() == plain.capacity() => plain.reserve(plain.len().min(limit - plain.len()).max(1 << 16)),
+                _ if d.total_out() == before && d.total_in() as usize == at => return None,
+                _ => {}
+            }
+        }
+        let consumed = d.total_in() as usize;
+        let target = &input[..consumed];
+        // zlib's header says FLEVEL 0 for level 1 (or levels 0 and the Huffman-only
+        // and RLE strategies, which preflate handles) and 1 for levels 2-5.
+        // Levels 1-3 ignore the filtered strategy.
+        let levels: &[u8] = if flevel == 0 { &[1] } else { &[2, 3, 4, 5] };
+        for &level in levels {
+            for mem_level in [8, 9] {
+                for strategy in if level >= 4 { &[0u8, 1][..] } else { &[0u8][..] } {
+                    let p = ZlibParams { level, window_bits, mem_level, strategy: *strategy };
+                    if zlib_pinned::matches(&plain, p, target) {
+                        return Some((p, plain, consumed));
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Expands independent candidates in parallel, keeping file order and
@@ -414,11 +479,23 @@ pub fn encode(
     }
 
     let mut w = Writer::new();
-    w.u8(if coded_pixels.is_some() { 2 } else { 1 });
+    let replayed = streams.iter().any(|s| s.zlib.is_some());
+    w.u8(if coded_pixels.is_some() { 2 } else { 1 } | if replayed { REPLAY } else { 0 });
     w.uv(streams.len() as u64);
     for s in &streams {
         w.uv(s.corrections.len() as u64);
         w.uv(s.plain.len() as u64);
+        if replayed {
+            match s.zlib {
+                None => w.u8(0),
+                Some(p) => {
+                    w.u8(1);
+                    for v in [p.level, p.window_bits, p.mem_level, p.strategy] {
+                        w.u8(v);
+                    }
+                }
+            }
+        }
     }
     w.uv(ops.len() as u64);
     for op in &ops {
@@ -458,15 +535,28 @@ const MAX_PIXEL_ROWS: usize = 1 << 30;
 
 pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
     let mut r = Reader::new(stored);
-    let version = r.u8()?;
+    let byte = r.u8()?;
+    let (version, replayed) = (byte & !REPLAY, byte & REPLAY != 0);
     ensure!(version == 1 || version == 2, "unknown deflate layout version");
     let n = r.len()?;
     let mut lens = Vec::with_capacity(n.min(1 << 16));
+    let mut zlib = Vec::with_capacity(n.min(1 << 16));
     for _ in 0..n {
-        lens.push((r.len()?, r.len()?));
+        let (c, p) = (r.len()?, r.len()?);
+        lens.push((c, p));
+        zlib.push(match replayed.then(|| r.u8()).transpose()? {
+            None | Some(0) => None,
+            Some(1) => {
+                ensure!(c == 0, "a re-run zlib stream has no corrections");
+                Some(ZlibParams { level: r.u8()?, window_bits: r.u8()?, mem_level: r.u8()?, strategy: r.u8()? })
+            }
+            Some(_) => anyhow::bail!("unknown deflate stream method"),
+        });
     }
     let nops = r.len()?;
     let mut ops = Vec::with_capacity(nops.min(1 << 16));
+    // Each stream's length: what a zlib re-run must produce.
+    let mut stream_len = vec![0u64; n];
     for _ in 0..nops {
         let v = r.uv()?;
         ops.push(if v & 1 == 0 {
@@ -474,6 +564,7 @@ pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
         } else {
             let idx = r.uv()?;
             ensure!((idx as usize) < n, "bad stream index");
+            stream_len[idx as usize] = stream_len[idx as usize].saturating_add(v >> 1);
             Op::Stream { idx: idx as u32, len: v >> 1 }
         });
     }
@@ -501,14 +592,18 @@ pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
     ensure!(r.is_empty(), "trailing bytes in deflate layout");
 
     // Streams are independent: re-create them on all cores.
-    let recreated: Vec<Vec<u8>> = corrections
-        .par_iter()
-        .zip(plains.par_iter())
+    let recreated: Vec<Vec<u8>> = (0..n)
+        .into_par_iter()
         .with_max_len(1)
-        .map(|(c, p)| {
-            catch_unwind(AssertUnwindSafe(|| recreate_whole_deflate_stream(p, c)))
+        .map(|i| match zlib[i] {
+            Some(params) => {
+                // Bounded by the stored file's size, so a damaged layout can't ask for more.
+                ensure!(stream_len[i] <= size, "stream longer than its file");
+                zlib_pinned::deflate(plains[i], params, stream_len[i] as usize).ok_or_else(|| anyhow::anyhow!("zlib re-run gave a different stream"))
+            }
+            None => catch_unwind(AssertUnwindSafe(|| recreate_whole_deflate_stream(plains[i], corrections[i])))
                 .map_err(|_| anyhow::anyhow!("preflate panicked"))?
-                .map_err(|e| anyhow::anyhow!("deflate recreate failed: {e:?}"))
+                .map_err(|e| anyhow::anyhow!("deflate recreate failed: {e:?}")),
         })
         .collect::<Result<_>>()?;
 
@@ -534,4 +629,84 @@ pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
     }
     ensure!(out.len() as u64 == size, "deflate layout produced wrong size");
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An RGB PNG whose IDAT stream stock zlib wrote at `level` (filtered
+    /// strategy at 4 and up, as libpng does), in two IDAT chunks.
+    fn png(level: u8) -> Vec<u8> {
+        let (w, h) = (300usize, 200usize);
+        let mut rows = Vec::new();
+        for y in 0..h {
+            rows.push((y % 3) as u8);
+            rows.extend((0..w * 3).map(|i| ((i * 7 + y * 13) % 256) as u8 ^ ((i * y) % 7) as u8));
+        }
+        let strategy = u8::from(level >= 4);
+        let body = zlib_pinned::compress(&rows, ZlibParams { level, window_bits: 15, mem_level: 8, strategy }).unwrap();
+        let flevel = match level {
+            0 | 1 => 0u8,
+            2..=5 => 1,
+            6 => 2,
+            _ => 3,
+        };
+        let cmf = 0x78u8;
+        let mut flg = flevel << 6;
+        flg += (31 - ((u16::from(cmf) << 8 | u16::from(flg)) % 31) as u8) % 31;
+        let (mut a, mut b) = (1u32, 0u32);
+        for &x in &rows {
+            a = (a + u32::from(x)) % 65521;
+            b = (b + a) % 65521;
+        }
+        let mut z = vec![cmf, flg];
+        z.extend_from_slice(&body);
+        z.extend_from_slice(&(b << 16 | a).to_be_bytes());
+        let chunk = |out: &mut Vec<u8>, ty: &[u8], data: &[u8]| {
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(ty);
+            out.extend_from_slice(data);
+            out.extend_from_slice(&crc32fast::hash(&[ty, data].concat()).to_be_bytes());
+        };
+        let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&(w as u32).to_be_bytes());
+        ihdr.extend_from_slice(&(h as u32).to_be_bytes());
+        ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
+        chunk(&mut out, b"IHDR", &ihdr);
+        let half = z.len() / 2;
+        chunk(&mut out, b"IDAT", &z[..half]);
+        chunk(&mut out, b"IDAT", &z[half..]);
+        chunk(&mut out, b"IEND", b"");
+        out
+    }
+
+    #[test]
+    fn stock_zlib_streams_are_re_run() {
+        for (level, replayed) in [(1, true), (3, true), (5, true), (6, false), (9, false)] {
+            let data = png(level);
+            for pixels in [None, Some(0)] {
+                let e = encode(&data, DeflateKind::Png, 4096, 128, false, pixels).unwrap();
+                assert_eq!(e.stored[0] & REPLAY != 0, replayed, "level {level}");
+                assert_eq!(decode(&e.stored, data.len() as u64).unwrap(), data, "level {level}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_wrong_zlib_setting_never_passes() {
+        let data = png(1);
+        let mut stored = encode(&data, DeflateKind::Png, 4096, 128, false, None).unwrap().stored;
+        // Version, one stream, no corrections, the rows' length; then the method.
+        let mut w = Writer::new();
+        w.uv(1);
+        w.uv(0);
+        w.uv(200 * 901);
+        let at = 1 + w.buf.len();
+        assert_eq!(&stored[at..at + 2], &[1, 1], "method 1 (zlib), level 1");
+        stored[at + 1] = 2;
+        // Extraction checks every file's hash; here the stream must not come back.
+        assert!(decode(&stored, data.len() as u64).map_or(true, |back| back != data));
+    }
 }
