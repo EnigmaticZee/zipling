@@ -140,6 +140,35 @@ fn objects_spanning_many_blocks() {
     }
 }
 
+/// A disk image made by `hdiutil` (zlib chunks, level 1): its chunks are expanded
+/// and re-created byte for byte, so the archive is much smaller than the image.
+#[test]
+fn disk_images_are_expanded_and_rebuilt() {
+    let tmp = tempfile::tempdir().unwrap();
+    let content = tmp.path().join("content");
+    let text: Vec<u8> = (0..60_000).flat_map(|i| format!("entry {i}: some repetitive settings text\n").into_bytes()).collect();
+    write(&content.join("notes.txt"), &text);
+    write(&content.join("blob.bin"), &noise(1 << 20, 11));
+    let src = tmp.path().join("tree");
+    fs::create_dir_all(&src).unwrap();
+    let dmg = src.join("Image.dmg");
+    let made = std::process::Command::new("hdiutil")
+        .args(["create", "-quiet", "-format", "UDZO", "-volname", "Image", "-srcfolder"])
+        .arg(&content)
+        .arg(&dmg)
+        .status()
+        .is_ok_and(|s| s.success());
+    if !made {
+        return; // no hdiutil (or no disk images) here
+    }
+    let archive = tmp.path().join("a.arca");
+    let stats = pack(std::slice::from_ref(&src), &archive, &PackOptions::preset(Level::Balanced)).unwrap();
+    assert!(stats.transforms.iter().any(|(name, t)| *name == "deflate" && t.files == 1), "{:?}", stats.transforms);
+    let out = tmp.path().join("out");
+    Archive::open(&archive).unwrap().extract(&out, &ExtractOptions::default()).unwrap();
+    assert_eq!(fs::read(out.join("tree/Image.dmg")).unwrap(), fs::read(&dmg).unwrap());
+}
+
 #[test]
 fn extraction_can_be_cancelled() {
     let tmp = tempfile::tempdir().unwrap();

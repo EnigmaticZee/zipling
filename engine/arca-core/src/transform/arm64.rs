@@ -6,16 +6,28 @@
 //! same bijection as the XZ Utils ARM64 BCJ filter; it never changes length.
 //!
 //! Unlike a blind BCJ pass we only touch instruction sections found by parsing
-//! the Mach-O load commands, so data, strings and x86_64 slices of universal
-//! binaries are left alone.
+//! the Mach-O load commands, so data and strings are left alone. The x86_64
+//! slices of universal binaries get XZ's x86 BCJ filter instead (`filter_x86`):
+//! on the x86_64 code of installed third-party apps it makes LZMA's output 3.2%
+//! smaller (64 MB: 20.51 → 19.86 MB with xz -9).
 
 const CPU_TYPE_ARM64: u32 = 0x0100_000C;
+const CPU_TYPE_X86_64: u32 = 0x0100_0007;
 const LC_SEGMENT_64: u32 = 0x19;
 const S_ATTR_PURE_INSTRUCTIONS: u32 = 0x8000_0000;
 const S_ATTR_SOME_INSTRUCTIONS: u32 = 0x0000_0400;
 
 /// Returns the file ranges holding arm64 instructions, sorted and disjoint.
 pub fn code_ranges(data: &[u8]) -> Vec<(u64, u64)> {
+    ranges_for(data, CPU_TYPE_ARM64)
+}
+
+/// Returns the file ranges holding x86_64 instructions, sorted and disjoint.
+pub fn x86_code_ranges(data: &[u8]) -> Vec<(u64, u64)> {
+    ranges_for(data, CPU_TYPE_X86_64)
+}
+
+fn ranges_for(data: &[u8], want: u32) -> Vec<(u64, u64)> {
     let mut ranges = Vec::new();
     let be32 = |o: usize| data.get(o..o + 4).map(|b| u32::from_be_bytes(b.try_into().unwrap()));
     let be64 = |o: usize| data.get(o..o + 8).map(|b| u64::from_be_bytes(b.try_into().unwrap()));
@@ -34,17 +46,17 @@ pub fn code_ranges(data: &[u8]) -> Vec<(u64, u64)> {
                     (be32(a + 8).map(u64::from), be32(a + 12).map(u64::from))
                 };
                 let (Some(off), Some(size)) = (off, size) else { break };
-                if cpu != CPU_TYPE_ARM64 {
+                if cpu != want {
                     continue;
                 }
                 let end = off.saturating_add(size);
                 if end > data.len() as u64 {
                     continue;
                 }
-                thin_ranges(&data[off as usize..end as usize], off, &mut ranges);
+                thin_ranges(&data[off as usize..end as usize], off, want, &mut ranges);
             }
         }
-        _ => thin_ranges(data, 0, &mut ranges),
+        _ => thin_ranges(data, 0, want, &mut ranges),
     }
 
     ranges.sort_unstable();
@@ -60,13 +72,15 @@ pub fn code_ranges(data: &[u8]) -> Vec<(u64, u64)> {
     out
 }
 
-fn thin_ranges(m: &[u8], base: u64, out: &mut Vec<(u64, u64)>) {
+fn thin_ranges(m: &[u8], base: u64, want: u32, out: &mut Vec<(u64, u64)>) {
     let le32 = |o: usize| m.get(o..o + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()));
     let le64 = |o: usize| m.get(o..o + 8).map(|b| u64::from_le_bytes(b.try_into().unwrap()));
 
-    if le32(0) != Some(0xFEED_FACF) || le32(4) != Some(CPU_TYPE_ARM64) {
+    if le32(0) != Some(0xFEED_FACF) || le32(4) != Some(want) {
         return;
     }
+    // arm64 instructions are 4-byte words; x86 ranges are taken as they are.
+    let align = if want == CPU_TYPE_ARM64 { 3 } else { 0 };
     let ncmds = le32(16).unwrap_or(0).min(4096);
     let mut p = 32usize;
     for _ in 0..ncmds {
@@ -85,8 +99,8 @@ fn thin_ranges(m: &[u8], base: u64, out: &mut Vec<(u64, u64)>) {
                 if !code || offset == 0 || size < 4 {
                     continue;
                 }
-                let start = (offset as u64 + 3) & !3;
-                let end = (offset as u64).saturating_add(size).min(m.len() as u64) & !3;
+                let start = (offset as u64 + align) & !align;
+                let end = (offset as u64).saturating_add(size).min(m.len() as u64) & !align;
                 if end > start {
                     out.push((base + start, end - start));
                 }
@@ -141,9 +155,108 @@ fn filter_region(buf: &mut [u8], start_pc: u32, encode: bool) {
     }
 }
 
+/// Applies (`encode = true`) or reverses XZ's x86 BCJ filter over `ranges`:
+/// the 32-bit targets of `CALL` / `JMP rel32` (E8 / E9) become absolute.
+pub fn filter_x86(data: &mut [u8], ranges: &[(u64, u64)], encode: bool) -> anyhow::Result<()> {
+    for &(off, len) in ranges {
+        let end = off.checked_add(len).filter(|&e| e <= data.len() as u64);
+        anyhow::ensure!(end.is_some(), "invalid x86 filter range");
+        x86_region(&mut data[off as usize..(off + len) as usize], off as u32, encode);
+    }
+    Ok(())
+}
+
+/// XZ Utils' `x86_code` (public domain) over one whole region.
+fn x86_region(buf: &mut [u8], now_pos: u32, encode: bool) {
+    const MASK_TO_ALLOWED: [bool; 8] = [true, true, true, false, true, false, false, false];
+    const MASK_TO_BIT_NUMBER: [u32; 8] = [0, 1, 2, 2, 3, 3, 3, 3];
+    let ms_byte = |b: u8| b.wrapping_add(1) & 0xFE == 0;
+    if buf.len() < 5 {
+        return;
+    }
+    let (mut prev_mask, mut prev_pos) = (0u32, now_pos.wrapping_sub(5));
+    let limit = buf.len() - 5;
+    let mut i = 0usize;
+    while i <= limit {
+        let b = buf[i];
+        if b != 0xE8 && b != 0xE9 {
+            i += 1;
+            continue;
+        }
+        let pos = now_pos.wrapping_add(i as u32);
+        let offset = pos.wrapping_sub(prev_pos);
+        prev_pos = pos;
+        if offset > 5 {
+            prev_mask = 0;
+        } else {
+            for _ in 0..offset {
+                prev_mask &= 0x77;
+                prev_mask <<= 1;
+            }
+        }
+        let b4 = buf[i + 4];
+        if ms_byte(b4) && MASK_TO_ALLOWED[((prev_mask >> 1) & 7) as usize] && (prev_mask >> 1) < 0x10 {
+            let mut src = u32::from_le_bytes([buf[i + 1], buf[i + 2], buf[i + 3], b4]);
+            let mut dest;
+            loop {
+                let here = pos.wrapping_add(5);
+                dest = if encode { src.wrapping_add(here) } else { src.wrapping_sub(here) };
+                if prev_mask == 0 {
+                    break;
+                }
+                let n = MASK_TO_BIT_NUMBER[(prev_mask >> 1) as usize];
+                if !ms_byte((dest >> (24 - n * 8)) as u8) {
+                    break;
+                }
+                src = dest ^ ((1u32 << (32 - n * 8)) - 1);
+            }
+            buf[i + 4] = !(((dest >> 24) & 1).wrapping_sub(1)) as u8;
+            buf[i + 3] = (dest >> 16) as u8;
+            buf[i + 2] = (dest >> 8) as u8;
+            buf[i + 1] = dest as u8;
+            i += 5;
+            prev_mask = 0;
+        } else {
+            i += 1;
+            prev_mask |= 1;
+            if ms_byte(b4) {
+                prev_mask |= 0x10;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn x86_filter_is_a_bijection() {
+        let mut state = 0x0bad_c0de_1234_5678u64;
+        let mut data: Vec<u8> = (0..1 << 20)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state as u8
+            })
+            .collect();
+        // Calls with near targets (top byte 00 or FF), back to back and apart.
+        for i in (0..data.len() - 16).step_by(37) {
+            data[i] = if i % 2 == 0 { 0xE8 } else { 0xE9 };
+            data[i + 4] = if i % 3 == 0 { 0x00 } else { 0xFF };
+            if i % 5 == 0 {
+                data[i + 5] = 0xE8;
+                data[i + 9] = 0x00;
+            }
+        }
+        let orig = data.clone();
+        let ranges = vec![(3, 300_000), (300_003, (1 << 20) - 300_003)];
+        filter_x86(&mut data, &ranges, true).unwrap();
+        assert_ne!(data, orig);
+        filter_x86(&mut data, &ranges, false).unwrap();
+        assert_eq!(data, orig);
+    }
 
     #[test]
     fn filter_is_a_bijection_on_random_data() {

@@ -226,10 +226,23 @@ fn sniff(path: &Path) -> Class {
         }
     }
     if n == 0 {
-        Class::Text
-    } else {
-        classify::classify(&head[..n])
+        return Class::Text;
     }
+    let class = classify::classify(&head[..n]);
+    if named_dmg(path) {
+        let mut tail = [0u8; 512];
+        let len = f.metadata().map_or(0, |m| m.len());
+        if len >= 1024 && std::os::unix::fs::FileExt::read_exact_at(&f, &mut tail, len - 512).is_ok() && classify::is_udif_trailer(&tail) {
+            return Class::DeflateContainer(classify::DeflateKind::Dmg);
+        }
+    }
+    class
+}
+
+/// Disk images start with the image's own bytes; a `.dmg` name sends the
+/// classifier to the trailer, which says what the file is.
+fn named_dmg(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("dmg"))
 }
 
 /// Sort group from a sniffed class: 0 text, 1 binary lanes, 2 mostly stored.
@@ -404,7 +417,7 @@ fn class_rank(class: Option<Class>) -> u8 {
         Some(Class::Text) => 1,
         Some(Class::MachO) => 2,
         Some(Class::Code) => 2,
-        Some(Class::DeflateContainer(DeflateKind::Zip)) => 3,
+        Some(Class::DeflateContainer(DeflateKind::Zip | DeflateKind::Dmg)) => 3,
         Some(Class::DeflateContainer(DeflateKind::Pdf)) => 4,
         Some(Class::DeflateContainer(DeflateKind::Gzip)) => 5,
         Some(Class::Binary) => 6,
@@ -829,7 +842,13 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
     if data.len() as u64 != job.size {
         bail!("{} changed size while archiving", job.source.display());
     }
-    let class = if data.is_empty() { Class::Text } else { classify::classify(&data[..data.len().min(SNIFF_LEN)]) };
+    let class = match data.len() {
+        0 => Class::Text,
+        n if n >= 1024 && named_dmg(&job.source) && classify::is_udif_trailer(&data[n - 512..]) => {
+            Class::DeflateContainer(classify::DeflateKind::Dmg)
+        }
+        n => classify::classify(&data[..n.min(SNIFF_LEN)]),
+    };
     // Content identity. Files that will be transformed hash their original bytes
     // (the index keeps that hash to check the rebuilt file). Every other file is
     // only hashed once, chunk by chunk, and its identity comes from those hashes.

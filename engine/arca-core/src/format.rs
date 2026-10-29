@@ -93,8 +93,9 @@ impl Codec {
 pub enum Transform {
     /// Stored as-is.
     None,
-    /// AArch64 branch/ADRP filter applied in place to these (offset, len) ranges.
-    Arm64 { ranges: Vec<(u64, u64)> },
+    /// Mach-O branch filters applied in place to these (offset, len) ranges:
+    /// AArch64 BL/ADRP on `ranges`, x86 CALL/JMP (XZ's BCJ) on `x86`.
+    Arm64 { ranges: Vec<(u64, u64)>, x86: Vec<(u64, u64)> },
     /// JPEG losslessly re-encoded with Lepton.
     Lepton,
     /// Deflate streams expanded with preflate (ZIP/Office/PNG/PDF/gzip).
@@ -284,12 +285,16 @@ impl Index {
             w.uv(o.size);
             match &o.transform {
                 Transform::None => w.u8(0),
-                Transform::Arm64 { ranges } => {
-                    w.u8(1);
-                    w.uv(ranges.len() as u64);
-                    for &(off, len) in ranges {
-                        w.uv(off);
-                        w.uv(len);
+                Transform::Arm64 { ranges, x86 } => {
+                    // Tag 4 adds the x86 ranges; arm64-only files keep tag 1.
+                    w.u8(if x86.is_empty() { 1 } else { 4 });
+                    let lists = [ranges, x86];
+                    for list in &lists[..if x86.is_empty() { 1 } else { 2 }] {
+                        w.uv(list.len() as u64);
+                        for &(off, len) in list.iter() {
+                            w.uv(off);
+                            w.uv(len);
+                        }
                     }
                 }
                 Transform::Lepton => w.u8(2),
@@ -425,13 +430,18 @@ impl Index {
             let size = r.uv()?;
             let transform = match r.u8()? {
                 0 => Transform::None,
-                1 => {
-                    let nr = r.len()?;
-                    let mut ranges = Vec::with_capacity(nr.min(64));
-                    for _ in 0..nr {
-                        ranges.push((r.uv()?, r.uv()?));
-                    }
-                    Transform::Arm64 { ranges }
+                t @ (1 | 4) => {
+                    let mut list = || -> Result<Vec<(u64, u64)>> {
+                        let nr = r.len()?;
+                        let mut ranges = Vec::with_capacity(nr.min(64));
+                        for _ in 0..nr {
+                            ranges.push((r.uv()?, r.uv()?));
+                        }
+                        Ok(ranges)
+                    };
+                    let ranges = list()?;
+                    let x86 = if t == 4 { list()? } else { Vec::new() };
+                    Transform::Arm64 { ranges, x86 }
                 }
                 2 => Transform::Lepton,
                 3 => Transform::Deflate,
@@ -667,12 +677,31 @@ mod tests {
         Chunk { block, offset, len }
     }
 
+    /// Branch-filter ranges come back from the index as written: arm64-only
+    /// objects keep tag 1, objects with x86_64 code use tag 4.
+    #[test]
+    fn branch_filter_ranges_round_trip() {
+        let hashed = |transform, chunks, len| Object { hash: Some([7; 16]), ..object(transform, chunks, len) };
+        let both = Transform::Arm64 { ranges: vec![(16, 4096), (8192, 64)], x86: vec![(20_000, 3001)] };
+        let arm_only = Transform::Arm64 { ranges: vec![(0, 400)], x86: vec![] };
+        let idx = Index {
+            created: 0,
+            entries: vec![file("Universal", 0, 30_000), file("Arm", 1, 400)],
+            objects: vec![hashed(both.clone(), vec![0], 30_000), hashed(arm_only.clone(), vec![1], 400)],
+            chunks: vec![chunk(0, 0, 30_000), chunk(0, 30_000, 400)],
+            blocks: vec![block(30_400, 9000)],
+        };
+        let back = Index::decode(&idx.encode()).unwrap();
+        assert_eq!(back.objects[0].transform, both);
+        assert_eq!(back.objects[1].transform, arm_only);
+    }
+
     /// Block 0 holds only app code (compresses to half), block 1 only PNG pixels
     /// (to a tenth), block 2 a little of both. The mixed block must be split by
     /// how each kind compresses, not by length.
     #[test]
     fn mixed_blocks_are_split_by_how_each_kind_compresses() {
-        let arm64 = || Transform::Arm64 { ranges: vec![] };
+        let arm64 = || Transform::Arm64 { ranges: vec![], x86: vec![] };
         let idx = Index {
             created: 0,
             entries: vec![file("Tool", 0, 1000), file("a.png", 1, 1000), file("Tool2", 2, 500), file("b.png", 3, 500)],
