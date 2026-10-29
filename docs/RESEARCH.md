@@ -681,6 +681,37 @@ loop per filter type: refilter 595 MB/s → 10.8 GB/s, unfilter 634 → 842 MB/s
 Flat graphics decode at ~300 MB/s, photo-like images at ~135 MB/s (82
 instructions per byte; going further needs a format change, e.g. static tables).
 
+**Photos were the slow case.** Pixel coding at Default only where it saves the
+most (a byte per N pixel bytes, against 0.9x zstd-1 ≈ zstd-12) cut extraction
+CPU far less than the pixel count: the images it keeps are photo-like, and they
+decoded at 60–67 MB/s (154 instructions per byte, IPC 3.3; bands side by side
+did not help there either). The compiled loop kept both rANS states in memory
+indexed by symbol parity, did not unroll the channels, bounds-checked every table
+index and branched on MED's comparisons and on each binary symbol's bit. Now:
+the states swap in registers, a macro writes the channels out with constant
+indexes, MED is a clamp, binary symbols and the refill use selects, and the
+token table has a sentinel entry. Same bytes in and out:
+
+| | Photo-like PNGs (175) | Flat (32) | All 604 PNGs |
+|---|---:|---:|---:|
+| decode, start of the evening | 67 MB/s | 145 MB/s | 110 MB/s |
+| **decode now** | **101 MB/s** | **353 MB/s** | **225 MB/s** |
+| encode, start → now | 58 → 75 MB/s | 134 → 149 | 103 → 117 |
+
+Default with the pixel codec, saved folder (busy Mac, three runs each):
+
+| Pixel codec at Default | Size | Extract | Extract CPU (user) |
+|---|---:|---|---:|
+| off (Default today) | 245.48 MiB | 2.45–2.68 s | 14.5 s |
+| where it saves a byte per 50 pixel bytes | 234.63 MiB | 2.48–2.54 s | 16.2 s |
+| where it saves a byte per 30 | 235.19 MiB | 2.57–2.65 s | 15.8 s |
+| wherever it wins | 233.57 MiB | 2.55–2.63 s | 16.6 s |
+
+Make time drops by 0.5–1.3 s with it on (the codec replaces zstd-12 on the
+pixels). Not switched on: extraction gets ~0.05–0.15 s slower, so it is the
+user's call (`ARCA_EXP_PIXELS=1`, `ARCA_EXP_PIXEL_GAIN=N` to try it). Max
+extraction CPU drops 1 s with the faster decoder.
+
 ## Writing files (extraction)
 
 Fast extraction of the saved folder was 1.0 s with 1.1 s of user CPU and **5.0 s

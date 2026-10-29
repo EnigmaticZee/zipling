@@ -29,6 +29,10 @@ pub struct TransformOpts {
     pub deflate_steps_per_byte: u32,
     /// Code PNG pixels with the pixel codec where it beats compressing the rows.
     pub png_pixels: bool,
+    /// With `png_pixels`, also require the codec to save at least one byte per
+    /// this many pixel bytes (0: any saving). Decoding pixels costs extraction
+    /// time, so Default keeps the codec for the images where it pays most.
+    pub png_pixels_per_byte_saved: u32,
 }
 
 pub struct Prepared<'a> {
@@ -81,7 +85,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
         Class::Jpeg if opts.jpeg => jpeg::encode(data).map(|out| (Transform::Lepton, out, Lane::Store)),
         Class::DeflateContainer(kind) if opts.deflate => {
             let png = kind == crate::classify::DeflateKind::Png;
-            deflate::encode(data, kind, opts.deflate_chain, opts.deflate_steps_per_byte, !opts.verify, opts.png_pixels).map(
+            deflate::encode(data, kind, opts.deflate_chain, opts.deflate_steps_per_byte, !opts.verify, opts.png_pixels.then_some(opts.png_pixels_per_byte_saved)).map(
                 |e| {
                     store_from = e.store_from;
                     // Coded pixels leave only layout and corrections to compress.

@@ -141,6 +141,11 @@ fn main() {
                 assert!(back == px, "round trip failed: {}", f.display());
             }
             let to = t.elapsed().as_secs_f64();
+            if std::env::var_os("PIX_CHOICE").is_some() {
+                let z12 = zstd::bulk::compress(&png.filtered, 12).unwrap().len();
+                let z1 = zstd::bulk::compress(&png.filtered, 1).unwrap().len();
+                println!("CHOICE\t{}\t{}\t{}\t{}\t{}", f.display(), px.len(), base.len(), z12, z1);
+            }
             Some((px.len(), base.len(), ours.len(), tb, to))
         })
         .collect();
