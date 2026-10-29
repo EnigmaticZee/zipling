@@ -54,6 +54,12 @@ pub struct PackOptions {
     pub text_codec: CodecConfig,
     pub binary_codec: CodecConfig,
     pub image_codec: CodecConfig,
+    /// Executables and libraries get their own lane with this codec. When
+    /// false they share the binary lane (and its codec), as before.
+    pub code_lane: bool,
+    pub code_codec: CodecConfig,
+    /// Block size for the code lane.
+    pub code_block_size: usize,
     /// zstd level for the index. 19 costs ~0.3 s on one thread for a 10,000-file
     /// folder and saves ~7% of an index that is under 0.1% of the archive.
     pub index_level: i32,
@@ -77,10 +83,10 @@ impl PackOptions {
             Level::Fast => (zstd(3), zstd(3), 8 << 20, 8 << 20, u64::MAX),
             Level::Balanced => (zstd(15), zstd(12), 16 << 20, 64 << 20, 64 << 20),
             // Max is the fast high-ratio level: LZMA2 with 32-byte matches (half the
-            // CPU of 273-byte ones for 1-6% more output) and 32 MiB text blocks,
-            // so no single block holds the end back. Text, a small and cheap lane,
-            // takes 64-byte matches: same time, 1% smaller on Silesia.
-            Level::Max => (lzma2(9, false), lzma2(7, false), 32 << 20, 64 << 20, 0),
+            // CPU of 273-byte ones for 1-6% more output) for binaries and pixels,
+            // while text and code (the code lane below) get the longest matches in
+            // 64 MiB blocks: what source trees and Silesia need to beat 7-Zip Ultra.
+            Level::Max => (lzma2(9, true), lzma2(7, false), 64 << 20, 64 << 20, 0),
             // Ultra is the smallest: context modelling for text (it beats LZ on
             // prose and source code, at the cost of decode speed) and the longest
             // LZMA2 matches.
@@ -112,6 +118,11 @@ impl PackOptions {
             text_codec: text,
             binary_codec: binary,
             image_codec: binary,
+            // At Max and Ultra code and text get long matches: what makes source
+            // trees and apps small (7-Zip Ultra is the bar there).
+            code_lane: matches!(level, Level::Max | Level::Ultra),
+            code_codec: if matches!(level, Level::Max | Level::Ultra) { lzma2(9, true) } else { binary },
+            code_block_size: block,
             index_level: if matches!(level, Level::Fast | Level::Balanced) { 9 } else { 19 },
             memory_budget: 0,
             // Ordering by content is 0.15% smaller at Default and costs ~0.1 s; at
@@ -266,10 +277,10 @@ struct BlockSink {
     slots_tx: Sender<()>,
     slots_rx: Receiver<()>,
     done_tx: Sender<Result<Done>>,
-    open: [Option<OpenBlock>; 4],
+    open: [Option<OpenBlock>; 5],
     next_id: u32,
-    block_sizes: [usize; 4],
-    codecs: [CodecConfig; 4],
+    block_sizes: [usize; 5],
+    codecs: [CodecConfig; 5],
     lanes: Vec<Lane>,
     /// Pack start, for the block timeline `ARCA_DEBUG_TIMING` prints.
     start: Option<Instant>,
@@ -314,6 +325,7 @@ impl BlockSink {
                     (Codec::Store, _) => "block.store",
                     (_, Lane::Text) => "block.text",
                     (_, Lane::Image) => "block.image",
+                    (_, Lane::Code) => "block.code",
                     _ => "block.binary",
                 },
                 block.buf.len() as u64,
@@ -336,7 +348,7 @@ impl BlockSink {
     }
 
     fn flush(&mut self) {
-        for lane in [Lane::Text, Lane::Binary, Lane::Image, Lane::Store] {
+        for lane in [Lane::Text, Lane::Binary, Lane::Image, Lane::Code, Lane::Store] {
             self.flush_lane(lane);
         }
     }
@@ -382,6 +394,7 @@ fn class_rank(class: Option<Class>) -> u8 {
         None => 0,
         Some(Class::Text) => 1,
         Some(Class::MachO) => 2,
+        Some(Class::Code) => 2,
         Some(Class::DeflateContainer(DeflateKind::Zip)) => 3,
         Some(Class::DeflateContainer(DeflateKind::Pdf)) => 4,
         Some(Class::DeflateContainer(DeflateKind::Gzip)) => 5,
@@ -498,7 +511,12 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let lookahead = LOOKAHEAD_BYTES.min(budget / 16);
     // Each encoder holds its block and its output; every lane fills one open block;
     // file tasks hold their working copies (expanded Deflate, Lepton buffers).
-    let per_encoder = [(opts.text_codec, text_block_size), (opts.binary_codec, block_size), (opts.image_codec, block_size)]
+    let per_encoder = [
+        (opts.text_codec, text_block_size),
+        (opts.binary_codec, block_size),
+        (opts.image_codec, block_size),
+        (opts.code_codec, block_size),
+    ]
         .into_iter()
         .map(|(c, b)| codec::encoder_memory(c, b) + 2 * b as u64)
         .max()
@@ -511,7 +529,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     // LZMA2 encoders run two threads each (the match finder has its own), so
     // about half as many of them keep the cores busy without starving the
     // first blocks: six on 10 cores made Max 4-6% faster than ten.
-    if [opts.text_codec, opts.binary_codec, opts.image_codec].iter().any(|c| c.codec == Codec::Lzma2) {
+    if [opts.text_codec, opts.binary_codec, opts.image_codec, opts.code_codec].iter().any(|c| c.codec == Codec::Lzma2) {
         block_threads = block_threads.min(opts.threads.max(1) / 2 + 1);
     }
     if let Some(cap) = std::env::var("ARCA_EXP_ENCODERS").ok().and_then(|v| v.parse::<usize>().ok()) {
@@ -562,10 +580,10 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         slots_tx,
         slots_rx,
         done_tx,
-        open: [None, None, None, None],
+        open: [None, None, None, None, None],
         next_id: 0,
-        block_sizes: [text_block_size, block_size, block_size, block_size],
-        codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec],
+        block_sizes: [text_block_size, block_size, block_size, block_size, opts.code_block_size.min(block_size.max(1 << 20))],
+        codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec, opts.code_codec],
         lanes: Vec::new(),
         start: timing.then_some(start),
     };
@@ -705,6 +723,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                 if k + 1 == binary_end {
                     sink.flush_lane(Lane::Binary);
                     sink.flush_lane(Lane::Image);
+                    sink.flush_lane(Lane::Code);
                 }
             }
             Ok(())
@@ -727,7 +746,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     }
     let blocks: Vec<BlockInfo> = blocks.into_iter().collect::<Option<_>>().context("block missing from writer")?;
 
-    let mut lane_stats = [("text", 0u64, 0u64), ("binary", 0, 0), ("store", 0, 0), ("image", 0, 0)];
+    let mut lane_stats = [("text", 0u64, 0u64), ("binary", 0, 0), ("store", 0, 0), ("image", 0, 0), ("code", 0, 0)];
     for (b, lane) in blocks.iter().zip(&lanes) {
         lane_stats[*lane as usize].1 += b.raw_len;
         lane_stats[*lane as usize].2 += b.comp_len;
@@ -849,6 +868,7 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
             (p.transform, owned, p.lane, p.store_from, cuts)
         }
     };
+    let lane = if lane == Lane::Code && !opts.code_lane { Lane::Binary } else { lane };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
     let cuts = cuts
         .into_iter()

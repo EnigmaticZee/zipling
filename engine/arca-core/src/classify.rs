@@ -12,6 +12,10 @@ pub enum Class {
     DeflateContainer(DeflateKind),
     /// Formats that are already entropy coded; recompressing wastes CPU.
     Compressed,
+    /// Executables, libraries and bundles of them (ELF, PE, static libraries,
+    /// Java classes, WebAssembly, LLVM bitcode, tar): data whose repeats are long
+    /// and far apart, so it gets its own lane where long matches pay.
+    Code,
     Binary,
 }
 
@@ -31,6 +35,8 @@ pub enum Lane {
     Store = 2,
     /// Pixel rows expanded from PNG: their own blocks and codec.
     Image = 3,
+    /// Executables and libraries (`Class::Code`, Mach-O).
+    Code = 4,
 }
 
 pub const SNIFF_LEN: usize = 4096;
@@ -60,6 +66,9 @@ pub fn classify(head: &[u8]) -> Class {
     if is_compressed(h) {
         return Class::Compressed;
     }
+    if is_code(h) {
+        return Class::Code;
+    }
     if looks_like_text(h) {
         return Class::Text;
     }
@@ -80,6 +89,21 @@ fn is_macho(h: &[u8]) -> bool {
         }
         _ => false,
     }
+}
+
+fn is_code(h: &[u8]) -> bool {
+    let starts = |m: &[u8]| h.starts_with(m);
+    let le32 = |at: usize| h.get(at..at + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize);
+    starts(b"\x7fELF")
+        || starts(b"!<arch>\n") // static library (.a) or .deb
+        || starts(b"\0asm") // WebAssembly
+        || starts(b"BC\xC0\xDE") || starts(&[0xDE, 0xC0, 0x17, 0x0B]) // LLVM bitcode
+        // Java class: CAFEBABE then a class-file version (fat Mach-O has a small arch count).
+        || (h.len() >= 8 && h[..4] == [0xCA, 0xFE, 0xBA, 0xBE] && u32::from_be_bytes([h[4], h[5], h[6], h[7]]) > 20)
+        // Windows PE: "MZ", and "PE\0\0" where the header says it is.
+        || (starts(b"MZ") && le32(0x3C).is_some_and(|o| h.get(o..o + 4) == Some(b"PE\0\0")))
+        // tar: "ustar" at offset 257 (source trees and binaries bundled together).
+        || h.get(257..262) == Some(b"ustar")
 }
 
 fn is_compressed(h: &[u8]) -> bool {
@@ -154,7 +178,9 @@ mod tests {
         assert_eq!(classify(b"fn main() {}\n"), Class::Text);
         assert_eq!(classify(b"\xCA\xFE\xBA\xBE\x00\x00\x00\x02"), Class::MachO);
         // Java class file, version 52
-        assert_eq!(classify(b"\xCA\xFE\xBA\xBE\x00\x00\x00\x34"), Class::Binary);
+        assert_eq!(classify(b"\xCA\xFE\xBA\xBE\x00\x00\x00\x34"), Class::Code);
+        assert_eq!(classify(b"\x7fELF\x02\x01\x01\x00"), Class::Code);
+        assert_eq!(classify(b"!<arch>\n/               "), Class::Code);
         assert_eq!(classify(b"\x00\x00\x00\x18ftypheic"), Class::Compressed);
     }
 }
