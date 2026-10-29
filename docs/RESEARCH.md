@@ -39,6 +39,22 @@ to bsc.
 Next: ZIP writer in the app; final quiet-Mac benchmarks of the presets against
 the options (ask the user first).
 
+## Checkpoint benchmark (the user's spec, 2026-10-29)
+
+On a quiet Mac with the user away; ask before starting, and ask before
+downloading or installing anything (Keka, BetterZip, WinRAR).
+
+- Every Arca level, each with and without bsc (BWT), so the user can choose.
+- Every rival in the same run, on the same files, alternating with Arca:
+  Zipgeist (every setting), 7-Zip (normal and Ultra), Finder, zstd, xz, plus Keka,
+  BetterZip and WinRAR if the user approves installing them.
+- Every set: the saved folder and all website sets.
+- One table per set: size, make time, extract time, peak memory; mark every cell
+  where any rival beats Arca.
+- Show clearly how the .zlg format performs against everything.
+- A separate section: what changed against the metrics published on the website
+  (`site/benchmarks.html`, `site/data.js`).
+
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
 The goal is a breakthrough, not tuning: beat every archiver (7-Zip, Zipgeist,
@@ -673,6 +689,32 @@ reject almost every PNG from zlib levels 7-9 after a full analysis. The zlib
 header's FLEVEL (3 for levels 7-9) now skips them up front when the limit is
 under 1024. Saved folder, three alternating runs: PNG analysis 11.0 → 6.3 s of
 CPU, pack CPU 63.2 → 57.9 s, size 245.48 → 245.47 MiB; wall 9.1-9.2 → 8.8-9.2 s.
+
+**zlib replay for PNGs (in the engine, 2026-10-29).** With the user's OK, zlib
+1.3.2's encoder is vendored in `engine/vendor/zlib` (see its ARCA-NOTES.md),
+built with `Z_PREFIX`. It re-creates exactly the same 480 of 656 PNGs as macOS's
+libz 1.2.12 (`scratchpad zr3`, every PNG of the saved folder), so a pinned copy is
+safe against OS updates. Stopping the re-run at the first differing byte makes a
+wrong guess cheap for levels 1-6 (41 non-zlib PNGs: 0.27 s for every guess), but
+not for level 9 (123 PNGs: 80 s), and zlib -9 re-creates its own streams at
+6 MB/s (99 PNGs: 56 s), slower than preflate. Level 6 re-runs slower than
+preflate rebuilds (1.04 against 0.59 s for 76 PNGs). So the Deflate transform
+re-runs zlib only for zlib-wrapped streams (PNG, PDF) whose header says level 1-5,
+and falls back to preflate when no setting matches. Layout: version byte flag
+`REPLAY`, one method byte per stream (see `deflate.rs`).
+
+PNGs at Default's settings (`examples/preftime.rs`, two runs each, CPU):
+
+| zlib level | PNGs | preflate forward / inverse | replay forward / inverse |
+|---|---:|---:|---:|
+| 1 | 301 | 3.81 / 1.35 s | **1.53 / 1.18 s** |
+| 3 | 3 | 0.11 / 0.05 s | 0.05 / 0.04 s |
+| not zlib, header 0-6 | 41 | 0.14 / 0.04 s | 0.17 / 0.04 s |
+
+Saved folder (busy Mac, two alternating runs each; every round trip identical):
+Default 257,398,331 → 257,395,835 bytes, pack CPU 59.2 → 54.9-55.8 s (−6.6%),
+wall 9.4-9.6 → 9.1-10.0 s (noise), extraction 2.2-2.3 s both; Max 221,973,037 →
+221,962,595 bytes, pack CPU 214.0-214.7 → 212.1-212.7 s.
 
 **Default's tail is two image blocks.** The block timeline shows every file
 transformed at 6.5 s, then two 64 MiB image blocks (zstd-12 on flat PNG rows,
