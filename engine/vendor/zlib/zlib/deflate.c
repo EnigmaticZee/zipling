@@ -1,6 +1,10 @@
 /* deflate.c -- compress data using the deflation algorithm
  * Copyright (C) 1995-2026 Jean-loup Gailly and Mark Adler
  * For conditions of distribution and use, see copyright notice in zlib.h
+ *
+ * Altered for Arca (2026): a faster match search for levels 8 and 9 with the
+ * same output, marked "Arca" below. Not the original software; see
+ * ARCA-NOTES.md.
  */
 
 /*
@@ -160,8 +164,26 @@ local const config configuration_table[10] = {
 #define INSERT_STRING(s, str, match_head) \
    (UPDATE_HASH(s, s->ins_h, s->window[(str) + (MIN_MATCH-1)]), \
     match_head = s->prev[(str) & s->w_mask] = s->head[s->ins_h], \
+    ARCA_COUNT(s, str), \
     s->head[s->ins_h] = (Pos)(str))
 #endif
+
+/* Arca: counts the string just added to bucket ins_h (see fast_match). */
+#define ARCA_COUNT(s, str) \
+    (s->arca_fast ? (void)(s->ord3[(str) & s->w_mask] = s->cnt3[s->ins_h]++) : (void)0)
+
+/* Arca: hashes of a string's first 4 and 8 bytes. */
+#define LONG_BITS 16
+local unsigned hash4(const Bytef *p) {
+    unsigned v;
+    zmemcpy(&v, p, 4);
+    return (v * 2654435761u) >> (32 - LONG_BITS);
+}
+local unsigned hash8(const Bytef *p) {
+    unsigned long long v;
+    zmemcpy(&v, p, 8);
+    return (unsigned)((v * 0x9E3779B97F4A7C15ull) >> (64 - LONG_BITS));
+}
 
 /* ===========================================================================
  * Initialize the hash table (avoiding 64K overflow for 16 bit systems).
@@ -171,6 +193,7 @@ local const config configuration_table[10] = {
     do { \
         s->head[s->hash_size - 1] = NIL; \
         zmemzero(s->head, (unsigned)(s->hash_size - 1)*sizeof(*s->head)); \
+        s->arca_fast = 0; /* Arca: lm_init turns it back on */ \
         s->slid = 0; \
     } while (0)
 
@@ -206,6 +229,17 @@ local void slide_hash(deflate_state *s) {
          */
     } while (--n);
 #endif
+    if (s->arca_fast) {
+        for (n = 0; n < (1u << LONG_BITS); n++) {
+            m = s->head4[n]; s->head4[n] = (Pos)(m >= wsize ? m - wsize : NIL);
+            m = s->head8[n]; s->head8[n] = (Pos)(m >= wsize ? m - wsize : NIL);
+        }
+        for (n = 0; n < wsize; n++) {
+            m = s->prev4[n]; s->prev4[n] = (Pos)(m >= wsize ? m - wsize : NIL);
+            m = s->prev8[n]; s->prev8[n] = (Pos)(m >= wsize ? m - wsize : NIL);
+        }
+        s->long_next = s->long_next >= wsize ? s->long_next - wsize : 0;
+    }
     s->slid = 1;
 }
 
@@ -324,6 +358,7 @@ local void fill_window(deflate_state *s) {
 #ifndef FASTEST
                 s->prev[str & s->w_mask] = s->head[s->ins_h];
 #endif
+                ARCA_COUNT(s, str);
                 s->head[s->ins_h] = (Pos)str;
                 str++;
                 s->insert--;
@@ -458,6 +493,12 @@ int ZEXPORT deflateInit2_(z_streamp strm, int level, int method,
     s->window = (Bytef *) ZALLOC(strm, s->w_size, 2*sizeof(Byte));
     s->prev   = (Posf *)  ZALLOC(strm, s->w_size, sizeof(Pos));
     s->head   = (Posf *)  ZALLOC(strm, s->hash_size, sizeof(Pos));
+    s->head4  = (Posf *)  ZALLOC(strm, 1u << LONG_BITS, sizeof(Pos));
+    s->prev4  = (Posf *)  ZALLOC(strm, s->w_size, sizeof(Pos));
+    s->head8  = (Posf *)  ZALLOC(strm, 1u << LONG_BITS, sizeof(Pos));
+    s->prev8  = (Posf *)  ZALLOC(strm, s->w_size, sizeof(Pos));
+    s->cnt3   = (unsigned *) ZALLOC(strm, s->hash_size, sizeof(unsigned));
+    s->ord3   = (unsigned *) ZALLOC(strm, s->w_size, sizeof(unsigned));
 
     s->high_water = 0;      /* nothing written to s->window yet */
 
@@ -506,7 +547,9 @@ int ZEXPORT deflateInit2_(z_streamp strm, int level, int method,
     s->pending_buf_size = (ulg)s->lit_bufsize * 4;
 
     if (s->window == Z_NULL || s->prev == Z_NULL || s->head == Z_NULL ||
-        s->pending_buf == Z_NULL) {
+        s->pending_buf == Z_NULL || s->head4 == Z_NULL || s->prev4 == Z_NULL ||
+        s->head8 == Z_NULL || s->prev8 == Z_NULL || s->cnt3 == Z_NULL ||
+        s->ord3 == Z_NULL) {
         s->status = FINISH_STATE;
         strm->msg = ERR_MSG(Z_MEM_ERROR);
         deflateEnd (strm);
@@ -570,6 +613,7 @@ int ZEXPORT deflateSetDictionary(z_streamp strm, const Bytef *dictionary,
     wrap = s->wrap;
     if (wrap == 2 || (wrap == 1 && s->status != INIT_STATE) || s->lookahead)
         return Z_STREAM_ERROR;
+    s->arca_fast = 0;   /* Arca: the faster search doesn't take dictionaries */
 
     /* when using zlib wrappers, compute Adler-32 for provided dictionary */
     if (wrap == 1)
@@ -602,6 +646,7 @@ int ZEXPORT deflateSetDictionary(z_streamp strm, const Bytef *dictionary,
 #ifndef FASTEST
             s->prev[str & s->w_mask] = s->head[s->ins_h];
 #endif
+            ARCA_COUNT(s, str);
             s->head[s->ins_h] = (Pos)str;
             str++;
         } while (--n);
@@ -690,6 +735,18 @@ local void lm_init(deflate_state *s) {
     s->good_match       = configuration_table[s->level].good_length;
     s->nice_match       = configuration_table[s->level].nice_length;
     s->max_chain_length = configuration_table[s->level].max_chain;
+
+    /* Arca: the faster search, for levels 8 and 9 with windows of 4 KiB or
+     * more. Off for good once the history is cleared another way (a full
+     * flush, a dictionary) or the level changes.
+     */
+    s->arca_fast = s->nice_match == MAX_MATCH && s->w_bits >= 12;
+    if (s->arca_fast) {
+        zmemzero(s->head4, (1u << LONG_BITS)*sizeof(*s->head4));
+        zmemzero(s->head8, (1u << LONG_BITS)*sizeof(*s->head8));
+        zmemzero(s->cnt3, s->hash_size*sizeof(*s->cnt3));
+        s->long_next = 0;
+    }
 
     s->strstart = 0;
     s->block_start = 0L;
@@ -810,6 +867,7 @@ int ZEXPORT deflateParams(z_streamp strm, int level, int strategy) {
         s->good_match       = configuration_table[level].good_length;
         s->nice_match       = configuration_table[level].nice_length;
         s->max_chain_length = configuration_table[level].max_chain;
+        s->arca_fast = 0;
     }
     s->strategy = strategy;
     return Z_OK;
@@ -826,6 +884,7 @@ int ZEXPORT deflateTune(z_streamp strm, int good_length, int max_lazy,
     s->max_lazy_match = (uInt)max_lazy;
     s->nice_match = nice_length;
     s->max_chain_length = (uInt)max_chain;
+    s->arca_fast = 0;
     return Z_OK;
 }
 
@@ -1300,6 +1359,12 @@ int ZEXPORT deflateEnd(z_streamp strm) {
     /* Deallocate in reverse order of allocations: */
     TRY_FREE(strm, strm->state->pending_buf);
     TRY_FREE(strm, strm->state->head);
+    TRY_FREE(strm, strm->state->head4);
+    TRY_FREE(strm, strm->state->prev4);
+    TRY_FREE(strm, strm->state->head8);
+    TRY_FREE(strm, strm->state->prev8);
+    TRY_FREE(strm, strm->state->cnt3);
+    TRY_FREE(strm, strm->state->ord3);
     TRY_FREE(strm, strm->state->prev);
     TRY_FREE(strm, strm->state->window);
 
@@ -1343,12 +1408,26 @@ int ZEXPORT deflateCopy(z_streamp dest, z_streamp source) {
     ds->prev   = (Posf *)  ZALLOC(dest, ds->w_size, sizeof(Pos));
     ds->head   = (Posf *)  ZALLOC(dest, ds->hash_size, sizeof(Pos));
     ds->pending_buf = (uchf *) ZALLOC(dest, ds->lit_bufsize, LIT_BUFS);
+    ds->head4  = (Posf *)  ZALLOC(dest, 1u << LONG_BITS, sizeof(Pos));
+    ds->prev4  = (Posf *)  ZALLOC(dest, ds->w_size, sizeof(Pos));
+    ds->head8  = (Posf *)  ZALLOC(dest, 1u << LONG_BITS, sizeof(Pos));
+    ds->prev8  = (Posf *)  ZALLOC(dest, ds->w_size, sizeof(Pos));
+    ds->cnt3   = (unsigned *) ZALLOC(dest, ds->hash_size, sizeof(unsigned));
+    ds->ord3   = (unsigned *) ZALLOC(dest, ds->w_size, sizeof(unsigned));
 
     if (ds->window == Z_NULL || ds->prev == Z_NULL || ds->head == Z_NULL ||
-        ds->pending_buf == Z_NULL) {
+        ds->pending_buf == Z_NULL || ds->head4 == Z_NULL ||
+        ds->prev4 == Z_NULL || ds->head8 == Z_NULL || ds->prev8 == Z_NULL ||
+        ds->cnt3 == Z_NULL || ds->ord3 == Z_NULL) {
         deflateEnd (dest);
         return Z_MEM_ERROR;
     }
+    zmemcpy(ds->head4, ss->head4, (1u << LONG_BITS) * sizeof(Pos));
+    zmemcpy(ds->prev4, ss->prev4, ds->w_size * sizeof(Pos));
+    zmemcpy(ds->head8, ss->head8, (1u << LONG_BITS) * sizeof(Pos));
+    zmemcpy(ds->prev8, ss->prev8, ds->w_size * sizeof(Pos));
+    zmemcpy(ds->cnt3, ss->cnt3, ds->hash_size * sizeof(unsigned));
+    zmemcpy(ds->ord3, ss->ord3, ds->w_size * sizeof(unsigned));
     /* following zmemcpy's do not work for 16-bit MSDOS */
     zmemcpy(ds->window, ss->window, ss->high_water);
     zmemcpy(ds->prev, ss->prev,
@@ -1378,6 +1457,104 @@ int ZEXPORT deflateCopy(z_streamp dest, z_streamp source) {
 
 #ifndef FASTEST
 /* ===========================================================================
+ * Arca: the length of the common prefix of a and b, at most MAX_MATCH.
+ */
+local int common(const Bytef *a, const Bytef *b) {
+    int n = 0;
+    while (n < MAX_MATCH - 2) {
+        unsigned long long x, y;
+        zmemcpy(&x, a + n, 8);
+        zmemcpy(&y, b + n, 8);
+        if (x != y) return n + (__builtin_ctzll(x ^ y) >> 3);
+        n += 8;
+    }
+    while (n < MAX_MATCH && a[n] == b[n]) n++;
+    return n;
+}
+
+/* ===========================================================================
+ * Arca: walks one of the 4- or 8-byte chains from the newest string before
+ * strstart, keeping the newest string whose match is longer than *best_len and
+ * at least `min` bytes long, among the strings longest_match's walk would reach
+ * (the first `chain` of strstart's bucket; a string's place there is its
+ * bucket's count now less its count when it was added).
+ */
+local void walk_long(deflate_state *s, Posf *prev, IPos limit, unsigned chain,
+                     int min, int *best_len, IPos *best) {
+    const Bytef *scan = s->window + s->strstart;
+    unsigned top = s->cnt3[s->ins_h] - 1;
+    uInt wmask = s->w_mask;
+    IPos m = prev[s->strstart & wmask];
+    int want = *best_len >= min ? *best_len : min - 1;
+    IPos found = NIL;
+    unsigned steps = 0;
+    for (; m > limit; m = prev[m & wmask]) {
+        const Bytef *p = s->window + m;
+        int len;
+        /* Past `chain` steps, stop at the first string beyond the walk's
+         * reach (every older one is too). */
+        if (++steps > chain && p[0] == scan[0] && p[1] == scan[1] &&
+            p[2] == scan[2] && top - s->ord3[m & wmask] > chain) break;
+        if (p[want] != scan[want]) continue;
+        len = common(scan, p);
+        if (len > want) {
+            if (top - s->ord3[m & wmask] > chain) break;
+            want = len;
+            found = m;
+            if (len >= MAX_MATCH) break;
+        }
+    }
+    if (found != NIL) *best_len = want, *best = found;
+}
+
+/* ===========================================================================
+ * Arca: the result of longest_match's walk, found faster for levels 8 and 9
+ * (nice_match = MAX_MATCH). There the walk keeps the newest string it reaches
+ * with the longest match. Strings sharing 8 bytes (else 4, else 3) hold it, and
+ * their chains are much shorter than a hash chain. Strings join the 4- and
+ * 8-byte chains here, lazily and in order: the same strings deflate_slow adds to
+ * the hash chains (all of them, away from the end of the input, which is
+ * left to the walk). Returns 0 to run the walk instead.
+ */
+local int fast_match(deflate_state *s, IPos cur_match, uInt *out) {
+    const Bytef *scan = s->window + s->strstart;
+    IPos limit = s->strstart > (IPos)MAX_DIST(s) ?
+        s->strstart - (IPos)MAX_DIST(s) : NIL;
+    unsigned chain = s->max_chain_length;
+    int best_len = (int)s->prev_length;
+    IPos best = NIL;
+    uInt wmask = s->w_mask;
+
+    if (cur_match <= limit) return 0;
+    if (s->prev_length >= s->good_match) chain >>= 2;
+    while (s->long_next <= s->strstart) {
+        uInt str = s->long_next++;
+        unsigned h4 = hash4(s->window + str), h8 = hash8(s->window + str);
+        s->prev4[str & wmask] = s->head4[h4];
+        s->head4[h4] = (Pos)str;
+        s->prev8[str & wmask] = s->head8[h8];
+        s->head8[h8] = (Pos)str;
+    }
+    walk_long(s, s->prev8, limit, chain, 8, &best_len, &best);
+    if (best == NIL && best_len < 7)
+        walk_long(s, s->prev4, limit, chain, 4, &best_len, &best);
+    if (best == NIL && best_len < 3) {
+        /* The newest string sharing 3 bytes, if the walk reaches it. */
+        IPos m = cur_match;
+        do {
+            if (s->window[m] == scan[0] && s->window[m + 1] == scan[1]) {
+                best = m;
+                best_len = 3;
+                break;
+            }
+        } while ((m = s->prev[m & wmask]) > limit && --chain != 0);
+    }
+    if (best != NIL) s->match_start = best;
+    *out = (uInt)best_len;
+    return 1;
+}
+
+/* ===========================================================================
  * Set match_start to the longest match starting at the given string and
  * return its length. Matches shorter or equal to prev_length are discarded,
  * in which case the result is equal to prev_length and match_start is
@@ -1388,6 +1565,9 @@ int ZEXPORT deflateCopy(z_streamp dest, z_streamp source) {
  */
 local uInt longest_match(deflate_state *s, IPos cur_match) {
     unsigned chain_length = s->max_chain_length;/* max hash chain length */
+    uInt found;
+    if (s->arca_fast && s->lookahead >= MAX_MATCH + 8 &&
+        fast_match(s, cur_match, &found)) return found;
     Bytef *scan = s->window + s->strstart;      /* current string */
     Bytef *match;                               /* matched string */
     int len;                                    /* length of current match */

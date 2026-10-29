@@ -41,10 +41,14 @@ x86_64 slices of universal binaries (third-party apps −0.7 to −0.8%), DMG di
 images expanded and rebuilt (UDZO −21%/−30%, ULFO −14.5%/−32% at Default/Max),
 LZFSE replay (macOS's encoder is lzfse 1.0 with one constant changed; pinned
 copy vendored). `Assets.car` expansion is an option (`ARCA_EXP_CAR=1`; cheap
-only with bsc). PGO measured (−1 to −4% CPU; for release builds). Leads:
-WebP-style tools in the pixel codec for flat images, similarity ordering. The
-test sets miss third-party apps (x86_64 code) and DMGs: add both before the
-checkpoint.
+only with bsc). PGO measured (−1 to −4% CPU; for release builds). Later:
+real-world sets added (`dmgs`, `thirdparty`, the user's own files, local only),
+and an exact, faster match search in the pinned zlib for levels 8-9 (same
+output, 2-5.7x faster): level-9 app installer DMGs now re-run at Max and Ultra
+(Discord −5.0%, faster both ways; dmgs set −1.6%). At Default it would be −18%
+for 4x/7x the time: a checkpoint question (`ARCA_EXP_DMG_DEEP=1`). Leads:
+WebP-style tools in the pixel codec for flat images, similarity ordering, bzip2
+(UDBZ) and LZMA (ULMO) DMG chunks.
 
 Next: the checkpoint benchmark (spec below; ask the user first).
 
@@ -57,7 +61,8 @@ downloading or installing anything (Keka, BetterZip, WinRAR).
 - Every rival in the same run, on the same files, alternating with Arca:
   Zipgeist (every setting), 7-Zip (normal and Ultra), Finder, zstd, xz, plus Keka,
   BetterZip and WinRAR if the user approves installing them.
-- Every set: the saved folder and all website sets.
+- Every set: the saved folder, all website sets, and the two real-world sets
+  (`dmgs`, `thirdparty`; see Test sets).
 - One table per set: size, make time, extract time, peak memory; mark every cell
   where any rival beats Arca.
 - Show clearly how the .zlg format performs against everything.
@@ -145,6 +150,25 @@ transcript):
 
 jpeg and docs drifted slightly because system files changed since 10-25; old website
 numbers for those two sets are not directly comparable to new ones.
+
+**Real-world sets (local only, the user's own files, 2026-10-29).** The website
+sets hold no third-party app and no disk image, so they can't show the x86
+filter or the DMG transforms. With the user's OK, two sets of their files,
+`cp -c` clones in `sets/` (never committed or published):
+
+| Set | Contents | Bytes | Files |
+|---|---|---:|---:|
+| dmgs | 5 installers from `~/Downloads`: Burnish (UDZO, zlib level 1), Discord (zlib level 9), Figma (zlib levels 7-9), Nuvio (zlib level 1 + raw chunks), CleanMyMac 5.7.0 (ULFO, LZFSE) | 620,144,862 | 5 |
+| thirdparty | 6 apps from `/Applications`: Firefox (universal, 98 MB of `omni.ja` ZIPs), Telegram, NordVPN (73 MB of `Assets.car`), Encrypto, Paws Off, PasteNow | 1,249,298,357 | 1,400 |
+
+Left out: a 387 MB bzip2 (UDBZ) installer in `~/Downloads` (no bzip2 re-creation
+yet; a lead), and Electron apps other than Discord's (its DMG holds one).
+Round trips at every level identical (busy Mac, CLI):
+
+| Set | Fast | Default | Max | Ultra |
+|---|---:|---:|---:|---:|
+| dmgs | 619.7 MB, 1.4 s | 557.0 MB, 7.1 s | 457.9 MB, 54.9 s | 455.4 MB, 65.4 s |
+| thirdparty | 465.9 MB, 2.9 s | 411.7 MB, 7.9 s | 339.5 MB, 55.0 s | 336.2 MB, 67.7 s |
 
 ## Baseline profiles
 
@@ -1123,6 +1147,68 @@ ULFO image of the apps set (97.1 MB), round trips identical:
 |---|---:|---:|---:|---:|
 | Default | 87.84 MB | **75.09 MB (−14.5%)** | 2.8 s | 0.41 s |
 | Max | 86.96 MB | **59.25 MB (−31.9%)** | 13.2 s | 0.92 s |
+
+### zlib levels 8-9: an exact, faster match search (in the engine, 2026-10-29)
+
+The real-world sets brought app installers made with `hdiutil -imagekey
+zlib-level=9`: all 485 chunks of Discord's DMG (208.8 MB of 500.5 MB), and
+Figma's (levels 7-9). zlib replay stopped at level 5 because zlib -9 is slow
+(6-17 MB/s) and preflate rebuilt such streams faster. At Default preflate's
+short search refuses them after a full analysis (12 s of CPU on Discord's DMG
+for nothing); at Max it takes 437 of the 483 MiB.
+
+Where zlib -9's time goes (122 MB of Discord's chunks, counters in a scratch
+copy): 41 M searches, 2.54 G hash chain steps (61.6 per search), 81% of them real
+3-byte matches that can't beat the current best; the walk is 63% of the time
+(a 16-step limit runs in 2.65 s instead of 7.2 s); only 0.18% of searches hit
+the 4096-step cut-off.
+
+At levels 8-9 (`nice_match` 258) the walk returns the newest string with the
+longest match among the first `max_chain` strings of its hash bucket. The pinned
+zlib now finds that directly (`fast_match`, see `engine/vendor/zlib/ARCA-NOTES.md`):
+chains of strings sharing 8 and 4 bytes, plus per-bucket counts that place any
+string in zlib's walk, so the cut-off is honoured exactly. 16 steps per search
+instead of 62, and **the same output** on everything tested (crate test; 145 MB
+of real and adversarial data at nine settings; Discord's chunks). Speed, one
+core:
+
+| Data | Stock zlib | Fast search |
+|---|---:|---:|
+| 145 MB corpus, level 9 | 28.3 s | **5.0 s (5.7x)** |
+| same, level 8 | 14.2 s | **3.7 s (3.8x)** |
+| Discord's chunks (122 MB), level 9 | 7.8 s | **3.9 s (2.0x)** |
+| levels 1, 6, 7 | unchanged (the original code runs) | |
+
+A disk image's chunks share one setting: the first level 6-9 chunk is tried
+with every setting its header allows, and the rest with the one that matched.
+Discord's DMG (busy Mac, two alternating runs each, identical round trips):
+
+| Level | Before | Fast zlib re-run | Make | Extract |
+|---|---:|---:|---:|---:|
+| Default | 214.17 MB | 175.37 MB (−18.1%) | 2.0 → 8.5 s | 0.33 → 2.3 s |
+| Max | 152.73 MB | **145.03 MB (−5.0%)** | 32.2-32.8 → **30.0 s** | 3.6-3.7 → **3.1 s** |
+
+(With stock zlib's search the same re-run cost 12.9 s / 4.4 s at Default and
+33.4 s / 4.9 s at Max: slower than preflate. Hybrids measured first: preflate
+then zlib for what it refuses, 145.6 MB / 35 s / 5.0 s at Max; skipping the
+refused analysis at Default, 3.5x faster but 0.45% bigger.)
+
+**In the engine: Max and Ultra.** At Max it is smaller and faster both ways. At
+Default it is a trade (18% smaller, 4x the time to make, 7x to extract), so it
+stays off there (`ARCA_EXP_DMG_DEEP=1` turns it on; a checkpoint question).
+The dmgs set, round trips identical:
+
+| Level | Before | Now | Make | Extract |
+|---|---:|---:|---:|---:|
+| Max | 457.86 MB | **450.56 MB (−1.6%)** | 54.9 → **51.0 s** | 5.80 → **4.69 s** |
+| Ultra | 455.42 MB | **447.89 MB (−1.7%)** | 65.4 → **60.1 s** | 5.89 → **4.56 s** |
+
+**Level 8-9 PNGs: not adopted.** Re-running them as well (saved folder, two
+alternating runs): Default 257.40 → 256.76 MB (−0.25%) for 9.0-9.4 → 16.5-18.2 s
+to make and 2.2 → 4.7-4.8 s to extract; Max 221.96 → 219.66 MB (−1.0%) for
+30.1-32.9 → 36.8-42.1 s and 2.7-3.0 → 4.9-5.3 s. Their pixels are flat images,
+~30x their Deflate bytes, so every byte saved costs a lot of re-running; preflate
+keeps them at Max as before and Default still skips them.
 
 ### LZFSE replay: macOS's encoder is lzfse 1.0 with one setting changed
 

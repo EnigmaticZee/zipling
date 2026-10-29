@@ -28,7 +28,10 @@
 //! (no corrections); `u8 2 | literal runs` for an LZFSE stream (disk images,
 //! asset catalogs) that the pinned lzfse 1.0 re-creates with that setting. Most
 //! PNGs made on a Mac are zlib streams (ImageIO writes level 1), and a re-run
-//! costs less than preflate's analysis.
+//! costs less than preflate's analysis. A disk image's chunks share one
+//! setting, found on the first chunk; level 8-9 images (most app installers)
+//! re-run quickly because the pinned zlib searches matches faster there, with
+//! the same output.
 //!
 //! Despite the name, the transform also takes containers whose streams are
 //! LZFSE: UDIF disk images and asset catalogs (`Assets.car`).
@@ -86,11 +89,14 @@ struct Candidate {
     pieces: Vec<(usize, usize)>,
     skip: usize,
     lzfse: Option<usize>,
+    /// zlib settings that re-created a sibling stream (a disk image's chunks all
+    /// come from one encoder), tried for any level.
+    zlib: Option<ZlibParams>,
 }
 
 impl Candidate {
     fn deflate(pieces: Vec<(usize, usize)>, skip: usize) -> Self {
-        Candidate { pieces, skip, lzfse: None }
+        Candidate { pieces, skip, lzfse: None, zlib: None }
     }
 }
 
@@ -114,25 +120,11 @@ impl Scanner<'_> {
         }
         let replayed = match c.lzfse {
             Some(raw_len) => Some(self.lzfse(input, raw_len)?),
-            None => self.replay(virt, skip),
+            None => self.replay(virt, skip, c.zlib),
         };
         let (method, corrections, plain, consumed) = match replayed {
             Some((method, plain, consumed)) => (method, Vec::new(), plain, consumed),
-            None => {
-                let config = self.config;
-                let res = catch_unwind(AssertUnwindSafe(|| preflate_whole_deflate_stream(input, &config))).ok()?.ok()?;
-                let (chunk, plain) = res;
-                let consumed = chunk.compressed_size;
-                if std::env::var_os("ARCA_DEBUG_DEFLATE").is_some() {
-                    eprintln!("deflate\t{consumed}\t{}\t{}\t{}", plain.text().len(), chunk.corrections.len(), chunk.steps);
-                }
-                // A stream that needs many corrections came from an exotic encoder;
-                // expanding it would cost more than it gains.
-                if consumed < MIN_STREAM || chunk.corrections.len() * 4 > consumed {
-                    return None;
-                }
-                (Method::Preflate, chunk.corrections, plain.text().to_vec(), consumed)
-            }
+            None => self.preflate(input)?,
         };
         if self.budget.fetch_sub(plain.len() as isize, Ordering::Relaxed) < plain.len() as isize {
             return None;
@@ -158,6 +150,23 @@ impl Scanner<'_> {
         Some(StreamRec { method, corrections, plain, spans })
     }
 
+    /// Expands a raw Deflate stream with preflate: (method, corrections, plain
+    /// text, stream length).
+    fn preflate(&self, input: &[u8]) -> Option<(Method, Vec<u8>, Vec<u8>, usize)> {
+        let config = self.config;
+        let (chunk, plain) = catch_unwind(AssertUnwindSafe(|| preflate_whole_deflate_stream(input, &config))).ok()?.ok()?;
+        let consumed = chunk.compressed_size;
+        if std::env::var_os("ARCA_DEBUG_DEFLATE").is_some() {
+            eprintln!("deflate\t{consumed}\t{}\t{}\t{}", plain.text().len(), chunk.corrections.len(), chunk.steps);
+        }
+        // A stream that needs many corrections came from an exotic encoder;
+        // expanding it would cost more than it gains.
+        if consumed < MIN_STREAM || chunk.corrections.len() * 4 > consumed {
+            return None;
+        }
+        Some((Method::Preflate, chunk.corrections, plain.text().to_vec(), consumed))
+    }
+
     /// Decodes a whole LZFSE stream and checks that the pinned lzfse re-creates
     /// it: first with macOS's current setting, then with lzfse 1.0's. Streams
     /// under 4 KiB are skipped (both encoders use LZVN there, and theirs differ).
@@ -176,19 +185,39 @@ impl Scanner<'_> {
     }
 
     /// Re-creates a zlib-wrapped stream (`skip` = 2: the header comes first) by
-    /// running stock zlib again, when its header says level 1-5. Returns the
-    /// settings, the plain text and the Deflate stream's length. Levels 6-9 are
-    /// left to preflate, which rebuilds them faster than zlib re-runs them.
-    fn replay(&self, virt: &[u8], skip: usize) -> Option<(Method, Vec<u8>, usize)> {
+    /// running stock zlib again, when its header says level 1-5 or `known`
+    /// settings are given. Returns the settings, the plain text and the Deflate
+    /// stream's length. Other level 6-9 streams are left to preflate: level 6
+    /// re-runs slower than preflate rebuilds, and level 8-9 PNGs (flat images,
+    /// ~30x their Deflate bytes) cost far more than they save.
+    fn replay(&self, virt: &[u8], skip: usize, known: Option<ZlibParams>) -> Option<(Method, Vec<u8>, usize)> {
         if skip != 2 || std::env::var_os("ARCA_EXP_NO_REPLAY").is_some() {
             return None;
         }
-        let (cmf, flg) = (virt[0], virt[1]);
-        let (flevel, window_bits) = (flg >> 6, (cmf >> 4) + 8);
-        if cmf & 0x0F != 8 || flg & 0x20 != 0 || (u16::from(cmf) << 8 | u16::from(flg)) % 31 != 0 || flevel > 1 || !(9..=15).contains(&window_bits) {
-            return None;
-        }
-        let input = &virt[skip..];
+        let (flevel, window_bits) = zlib_header(virt)?;
+        let tries = match known {
+            Some(p) if p.window_bits == window_bits => vec![p],
+            Some(_) => return None,
+            None if flevel <= 1 => zlib_settings(flevel, window_bits),
+            None => return None,
+        };
+        let (plain, consumed) = self.inflate(&virt[skip..])?;
+        let target = &virt[skip..skip + consumed];
+        let p = tries.into_iter().find(|&p| zlib_pinned::matches(&plain, p, target))?;
+        Some((Method::Zlib(p), plain, consumed))
+    }
+
+    /// The zlib settings that re-create a zlib-wrapped stream, trying every
+    /// setting its header's level allows.
+    fn probe_zlib(&self, virt: &[u8]) -> Option<ZlibParams> {
+        let (flevel, window_bits) = zlib_header(virt)?;
+        let (plain, consumed) = self.inflate(&virt[2..])?;
+        zlib_settings(flevel, window_bits).into_iter().find(|&p| zlib_pinned::matches(&plain, p, &virt[2..2 + consumed]))
+    }
+
+    /// Inflates a raw Deflate stream within the plain-text budget. Returns the
+    /// plain text and the stream's length.
+    fn inflate(&self, input: &[u8]) -> Option<(Vec<u8>, usize)> {
         let limit = self.config.plain_text_limit.min(self.budget.load(Ordering::Relaxed).max(0) as usize);
         let mut d = flate2::Decompress::new(false);
         let mut plain = Vec::with_capacity((input.len() * 4).clamp(1 << 16, limit.max(1 << 16)));
@@ -203,23 +232,7 @@ impl Scanner<'_> {
                 _ => {}
             }
         }
-        let consumed = d.total_in() as usize;
-        let target = &input[..consumed];
-        // zlib's header says FLEVEL 0 for level 1 (or levels 0 and the Huffman-only
-        // and RLE strategies, which preflate handles) and 1 for levels 2-5.
-        // Levels 1-3 ignore the filtered strategy.
-        let levels: &[u8] = if flevel == 0 { &[1] } else { &[2, 3, 4, 5] };
-        for &level in levels {
-            for mem_level in [8, 9] {
-                for strategy in if level >= 4 { &[0u8, 1][..] } else { &[0u8][..] } {
-                    let p = ZlibParams { level, window_bits, mem_level, strategy: *strategy };
-                    if zlib_pinned::matches(&plain, p, target) {
-                        return Some((Method::Zlib(p), plain, consumed));
-                    }
-                }
-            }
-        }
-        None
+        Some((plain, d.total_in() as usize))
     }
 
     /// Expands independent candidates in parallel, keeping file order and
@@ -343,13 +356,29 @@ impl Scanner<'_> {
                 match kind {
                     0x8000_0005 => candidates.push(Candidate::deflate(pieces, 2)),
                     0x8000_0007 if sectors < 1 << 22 => {
-                        candidates.push(Candidate { pieces, skip: 0, lzfse: Some(sectors as usize * 512) })
+                        candidates.push(Candidate { pieces, skip: 0, lzfse: Some(sectors as usize * 512), zlib: None })
                     }
                     _ => {}
                 }
             }
         }
         candidates.sort_unstable_by_key(|c| c.pieces[0].0);
+        // One encoder wrote every chunk. If stock zlib at some level re-creates
+        // the first level 6-9 chunk (`hdiutil -imagekey zlib-level=9`, as many
+        // app installers are made), the rest are tried with the same setting.
+        // Max and Ultra only: at Default it costs 4x the time to make and 7x to
+        // extract for 18% less (research: `ARCA_EXP_DMG_DEEP` turns it on).
+        let span = |c: &Candidate| &d[c.pieces[0].0..c.pieces[0].0 + c.pieces[0].1];
+        let deep = |c: &Candidate| c.lzfse.is_none() && zlib_header(span(c)).is_some_and(|(flevel, _)| flevel >= 2);
+        let wanted = (self.config.max_chain_length >= 1024 || std::env::var_os("ARCA_EXP_DMG_DEEP").is_some())
+            && std::env::var_os("ARCA_EXP_NO_DEEP").is_none();
+        let known = match candidates.iter().find(|c| deep(c)) {
+            Some(first) if wanted => self.probe_zlib(span(first)),
+            _ => None,
+        };
+        for c in candidates.iter_mut().filter(|c| deep(c)) {
+            c.zlib = known;
+        }
         self.analyze_all(candidates)
     }
 
@@ -362,7 +391,7 @@ impl Scanner<'_> {
         while let Some(p) = memmem::find(&d[at..], b"bvx").map(|p| p + at) {
             match lzfse_extent(&d[p..]) {
                 Some((len, raw_len)) => {
-                    candidates.push(Candidate { pieces: vec![(p, len)], skip: 0, lzfse: Some(raw_len) });
+                    candidates.push(Candidate { pieces: vec![(p, len)], skip: 0, lzfse: Some(raw_len), zlib: None });
                     at = p + len;
                 }
                 None => at = p + 3,
@@ -467,6 +496,37 @@ fn zip_deflate_entries(d: &[u8]) -> Vec<(usize, usize)> {
     }
     out.sort_unstable();
     out.dedup_by(|b, a| b.0 < a.0 + a.1);
+    out
+}
+
+/// A zlib header's FLEVEL and window bits; `None` unless it is a valid Deflate
+/// header without a preset dictionary.
+fn zlib_header(virt: &[u8]) -> Option<(u8, u8)> {
+    let (&cmf, &flg) = (virt.first()?, virt.get(1)?);
+    let window_bits = (cmf >> 4) + 8;
+    let valid = cmf & 0x0F == 8 && flg & 0x20 == 0 && (u16::from(cmf) << 8 | u16::from(flg)) % 31 == 0 && (9..=15).contains(&window_bits);
+    valid.then_some((flg >> 6, window_bits))
+}
+
+/// The zlib settings a header's FLEVEL allows, likeliest first. zlib writes
+/// FLEVEL 0 for level 1 (or level 0 and the Huffman-only and RLE strategies,
+/// which preflate handles), 1 for levels 2-5, 2 for level 6 and 3 for levels
+/// 7-9. Levels 1-3 ignore the filtered strategy.
+fn zlib_settings(flevel: u8, window_bits: u8) -> Vec<ZlibParams> {
+    let levels: &[u8] = match flevel {
+        0 => &[1],
+        1 => &[2, 3, 4, 5],
+        2 => &[6],
+        _ => &[9, 8, 7],
+    };
+    let mut out = Vec::new();
+    for &level in levels {
+        for mem_level in [8, 9] {
+            for &strategy in if level >= 4 { &[0u8, 1][..] } else { &[0u8][..] } {
+                out.push(ZlibParams { level, window_bits, mem_level, strategy });
+            }
+        }
+    }
     out
 }
 
@@ -872,6 +932,58 @@ mod tests {
         let e = encode(&data, DeflateKind::AssetCatalog, 256, 128, false, None).unwrap();
         assert!(e.stored[0] & REPLAY != 0);
         assert!(e.stored.len() > 290_000, "both big streams expanded");
+        assert_eq!(decode(&e.stored, data.len() as u64).unwrap(), data);
+    }
+
+    #[test]
+    fn level_9_disk_image_chunks_are_re_run() {
+        // A minimal UDIF image: three zlib level-9 chunks, a `mish` table in the
+        // XML's <data>, and a `koly` trailer pointing at it.
+        let chunk = |seed: u32| -> Vec<u8> {
+            let plain: Vec<u8> = (0..100_000u32).flat_map(|i| format!("{} {}\n", i % (97 + seed), i / 13).into_bytes()).collect();
+            let p = ZlibParams { level: 9, window_bits: 15, mem_level: 8, strategy: 0 };
+            let (mut a, mut b) = (1u32, 0u32);
+            for &x in &plain {
+                a = (a + u32::from(x)) % 65521;
+                b = (b + a) % 65521;
+            }
+            let mut z = vec![0x78, 0xDA];
+            z.extend(zlib_pinned::compress(&plain, p).unwrap());
+            z.extend((b << 16 | a).to_be_bytes());
+            z
+        };
+        let mut data = Vec::new();
+        let mut mish = b"mish".to_vec();
+        mish.resize(204, 0);
+        mish[200..204].copy_from_slice(&3u32.to_be_bytes());
+        for seed in 0..3 {
+            let z = chunk(seed);
+            for v in [0x8000_0005u64 << 32, seed as u64 * 1000, 1000, data.len() as u64, z.len() as u64] {
+                mish.extend(&v.to_be_bytes());
+            }
+            data.extend(z);
+        }
+        let b64 = |b: &[u8]| -> String {
+            const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            b.chunks(3)
+                .flat_map(|c| {
+                    let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+                    (0..4).map(move |i| if i <= c.len() { A[(n >> (18 - 6 * i)) as usize & 63] as char } else { '=' })
+                })
+                .collect()
+        };
+        let xml = format!("<plist><dict><key>blkx</key><array><dict><key>Data</key><data>{}</data></dict></array></dict></plist>", b64(&mish));
+        let xml_at = data.len() as u64;
+        data.extend(xml.as_bytes());
+        let mut koly = vec![0u8; 512];
+        koly[..8].copy_from_slice(b"koly\0\0\0\x04");
+        koly[216..224].copy_from_slice(&xml_at.to_be_bytes());
+        koly[224..232].copy_from_slice(&(xml.len() as u64).to_be_bytes());
+        data.extend(koly);
+        // Max's search limit (the probe runs at Max and Ultra).
+        let e = encode(&data, DeflateKind::Dmg, 4096, 128, false, None).unwrap();
+        assert!(e.stored[0] & REPLAY != 0);
+        assert!(e.stored.len() > 2_000_000, "all three chunks expanded");
         assert_eq!(decode(&e.stored, data.len() as u64).unwrap(), data);
     }
 
