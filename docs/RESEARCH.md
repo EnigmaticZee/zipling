@@ -879,6 +879,28 @@ Extraction, Max against Max + bsc (three runs each): source 0.50 s → 0.97–1.
 so text-heavy archives extract slower than with LZMA2, still well ahead of the
 7-Zip and Zipgeist numbers measured on 2026-10-26.
 
+**User's decision (2026-10-28): not in the presets yet**; bsc stays an option
+(`--lane text=bsc:1 --lane code=bsc:2e`) until the final quiet-Mac benchmarks.
+
+**Default with bsc text** (instead of zstd-15; size / make / extract):
+
+| Set | Default | bsc text, 16 MiB blocks | bsc text, 32 MiB |
+|---|---|---|---|
+| source | 11.201 MB, 2.08 / 0.39 s | 10.121 MB (−9.6%), 1.02 / 0.70 s | 10.027 MB (−10.5%), 1.19 / 0.64 s |
+| silesia | 57.317 MB, 5.42 / 0.17 s | 52.999 MB (−7.5%), 2.46 / 0.63 s | 52.838 MB (−7.8%), 2.49 / 0.67 s |
+| saved folder | 257.399 MB, 9.71 / 2.17 s | 256.250 MB, 8.66 / 2.47 s | 256.178 MB, 8.74 / 2.60 s |
+
+Same trade as at Max: smaller and faster to make, slower to extract (zstd
+decodes text at ~1 GB/s).
+
+**Lepton's decoder, decode only** (`LEPT_DECODE_REPS`, samples): 7x7 coefficients
+29%, edge coefficients 19%, per-block driver 12%, JPEG Huffman output 12.5%, DC
+prediction 7%, DC 6%, non-zero counts 14%. The coding parts are ~67%: a coder
+with multi-symbol decisions instead of one binary decision per bit could make
+Lepton ~1.5-1.8x faster. Its bool decoder and count-based probabilities (64 KB
+lookup) are already lean. Next: measure whether multi-symbol models with
+Lepton's contexts reach Lepton's size before building one.
+
 ### Apple Silicon GPU (agenda item 4): no stage worth moving
 
 Measured CPU by stage (saved folder, thread seconds):

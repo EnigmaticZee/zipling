@@ -24,6 +24,33 @@ fn walk(d: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 fn main() {
     let mut files = Vec::new();
     walk(std::path::Path::new(&std::env::args().nth(1).unwrap()), &mut files);
+    // LEPT_DECODE_REPS=n: encode everything first, then only decode, n times
+    // (for profiling the decoder alone).
+    if let Some(reps) = std::env::var("LEPT_DECODE_REPS").ok().and_then(|v| v.parse::<usize>().ok()) {
+        let encoded: Vec<(Vec<u8>, usize)> = files
+            .par_iter()
+            .filter_map(|f| {
+                let data = std::fs::read(f).ok()?;
+                let mut feat = EnabledFeatures::compat_lepton_vector_write();
+                feat.max_processor_threads = 1;
+                let mut enc = Vec::new();
+                encode_lepton(&mut Cursor::new(&data), &mut Cursor::new(&mut enc), &feat, &SingleThreadPool::default()).ok()?;
+                Some((enc, data.len()))
+            })
+            .collect();
+        let t = std::time::Instant::now();
+        for _ in 0..reps {
+            encoded.par_iter().for_each(|(enc, n)| {
+                let mut feat = EnabledFeatures::compat_lepton_vector_read();
+                feat.max_processor_threads = 1;
+                let mut out = Vec::with_capacity(*n);
+                decode_lepton(&mut Cursor::new(enc), &mut out, &feat, &SingleThreadPool::default()).unwrap();
+            });
+        }
+        let bytes: usize = encoded.iter().map(|e| e.1).sum::<usize>() * reps;
+        println!("decoded {:.1} MB in {:.2} s", bytes as f64 / 1e6, t.elapsed().as_secs_f64());
+        return;
+    }
     let r: Vec<(usize, usize, f64, f64, u64)> = files
         .par_iter()
         .filter_map(|f| {
