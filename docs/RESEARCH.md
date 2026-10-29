@@ -339,6 +339,32 @@ Still to get past the fastest rivals at this size:
 3. A light JPEG mode for Fast, where the size bar is the fast rivals' 85.7-92.5 MB
    rather than Lepton: contexted static Huffman tables at Huffman speed.
 
+**Photos: two tiers.** At Lepton's size the coder is close to its floor
+(above). But Fast stores photos today, and the rivals it must beat there sit
+at 85.3-92.5 MB, not at Lepton's size. Model H (`modelh.rs`, estimate) is a
+light mode for Fast:
+
+- the same joint symbols (count, value class with top bit), raw low bits and sign;
+- contexts are only frequency band (8) × the block's count bucket (8), with
+  the neighbours' counts for the count itself;
+- static Huffman codes per image (table cost included), DC from the previous
+  block as in JPEG.
+
+On the 382 unique photos: **81.68 MB (−13.8%)**, about 82.3 MB on the full set
+with duplicates stored once and the progressive files. That is still under
+every rival (7-Zip Ultra 85.3 MB, zstd -19 85.7 MB). Huffman tables decode by
+direct lookup, so it can run at several times the rANS coder's speed.
+
+The plan:
+
+- **Fast:** H, to beat zstd -3, WinRAR and Zipgeist's fast setting on both
+  times.
+- **Default and up:** the rANS coder, smaller than Lepton, 3.5x its decoding
+  speed.
+- **Max and Ultra:** Lepton, or mixing + block copy (about 69 MB).
+
+Next: build H and measure it.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64

@@ -10,6 +10,7 @@ mod modelf;
 mod modelg;
 mod modelm;
 mod fast;
+mod modelh;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -1142,6 +1143,9 @@ fn main() {
                     t.bits[5] += b;
                     t.decisions[5] += dcs;
                 }
+                if std::env::var("WITH_H").is_ok() {
+                    t.bits[7] += modelh::estimate_h(&img);
+                }
                 if std::env::var("WITH_M").is_ok() {
                     let (b, dcs) = modelm::estimate_m(&img);
                     t.bits[6] += b;
@@ -1157,7 +1161,7 @@ fn main() {
     }
     println!("{} files, {:.2} MB; baseline decoded {:.2} MB ({} not), Huffman decode {:.2} s, total {:.1} s",
         files.len(), total as f64 / 1e6, scan_ok as f64 / 1e6, failed, dec_time, t0.elapsed().as_secs_f64());
-    for (i, name) in ["A: no neighbours (T.81-like)", "B: neighbour contexts + LOCO-I DC", "D: B's contexts, multi-symbol (rANS-able)", "E: D with static per-image tables (raw = table bits)", "F: B + edge-continuity predictions", "G: fine expected-magnitude contexts", "M: three models mixed + APM"].iter().enumerate() {
+    for (i, name) in ["A: no neighbours (T.81-like)", "B: neighbour contexts + LOCO-I DC", "D: B's contexts, multi-symbol (rANS-able)", "E: D with static per-image tables (raw = table bits)", "F: B + edge-continuity predictions", "G: fine expected-magnitude contexts", "M: three models mixed + APM", "H: light Fast mode, static Huffman per small context"].iter().enumerate() {
         let mb = t.bits[i] / 8e6;
         println!("  {name}: {:.2} MB of coefficients ({:.1}% of the decoded files), {:.1} decisions per input byte, {:.2} raw bits per input byte",
             mb, 100.0 * (1.0 - mb / (scan_ok as f64 / 1e6)), t.decisions[i] as f64 / scan_ok as f64, t.raw[i] / scan_ok as f64);
