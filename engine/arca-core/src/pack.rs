@@ -60,6 +60,8 @@ pub struct PackOptions {
     pub code_codec: CodecConfig,
     /// Block size for the code lane.
     pub code_block_size: usize,
+    /// Block size for the image lane (PNG rows).
+    pub image_block_size: usize,
     /// zstd level for the index. 19 costs ~0.3 s on one thread for a 10,000-file
     /// folder and saves ~7% of an index that is under 0.1% of the archive.
     pub index_level: i32,
@@ -129,6 +131,7 @@ impl PackOptions {
             code_lane: matches!(level, Level::Max | Level::Ultra),
             code_codec: if matches!(level, Level::Max | Level::Ultra) { lzma2(9, true) } else { binary },
             code_block_size: block,
+            image_block_size: block,
             index_level: if matches!(level, Level::Fast | Level::Balanced) { 9 } else { 19 },
             memory_budget: 0,
             // Ordering by content is 0.15% smaller at Default and costs ~0.1 s; at
@@ -588,7 +591,13 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         done_tx,
         open: [None, None, None, None, None],
         next_id: 0,
-        block_sizes: [text_block_size, block_size, block_size, block_size, opts.code_block_size.min(block_size.max(1 << 20))],
+        block_sizes: [
+            text_block_size,
+            block_size,
+            block_size,
+            opts.image_block_size.clamp(1 << 20, block_size.max(1 << 20)),
+            opts.code_block_size.min(block_size.max(1 << 20)),
+        ],
         codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec, opts.code_codec],
         lanes: Vec::new(),
         start: timing.then_some(start),
