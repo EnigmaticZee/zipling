@@ -804,6 +804,53 @@ repeats, and its optimal parse codes them ~10% better than one long match each
 (repeat distances and split points). The time is the parse over long repeats,
 not missed matches.
 
+### BWT (libbsc) for the text and code lanes: the Max breakthrough
+
+With the user's OK, libbsc 3.3.12 (Apache-2.0, bundling libsais 2.10.4) is
+vendored in `engine/vendor/libbsc` (see its ARCA-NOTES.md). Block codec `bsc`
+(tag 5). One block on one core each (`examples/bscbench.rs`), default bsc
+settings (LZP 15/72, static QLFC) against Max's LZMA2 fb 273:
+
+| Block | bsc | LZMA2 fb 273 | bsc size | bsc speed |
+|---|---|---|---:|---:|
+| saved folder text, 60.4 MB | 6.233 MB, 1.8 s (decode 1.3) | 6.249 MB, 28.3 s (0.22) | −0.3% | 16x |
+| Silesia text, 67.7 MB | 7.389 MB, 2.4 s | 9.159 MB, 44.2 s | **−19%** | 18x |
+| Silesia text, 17.5 MB | 2.878 MB, 0.8 s | 3.678 MB, 12.1 s | **−22%** | 16x |
+| static libraries, 67.1 MB | 1.452 MB, 0.65 s | 1.391 MB, 40.5 s | +4.4% | 62x |
+| static libraries, 36.8 MB | 0.880 MB, 0.3 s | 0.859 MB, 22.9 s | +2.4% | 76x |
+| Silesia code (x86 tar), 67.2 MB | 21.590 MB, 3.3 s | 18.143 MB, 29.7 s | +19% | 9x |
+| Mach-O binaries, 67.6 MB | 13.301 MB, 2.8 s | 10.155 MB, 31.8 s | +31% | 11x |
+| Silesia binary, 42.4 MB | 14.482 MB, 2.3 s | 15.802 MB, 20.6 s | −8% | 9x |
+
+The adaptive QLFC coder with a larger LZP closes the code gap: static libraries
+1.375 MB with LZP 24/64 (−1.2% against LZMA2, 0.75 s), 1.358 MB without LZP
+(−2.4%, 1.7 s); text 6.167 MB with LZP 18/128 (−1.3%) and Silesia 7.321 MB
+(−20%). Against PPMd order 16 (Ultra's text codec): 6.167 vs 6.254 MB,
+7.321 vs 8.108 MB, 2.858 vs 3.086 MB, and 2–3x faster both ways.
+
+Presets: `bsc:1` text (LZP 18/128, adaptive), `bsc:2` code (LZP 24/64, adaptive);
+`e` falls back to LZMA2 fb 273 for a block bsc gets under 16:1 (machine code
+without long repeats, where LZMA2 wins).
+
+**Saved folder, Max** (busy Mac): current 211.69 MiB in 32.4 s (212 s CPU);
+**with `--lane text=bsc:1 --lane code=bsc:2e`: 211.58 MiB in 19.8 s (136 s
+CPU)**: the text block takes 2.7 s instead of ~24 s, the 64 MiB code block 1.0 s
+instead of ~30 s. Extraction 2.87–2.95 → 3.15–3.31 s: bsc decodes at ~40 MB/s
+against LZMA2's ~250 MB/s (+2.2 s of CPU). Round trip identical.
+
+Website sets (busy Mac; make / extract in seconds; every round trip identical):
+
+| Set | Max | Max + bsc | Ultra (PPMd text) | Ultra + bsc |
+|---|---|---|---|---|
+| source | 8.232 MB, 23.1 / 0.50 | **8.094 MB, 1.85** / 1.78 | 8.235 MB, 22.9 / 4.05 | **8.093 MB, 1.86 / 1.80** |
+| silesia | 48.629 MB, 26.6 / 0.70 | **45.971 MB, 18.4** / 2.04 | 46.933 MB, 14.9 / 6.41 | **45.918 MB**, 18.1 / **2.02** |
+| docs | 18.203 MB, 11.8 / 0.45 | same | 17.814 MB, 15.8 / 0.46 | same |
+| apps | 49.158 MB, 13.8 / 0.72 | 49.151 MB, 13.5 / 0.73 | 48.526 MB, 16.4 / 0.76 | 48.550 MB (+0.05%), 16.3 / 0.72 |
+| mixed (all five) | 194.785 MB, 44.5 / 2.30 | **192.337 MB, 24.1** / 3.01 | 191.906 MB, 40.9 / 7.27 | **191.295 MB, 32.0 / 3.06** |
+Both 7-Zip Ultra targets hold with room to spare (source 8.09 < 8.5 MB, Silesia
+45.97 < 48.7 MB). Extraction of text-heavy sets is slower at Max: a 64 MiB bsc
+block decodes on one core in ~1.6 s, and those sets have few blocks.
+
 ### Apple Silicon GPU (agenda item 4): no stage worth moving
 
 Measured CPU by stage (saved folder, thread seconds):

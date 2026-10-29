@@ -86,6 +86,7 @@ dependencies = [
  "filetime",
  "flate2",
  "lepton_jpeg",
+ "libbsc",
  "libc",
  "liblzma",
  "liblzma-sys",
@@ -475,6 +476,13 @@ dependencies = [
  "log",
  "thread-priority",
  "wide",
+]
+
+[[package]]
+name = "libbsc"
+version = "3.3.12"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

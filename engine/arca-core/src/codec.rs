@@ -11,13 +11,63 @@ pub struct CodecConfig {
     pub codec: Codec,
     /// zstd: 1..=22, xz: 0..=9 (with `extreme`), ppmd: model order 2..=64.
     /// lzma2: 7, 8 or 9 for match lengths (`fb`) 32, 48 or 64, `extreme` for 273;
-    /// the dictionary is always the block.
+    /// the dictionary is always the block. bsc: 1 for text (LZP 18/128), 2 for
+    /// code (LZP 24/64), both with the adaptive QLFC coder; `extreme` falls back
+    /// to LZMA2 fb 273 when bsc gets under 16:1 (see `compress_auto`).
     pub level: i32,
     pub extreme: bool,
 }
 
+/// Below this ratio, data in a bsc lane with the LZMA2 fallback is mostly machine
+/// code without long repeats, where LZMA2's literal and match model wins (an x86
+/// tar: bsc +19%); above it, BWT wins (static libraries at 46:1: bsc -1%, 54x
+/// faster).
+const BSC_FALLBACK_RATIO: usize = 16;
+
+/// As `compress`, also saying which codec the output is in: a bsc lane with the
+/// fallback may hand a block to LZMA2.
+pub fn compress_auto(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
+    let lzma = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true };
+    if cfg.codec == Codec::Bsc && cfg.extreme {
+        // A sample decides up front for large blocks, so LZMA2's blocks don't pay
+        // for a whole bsc pass first (the sample takes ~0.1 s).
+        if raw.len() > 2 * BSC_SAMPLE {
+            let sample = &raw[..BSC_SAMPLE];
+            if compress(sample, cfg)?.len() * BSC_FALLBACK_RATIO > sample.len() {
+                return Ok((compress(raw, lzma)?, Codec::Lzma2));
+            }
+        }
+        let out = compress(raw, cfg)?;
+        if out.len() * BSC_FALLBACK_RATIO > raw.len() {
+            let lz = compress(raw, lzma)?;
+            if lz.len() < out.len() {
+                return Ok((lz, Codec::Lzma2));
+            }
+        }
+        return Ok((out, cfg.codec));
+    }
+    Ok((compress(raw, cfg)?, cfg.codec))
+}
+
+/// Bytes of a block bsc tries first when the block may go to LZMA2 instead.
+const BSC_SAMPLE: usize = 4 << 20;
+
 pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
     match cfg.codec {
+        Codec::Bsc => {
+            let s = libbsc::Settings {
+                lzp_hash: if cfg.level >= 2 { 24 } else { 18 },
+                lzp_min: if cfg.level >= 2 { 64 } else { 128 },
+                sorter: libbsc::SORTER_BWT,
+                coder: libbsc::CODER_QLFC_ADAPTIVE,
+            };
+            match libbsc::compress(raw, s) {
+                Ok(c) => Ok(c),
+                // Incompressible: the caller stores the block.
+                Err(libbsc::Error(-3)) => Ok(raw.to_vec()),
+                Err(e) => Err(e.into()),
+            }
+        }
         Codec::Store => Ok(raw.to_vec()),
         Codec::Zstd => {
             let mut c = zstd::bulk::Compressor::new(cfg.level)?;
@@ -105,6 +155,12 @@ pub fn encoder_memory(cfg: CodecConfig, block: usize) -> u64 {
         // Binary tree of the dictionary (~10x it) plus the threaded match
         // finder's buffers, as 7-Zip estimates for -mx9.
         Codec::Lzma2 => 11 * (block as u64).clamp(1 << 16, 1 << 26) + (64 << 20),
+        // Suffix array (4 bytes a byte), the BWT output and LZP's buffer; with the
+        // fallback, LZMA2's tables once bsc is done.
+        Codec::Bsc => {
+            let bsc = 6 * block as u64;
+            if cfg.extreme { bsc.max(11 * (block as u64).clamp(1 << 16, 1 << 26) + (64 << 20)) } else { bsc }
+        }
     }
 }
 
@@ -144,6 +200,7 @@ pub fn decompress(comp: &[u8], codec: Codec, raw_len: u64) -> Result<Vec<u8>> {
             ensure!(!comp.is_empty(), "lzma2 block header missing");
             lzma_sdk::decode(&comp[1..], comp[0], raw_len).context("lzma2 block")?
         }
+        Codec::Bsc => libbsc::decompress(comp, raw_len).context("bsc block")?,
         Codec::Ppmd => {
             ensure!(comp.len() >= 5, "ppmd block header truncated");
             let order = comp[0] as u32;

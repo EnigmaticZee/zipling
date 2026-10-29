@@ -21,6 +21,7 @@ liblzma = { version = "0.4", features = ["static"] }
 # For encoder memory estimates (the same vendored build `liblzma` uses).
 liblzma-sys = { version = "0.4", features = ["static"] }
 lzma-sdk = { path = "../vendor/lzma-sdk" }
+libbsc = { path = "../vendor/libbsc" }
 memchr = "2"
 memmap2 = "0.9"
 ppmd-rust = "1.5"

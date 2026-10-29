@@ -336,10 +336,10 @@ impl BlockSink {
                 },
                 block.buf.len() as u64,
             );
-            let res = codec::compress(&block.buf, cfg).map(|comp| {
+            let res = codec::compress_auto(&block.buf, cfg).map(|(comp, codec)| {
                 // Never let a codec expand data: fall back to storing the block.
                 let (comp, codec) =
-                    if comp.len() >= block.buf.len() { (block.buf.clone(), Codec::Store) } else { (comp, cfg.codec) };
+                    if comp.len() >= block.buf.len() { (block.buf.clone(), Codec::Store) } else { (comp, codec) };
                 Done { id: block.id, comp, raw_len: block.buf.len() as u64, raw_hash: format::hash16(&block.buf), codec }
             });
             let _ = done_tx.send(res);
