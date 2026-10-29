@@ -17,7 +17,7 @@ use crate::prof;
 use anyhow::{bail, ensure, Context, Result};
 use rayon::prelude::*;
 use std::cmp::Reverse;
-use std::collections::{BTreeSet, BinaryHeap, HashMap};
+use std::collections::{BTreeSet, BinaryHeap, HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::os::unix::fs::{FileExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
@@ -146,7 +146,12 @@ impl Archive {
         let timing = std::env::var_os("ARCA_DEBUG_TIMING").is_some();
         let phase = |name: &str| {
             if timing {
-                eprintln!("[{:>7.3}s] {name}", start.elapsed().as_secs_f64());
+                // Process CPU so far, user and kernel.
+                let mut r: libc::rusage = unsafe { std::mem::zeroed() };
+                // SAFETY: getrusage fills the struct it is given.
+                unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut r) };
+                let t = |v: libc::timeval| v.tv_sec as f64 + v.tv_usec as f64 / 1e6;
+                eprintln!("[{:>7.3}s] {name} (cpu {:.2} user, {:.2} sys)", start.elapsed().as_secs_f64(), t(r.ru_utime), t(r.ru_stime));
             }
         };
 
@@ -340,14 +345,34 @@ impl Archive {
 
         let mut stats = ExtractStats { files: 0, bytes: x.bytes.load(Ordering::Relaxed), blocks: wanted, seconds: 0.0 };
         if dest.is_some() {
-            pool.install(|| dirs.par_iter().try_for_each(std::fs::create_dir_all))?;
+            // Directories nothing was written into yet: every ancestor of a
+            // written file exists already.
+            let mut made: HashSet<&Path> = HashSet::new();
+            for (i, e) in idx.entries.iter().enumerate() {
+                let (Some(p), EntryKind::File { object, .. }) = (&targets[i], &e.kind) else { continue };
+                let chunks = !idx.objects[*object as usize].chunks.is_empty();
+                if (chunks && receivers[object][0] == i) || x.fd_done[i].load(Ordering::Relaxed) {
+                    let mut a = p.parent();
+                    while let Some(d) = a {
+                        if !made.insert(d) {
+                            break;
+                        }
+                        a = d.parent();
+                    }
+                }
+            }
+            let missing: Vec<&Path> = dirs.iter().copied().filter(|d| !made.contains(d)).collect();
+            pool.install(|| missing.par_iter().try_for_each(std::fs::create_dir_all))?;
             // Empty files have no chunks to trigger them.
             pool.install(|| {
                 objs.par_iter().filter(|&&o| idx.objects[o as usize].chunks.is_empty()).try_for_each(|&o| x.write_whole(o, &[]))
             })?;
-            // Duplicate content: APFS clones cost no space and no time.
-            let copies: Vec<(usize, usize)> =
-                receivers.values().flat_map(|r| r[1..].iter().map(move |&i| (r[0], i))).collect();
+            // Larger duplicates: APFS clones share the source's space.
+            let copies: Vec<(usize, usize)> = receivers
+                .values()
+                .flat_map(|r| r[1..].iter().map(move |&i| (r[0], i)))
+                .filter(|&(_, i)| !x.fd_done[i].load(Ordering::Relaxed))
+                .collect();
             pool.install(|| {
                 copies.par_iter().try_for_each(|&(from, to)| {
                     clone_or_copy(targets[from].as_ref().unwrap(), targets[to].as_ref().unwrap())
@@ -518,11 +543,16 @@ impl Extraction<'_> {
     }
 
     fn write_whole(&self, o: u32, content: &[u8]) -> Result<()> {
-        let i = self.primary(o);
-        let f = create_file(self.targets[i].as_ref().unwrap())?;
-        f.write_all_at(content, 0)?;
-        apply_metadata_fd(&f, &self.archive.index.entries[i])?;
-        self.fd_done[i].store(true, Ordering::Relaxed);
+        // Small duplicates are written again while the content is at hand:
+        // cheaper than a clone afterwards, which saves no space at this size.
+        let all = &self.receivers[&o];
+        let n = if content.len() < CLONE_MIN { all.len() } else { 1 };
+        for &i in &all[..n] {
+            let f = create_file(self.targets[i].as_ref().unwrap())?;
+            f.write_all_at(content, 0)?;
+            apply_metadata_fd(&f, &self.archive.index.entries[i])?;
+            self.fd_done[i].store(true, Ordering::Relaxed);
+        }
         Ok(())
     }
 
@@ -671,11 +701,41 @@ fn blocks_of(idx: &Index, o: u32) -> Vec<u32> {
     bs
 }
 
+/// Threads allowed to create files at once. APFS serialises file creation:
+/// past ~4 threads it gets no faster and the others spin in the kernel (on the
+/// saved folder, 10 threads spent 3.1 s of CPU creating 11,050 files, 4 threads
+/// 2.2 s in the same 0.43 s), CPU that decoding could use.
+const CREATORS: usize = 4;
+
+static CREATE_GATE: (Mutex<usize>, std::sync::Condvar) = (Mutex::new(0), std::sync::Condvar::new());
+
+/// Holds one of the `CREATORS` places while alive.
+struct Creating;
+
+impl Creating {
+    fn enter() -> Self {
+        let mut n = CREATE_GATE.0.lock().unwrap();
+        while *n >= CREATORS {
+            n = CREATE_GATE.1.wait(n).unwrap();
+        }
+        *n += 1;
+        Creating
+    }
+}
+
+impl Drop for Creating {
+    fn drop(&mut self) {
+        *CREATE_GATE.0.lock().unwrap() -= 1;
+        CREATE_GATE.1.notify_one();
+    }
+}
+
 /// Opens `p` for writing, creating it and, on first use, its parent
 /// directories. Creating directories as files need them spreads that work over
 /// the whole extraction: APFS serialises `mkdir`, and doing them all up front
 /// cost ~0.1-1 s with every core waiting.
 pub(crate) fn create_file(p: &Path) -> Result<File> {
+    let _gate = Creating::enter();
     let open = || OpenOptions::new().write(true).create(true).truncate(false).custom_flags(libc::O_NOFOLLOW).open(p);
     let f = match open() {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -705,8 +765,12 @@ pub(crate) fn safe_join(dest: &Path, rel: &str) -> Result<PathBuf> {
 /// `<sys/clonefile.h>`: don't follow a symlink at `from`.
 const CLONE_NOFOLLOW: u32 = 0x0001;
 
+/// Duplicates at least this large are cloned; smaller ones are written again.
+const CLONE_MIN: usize = 64 << 10;
+
 fn clone_or_copy(from: &Path, to: &Path) -> Result<()> {
     use std::os::unix::ffi::OsStrExt;
+    let _gate = Creating::enter();
     let a = std::ffi::CString::new(from.as_os_str().as_bytes())?;
     let b = std::ffi::CString::new(to.as_os_str().as_bytes())?;
     // SAFETY: both are valid NUL-terminated paths; clonefile does not retain them.
@@ -717,25 +781,72 @@ fn clone_or_copy(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn mtime_of(e: &Entry) -> std::time::SystemTime {
-    let (secs, nanos) = e.mtime;
-    let base = std::time::UNIX_EPOCH;
-    if secs >= 0 {
-        base + std::time::Duration::new(secs as u64, nanos)
-    } else {
-        base - std::time::Duration::from_secs(secs.unsigned_abs()) + std::time::Duration::from_nanos(nanos as u64)
-    }
+/// Attributes for `setattrlist`: modification and access time, then the mode,
+/// in the order of their bits.
+#[repr(C, packed(4))]
+struct ModeTimes {
+    modified: libc::timespec,
+    accessed: libc::timespec,
+    mode: u32,
+}
+
+fn mode_times(e: &Entry) -> (libc::attrlist, ModeTimes) {
+    let list = libc::attrlist {
+        bitmapcount: libc::ATTR_BIT_MAP_COUNT,
+        reserved: 0,
+        commonattr: libc::ATTR_CMN_MODTIME | libc::ATTR_CMN_ACCTIME | libc::ATTR_CMN_ACCESSMASK,
+        volattr: 0,
+        dirattr: 0,
+        fileattr: 0,
+        forkattr: 0,
+    };
+    let t = libc::timespec { tv_sec: e.mtime.0 as libc::time_t, tv_nsec: e.mtime.1 as libc::c_long };
+    (list, ModeTimes { modified: t, accessed: t, mode: e.mode & 0o7777 })
 }
 
 /// Metadata through an open descriptor: no path lookups, no symlink races.
+/// Mode and times go in one call (a chmod and a utimes cost two).
 pub(crate) fn apply_metadata_fd(f: &File, e: &Entry) -> Result<()> {
+    use std::os::fd::AsRawFd;
     use xattr::FileExt as _;
     for (k, v) in &e.xattrs {
         let _ = f.set_xattr(k, v);
     }
-    f.set_permissions(std::fs::Permissions::from_mode(e.mode))?;
-    let t = mtime_of(e);
-    f.set_times(std::fs::FileTimes::new().set_accessed(t).set_modified(t))?;
+    let (mut list, mut buf) = mode_times(e);
+    // SAFETY: `list` describes exactly the attributes `buf` holds, in order.
+    let rc = unsafe {
+        libc::fsetattrlist(
+            f.as_raw_fd(),
+            (&mut list as *mut libc::attrlist).cast(),
+            (&mut buf as *mut ModeTimes).cast(),
+            std::mem::size_of::<ModeTimes>(),
+            0,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(())
+}
+
+/// A directory's mode and times by path, in one call.
+fn set_dir_mode_times(p: &Path, e: &Entry) -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(p.as_os_str().as_bytes())?;
+    let (mut list, mut buf) = mode_times(e);
+    // SAFETY: as in `apply_metadata_fd`; `c` is a NUL-terminated path.
+    let rc = unsafe {
+        libc::setattrlist(
+            c.as_ptr(),
+            (&mut list as *mut libc::attrlist).cast(),
+            (&mut buf as *mut ModeTimes).cast(),
+            std::mem::size_of::<ModeTimes>(),
+            libc::FSOPT_NOFOLLOW,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
     Ok(())
 }
 
@@ -754,6 +865,9 @@ pub(crate) fn apply_metadata(p: &Path, e: &Entry) -> Result<()> {
     for (k, v) in &e.xattrs {
         // Best effort: some attributes are not settable on every filesystem.
         let _ = xattr::set(p, k, v);
+    }
+    if matches!(e.kind, EntryKind::Dir) {
+        return set_dir_mode_times(p, e);
     }
     let mtime = filetime::FileTime::from_unix_time(e.mtime.0, e.mtime.1);
     if is_link {

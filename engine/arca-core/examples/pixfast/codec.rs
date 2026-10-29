@@ -1,0 +1,1113 @@
+//! Lossless coding of 8-bit pixels, for the rows inside PNG files.
+//!
+//! LZMA treats a PNG's filtered rows as bytes; a pixel model sees an image. On
+//! photo-like pictures this codec is 15-20% smaller than LZMA at -9 and several
+//! times faster both ways; on flat graphics with repeated areas LZMA still wins,
+//! so the Deflate transform picks per image (see `deflate.rs`).
+//!
+//! Model: each channel is predicted with MED (the LOCO-I median edge
+//! detector) from its west, north and north-west neighbours. Green is coded
+//! first, red and blue as differences from green's residual, then alpha. A
+//! whole-pixel "nothing changed" flag makes flat areas nearly free. Each
+//! channel's residual becomes one of 16 tokens (zero, or sign and size class),
+//! coded with adaptive 16-symbol tables chosen by local activity, the channel's
+//! previous error and green's residual. The top remainder bit is modelled, the
+//! rest are written raw. Tokens and flags share one rANS stream, so decoding a
+//! symbol is a multiply and a 15-way compare instead of a chain of binary steps.
+//!
+//! Stream: `u32 rans_len | two rANS states (u32 each) and 16-bit words |
+//! remainder bits`. Symbols alternate between the two states, so decoding runs
+//! two independent chains at once.
+
+use anyhow::{ensure, Result};
+
+/// Activity buckets.
+const ACT: usize = 12;
+/// Second context: previous-error class (3) x green-residual class (4).
+const C2: usize = 12;
+const SCALE_BITS: u32 = 15;
+const SCALE: u32 = 1 << SCALE_BITS;
+const RANS_L: u32 = 1 << 16;
+/// Final adaptation rate of the token tables (after the warm-up).
+const RATE: u32 = 7;
+
+/// Adaptive distribution over 16 symbols as a cumulative table (LZNA style):
+/// after each symbol the table moves 1/2^rate of the way toward one that puts
+/// almost everything on that symbol, so every symbol keeps a frequency >= 1.
+#[derive(Clone)]
+struct Cdf16 {
+    c: [u16; 16],
+    /// Symbols seen, for the warm-up: adapt fast at first, then settle.
+    n: u16,
+}
+
+impl Cdf16 {
+    fn new() -> Self {
+        let mut c = [0u16; 16];
+        for (i, v) in c.iter_mut().enumerate() {
+            *v = (i as u32 * SCALE / 16) as u16;
+        }
+        Cdf16 { c, n: 0 }
+    }
+
+    #[inline]
+    fn lo(&self, s: usize) -> u32 {
+        self.c[s] as u32
+    }
+
+    #[inline]
+    fn hi(&self, s: usize) -> u32 {
+        if s == 15 { SCALE } else { self.c[s + 1] as u32 }
+    }
+
+    /// The symbol whose interval holds `slot`: how many of entries 1..=15 are at
+    /// or below it.
+    #[inline(always)]
+    fn find(&self, slot: u32) -> usize {
+        #[cfg(target_arch = "aarch64")]
+        // SAFETY: NEON is part of every aarch64 target; `c` is 16 u16s.
+        unsafe {
+            use std::arch::aarch64::*;
+            let v = vdupq_n_u16(slot as u16);
+            let a = vcleq_u16(vld1q_u16(self.c.as_ptr()), v);
+            let b = vcleq_u16(vld1q_u16(self.c.as_ptr().add(8)), v);
+            // Entry 0 is 0, always <= slot: subtract it.
+            ((vaddvq_u16(vshrq_n_u16::<15>(a)) + vaddvq_u16(vshrq_n_u16::<15>(b))) - 1) as usize
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            let slot = slot as u16;
+            (1..16).map(|i| (self.c[i] <= slot) as usize).sum()
+        }
+    }
+
+    #[inline(always)]
+    fn rate(&mut self) -> u32 {
+        let rate = match self.n {
+            0..=3 => 2,
+            4..=15 => 3,
+            16..=63 => 4,
+            64..=255 => 5,
+            _ => RATE,
+        };
+        self.n = self.n.saturating_add(1);
+        rate
+    }
+
+    /// Moves the table toward one with almost everything on `s`: targets are i
+    /// up to `s` and SCALE - 16 + i above it, so every frequency stays >= 1.
+    #[inline(always)]
+    fn update(&mut self, s: usize) {
+        let rate = self.rate();
+        #[cfg(target_arch = "aarch64")]
+        // SAFETY: NEON is part of every aarch64 target; `c` is 16 u16s. Values
+        // are offset by 2^14 so the arithmetic fits in i16.
+        unsafe {
+            use std::arch::aarch64::*;
+            const IDX: [i16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+            let off = vdupq_n_s16(16384);
+            let shift = vdupq_n_s16(-(rate as i16));
+            let sv = vdupq_n_s16(s as i16);
+            let hi_add = vdupq_n_s16((SCALE as i32 - 16) as i16);
+            for half in 0..2 {
+                let idx = vld1q_s16(IDX.as_ptr().add(half * 8));
+                let above = vcgtq_s16(idx, sv);
+                let target = vsubq_s16(vbslq_s16(above, vaddq_s16(idx, hi_add), idx), off);
+                let ptr = self.c.as_mut_ptr().add(half * 8);
+                let cur = vsubq_s16(vreinterpretq_s16_u16(vld1q_u16(ptr)), off);
+                let next = vaddq_s16(cur, vshlq_s16(vsubq_s16(target, cur), shift));
+                vst1q_u16(ptr, vreinterpretq_u16_s16(vaddq_s16(next, off)));
+            }
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        for i in 1..16 {
+            let target = if i > s { (SCALE as i32 - 16 + i as i32 - 16384) as i16 } else { i as i16 - 16384 };
+            let cur = (self.c[i] as i16).wrapping_sub(16384);
+            self.c[i] = (cur + ((target - cur) >> rate)).wrapping_add(16384) as u16;
+        }
+    }
+}
+
+/// An adaptive binary probability (frequency of 0 out of SCALE).
+#[derive(Clone, Copy)]
+struct Bin(u16);
+
+const HALF: Bin = Bin(SCALE as u16 / 2);
+
+impl Bin {
+    #[inline]
+    fn f0(self) -> u32 {
+        (self.0 as u32).clamp(1, SCALE - 1)
+    }
+
+    #[inline]
+    fn update(&mut self, bit: bool) {
+        let p = self.0 as i32;
+        self.0 = if bit { (p - (p >> 5)) as u16 } else { (p + ((SCALE as i32 - p) >> 5)) as u16 };
+    }
+}
+
+struct Models {
+    tok: Box<[Cdf16; 4 * ACT * C2]>,
+    zero: [Bin; 8],
+    /// Top remainder bit, by (channel, size class, activity).
+    top: Box<[Bin; 4 * 8 * ACT]>,
+}
+
+impl Models {
+    fn new() -> Self {
+        let tok: Vec<Cdf16> = vec![Cdf16::new(); 4 * ACT * C2];
+        let top: Vec<Bin> = vec![HALF; 4 * 8 * ACT];
+        Models { tok: tok.try_into().ok().unwrap(), zero: [HALF; 8], top: top.try_into().ok().unwrap() }
+    }
+
+    /// Token table for channel `c` (< 4), activity `act` (< ACT) and second
+    /// context `c2` (< C2); masking keeps the index in range at no cost.
+    #[inline(always)]
+    fn tok(&mut self, c: usize, act: usize, c2: usize) -> &mut Cdf16 {
+        &mut self.tok[tok_index(c & 3, act, c2) % (4 * ACT * C2)]
+    }
+
+    #[inline(always)]
+    fn top(&mut self, c: usize, k: u32, act: usize) -> &mut Bin {
+        &mut self.top[top_index(c & 3, k & 7, act) % (4 * 8 * ACT)]
+    }
+}
+
+/// Token for a residual in -128..=127: 0 zero, 1..=7 positive with
+/// floor(log2 r) = token - 1, 8..=15 negative with floor(log2 -r) = token - 8.
+/// Returns (token, size class k, remainder below the leading bit).
+#[inline]
+fn tokenize(r: i32) -> (usize, u32, u32) {
+    if r == 0 {
+        return (0, 0, 0);
+    }
+    let a = r.unsigned_abs();
+    let k = 31 - a.leading_zeros();
+    let tok = if r > 0 { 1 + k as usize } else { 8 + k as usize };
+    (tok, k, a - (1 << k))
+}
+
+#[inline]
+fn class_of(tok: usize) -> u32 {
+    match tok {
+        0 => 0,
+        1..=7 => tok as u32 - 1,
+        _ => tok as u32 - 8,
+    }
+}
+
+#[inline]
+fn untokenize(tok: usize, rem: u32) -> i32 {
+    match tok {
+        0 => 0,
+        1..=7 => ((1u32 << (tok - 1)) + rem) as i32,
+        _ => -(((1u32 << (tok - 8)) + rem) as i32),
+    }
+}
+
+#[inline]
+fn med(a: i32, b: i32, c: i32) -> i32 {
+    if c >= a.max(b) {
+        a.min(b)
+    } else if c <= a.min(b) {
+        a.max(b)
+    } else {
+        a + b - c
+    }
+}
+
+fn bucket(v: i32) -> u8 {
+    match v {
+        0 => 0,
+        1..=2 => 1,
+        3..=4 => 2,
+        5..=8 => 3,
+        9..=14 => 4,
+        15..=22 => 5,
+        23..=34 => 6,
+        35..=50 => 7,
+        51..=80 => 8,
+        81..=130 => 9,
+        131..=220 => 10,
+        _ => 11,
+    }
+}
+
+#[inline]
+fn gclass(g: i32) -> usize {
+    match g.unsigned_abs() {
+        0 => 0,
+        1..=2 => 1,
+        3..=8 => 2,
+        _ => 3,
+    }
+}
+
+/// Coding order of the channels: green, red, blue, alpha (or gray, alpha).
+fn order(ch: usize) -> &'static [usize] {
+    match ch {
+        3 | 4 => &[1, 0, 2, 3][..ch],
+        _ => &[0, 1][..ch],
+    }
+}
+
+/// The image with one zero row above and one zero column on each side, so the
+/// neighbours of any pixel are plain reads.
+struct Padded {
+    buf: Vec<u8>,
+    stride: usize,
+    ch: usize,
+}
+
+impl Padded {
+    fn new(w: usize, h: usize, ch: usize) -> Self {
+        let stride = (w + 2) * ch;
+        Padded { buf: vec![0; (h + 1) * stride], stride, ch }
+    }
+
+    #[inline(always)]
+    fn at(&self, x: usize, y: usize) -> usize {
+        (y + 1) * self.stride + (x + 1) * self.ch
+    }
+
+    /// MED prediction, activity bucket and previous-error class for one channel.
+    #[inline(always)]
+    fn context(&self, i: usize, c: usize, prev_err: i32, lut: &[u8; 1024]) -> (i32, usize, usize) {
+        let (b, s, ch) = (&self.buf, self.stride, self.ch);
+        // `i` is an interior pixel of the padded image (from `at`), so its west,
+        // north, north-west and north-east neighbours are all inside `buf`.
+        debug_assert!(i >= s + ch && i + ch + c < b.len() && c < ch);
+        // SAFETY: see above.
+        let (wv, nv, nw, ne) = unsafe {
+            (
+                *b.get_unchecked(i - ch + c) as i32,
+                *b.get_unchecked(i - s + c) as i32,
+                *b.get_unchecked(i - s - ch + c) as i32,
+                *b.get_unchecked(i - s + ch + c) as i32,
+            )
+        };
+        let act = (wv - nw).abs() + (nv - nw).abs() + (nv - ne).abs() + prev_err;
+        let ctx2 = if prev_err == 0 { 0 } else if prev_err < 8 { 1 } else { 2 };
+        // act <= 3 * 255 + 64 < 1024.
+        (med(wv, nv, nw), lut[act as usize & 1023] as usize, ctx2)
+    }
+}
+
+fn act_lut() -> [u8; 1024] {
+    let mut t = [0u8; 1024];
+    for (i, v) in t.iter_mut().enumerate() {
+        *v = bucket(i as i32);
+    }
+    t
+}
+
+#[inline]
+fn tok_index(c: usize, act: usize, c2: usize) -> usize {
+    (c * ACT + act) * C2 + c2
+}
+
+#[inline]
+fn top_index(c: usize, k: u32, act: usize) -> usize {
+    (c * 8 + k as usize) * ACT + act
+}
+
+/// Codes `px` (rows of `w` pixels with `ch` interleaved 8-bit channels, 1 to 4).
+pub fn encode(px: &[u8], w: usize, h: usize, ch: usize) -> Vec<u8> {
+    assert!((1..=4).contains(&ch) && px.len() == w * h * ch);
+    let lut = act_lut();
+    let mut p = Padded::new(w, h, ch);
+    for y in 0..h {
+        let i = p.at(0, y);
+        p.buf[i..i + w * ch].copy_from_slice(&px[y * w * ch..(y + 1) * w * ch]);
+    }
+    let mut m = Models::new();
+    // Model every symbol in order, remembering its (start, frequency); rANS
+    // then codes them last to first.
+    let mut syms: Vec<(u16, u16)> = Vec::with_capacity(w * h + px.len() / 2);
+    let mut bits = BitWriter::default();
+    let mut prev = [0i32; 4];
+    let mut zrow = vec![false; w + 2];
+    let mut ctxs = [(0usize, 0usize); 4];
+    let mut res = [0i32; 4];
+    let bin = |f0: u32, bit: bool| if bit { (f0 as u16, (SCALE - f0) as u16) } else { (0, f0 as u16) };
+    for y in 0..h {
+        let mut zleft = false;
+        for x in 0..w {
+            let i = p.at(x, y);
+            let mut g_res = 0;
+            let mut all_zero = true;
+            for &c in order(ch) {
+                let (pred, act, c2) = p.context(i, c, prev[c], &lut);
+                let mut r = (p.buf[i + c] as i32 - pred) as i8 as i32;
+                if c == 1 && ch >= 3 {
+                    g_res = r;
+                } else if (c == 0 || c == 2) && ch >= 3 {
+                    r = (r - g_res) as i8 as i32;
+                }
+                ctxs[c] = (act, c2 + 3 * if c == 1 { 0 } else { gclass(g_res) });
+                res[c] = r;
+                all_zero &= r == 0;
+            }
+            let z = &mut m.zero[zleft as usize + 2 * zrow[x + 1] as usize + 4 * zrow[x + 2] as usize];
+            syms.push(bin(z.f0(), !all_zero));
+            z.update(!all_zero);
+            zleft = all_zero;
+            zrow[x + 1] = all_zero;
+            for &c in order(ch) {
+                if !all_zero {
+                    let (act, c2) = ctxs[c];
+                    let model = m.tok(c, act, c2);
+                    let (tok, k, rem) = tokenize(res[c]);
+                    syms.push((model.lo(tok) as u16, (model.hi(tok) - model.lo(tok)) as u16));
+                    model.update(tok);
+                    // -128 (token 15 with k = 7) has no remainder.
+                    if k > 0 && tok != 15 {
+                        let top = (rem >> (k - 1)) & 1 == 1;
+                        let b = m.top(c, k, act);
+                        syms.push(bin(b.f0(), top));
+                        b.update(top);
+                        if k > 1 {
+                            bits.put(rem & ((1 << (k - 1)) - 1), k - 1);
+                        }
+                    }
+                }
+                prev[c] = res[c].abs().min(64);
+            }
+        }
+    }
+    let mut words: Vec<u16> = Vec::with_capacity(syms.len() / 2);
+    let mut xs: [u32; 2] = [RANS_L; 2];
+    for (i, &(start, freq)) in syms.iter().enumerate().rev() {
+        let x = &mut xs[i & 1];
+        let (start, freq) = (start as u32, freq as u32);
+        let x_max = ((RANS_L >> SCALE_BITS) << 16) * freq;
+        while *x >= x_max {
+            words.push(*x as u16);
+            *x >>= 16;
+        }
+        *x = ((*x / freq) << SCALE_BITS) + (*x % freq) + start;
+    }
+    let rans_len = 8 + 2 * words.len();
+    let rem = bits.finish();
+    let mut out = Vec::with_capacity(4 + rans_len + rem.len());
+    out.extend_from_slice(&(rans_len as u32).to_le_bytes());
+    out.extend_from_slice(&xs[0].to_le_bytes());
+    out.extend_from_slice(&xs[1].to_le_bytes());
+    for wd in words.iter().rev() {
+        out.extend_from_slice(&wd.to_le_bytes());
+    }
+    out.extend_from_slice(&rem);
+    out
+}
+
+/// Inverse of `encode`. Malformed input gives an error or wrong pixels (which
+/// the caller's hash check rejects), never a panic.
+pub fn decode(src: &[u8], w: usize, h: usize, ch: usize) -> Result<Vec<u8>> {
+    ensure!((1..=4).contains(&ch), "pixel data has {ch} channels");
+    ensure!(src.len() >= 8, "pixel data truncated");
+    let rans_len = u32::from_le_bytes(src[0..4].try_into().unwrap()) as usize;
+    ensure!(rans_len >= 8 && 4 + rans_len <= src.len(), "pixel data truncated");
+    let rans = &src[4..4 + rans_len];
+    let mut bits = BitReader { src: &src[4 + rans_len..], pos: 0, acc: 0, n: 0 };
+    let mut xs = [u32::from_le_bytes(rans[0..4].try_into().unwrap()), u32::from_le_bytes(rans[4..8].try_into().unwrap())];
+    // Which state the next symbol uses.
+    let mut si = 0usize;
+    let mut rp = 8usize;
+    let lut = act_lut();
+    let mut m = Models::new();
+    let mut p = Padded::new(w, h, ch);
+    let mut prev = [0i32; 4];
+    let mut zrow = vec![false; w + 2];
+    macro_rules! renorm {
+        ($x:expr) => {
+            if *$x < RANS_L {
+                let w = match rans.get(rp..rp + 2) {
+                    Some(b) => u16::from_le_bytes([b[0], b[1]]) as u32,
+                    None => 0,
+                };
+                rp += 2;
+                *$x = (*$x << 16) | w;
+            }
+        };
+    }
+    macro_rules! decode_bin {
+        ($b:expr) => {{
+            let x = &mut xs[si & 1];
+            si += 1;
+            let f0 = $b.f0();
+            let slot = *x & (SCALE - 1);
+            let bit = slot >= f0;
+            *x = if bit { (SCALE - f0) * (*x >> SCALE_BITS) + slot - f0 } else { f0 * (*x >> SCALE_BITS) + slot };
+            renorm!(x);
+            $b.update(bit);
+            bit
+        }};
+    }
+    for y in 0..h {
+        let mut zleft = false;
+        for x0 in 0..w {
+            let i = p.at(x0, y);
+            let any = decode_bin!(m.zero[zleft as usize + 2 * zrow[x0 + 1] as usize + 4 * zrow[x0 + 2] as usize]);
+            zleft = !any;
+            zrow[x0 + 1] = !any;
+            let mut g_res = 0;
+            for &c in order(ch) {
+                let (pred, act, c2) = p.context(i, c, prev[c], &lut);
+                let c2 = c2 + 3 * if c == 1 { 0 } else { gclass(g_res) };
+                let coded = if any {
+                    let model = m.tok(c, act, c2);
+                    let x = &mut xs[si & 1];
+                    si += 1;
+                    let slot = *x & (SCALE - 1);
+                    let tok = model.find(slot);
+                    let (lo, hi) = (model.lo(tok), model.hi(tok));
+                    *x = (hi - lo) * (*x >> SCALE_BITS) + slot - lo;
+                    renorm!(x);
+                    model.update(tok);
+                    let k = class_of(tok);
+                    let rem = if k > 0 && tok != 15 {
+                        let top = decode_bin!(m.top(c, k, act));
+                        ((top as u32) << (k - 1)) | if k > 1 { bits.get(k - 1) } else { 0 }
+                    } else {
+                        0
+                    };
+                    untokenize(tok, rem)
+                } else {
+                    0
+                };
+                prev[c] = (coded as i8 as i32).abs().min(64);
+                let r = if (c == 0 || c == 2) && ch >= 3 { (coded + g_res) as i8 as i32 } else { coded };
+                if c == 1 && ch >= 3 {
+                    g_res = coded;
+                }
+                p.buf[i + c] = (pred + r) as u8;
+            }
+        }
+    }
+    let mut px = vec![0u8; w * h * ch];
+    for y in 0..h {
+        let i = p.at(0, y);
+        px[y * w * ch..(y + 1) * w * ch].copy_from_slice(&p.buf[i..i + w * ch]);
+    }
+    Ok(px)
+}
+
+#[derive(Default)]
+struct BitWriter {
+    out: Vec<u8>,
+    acc: u64,
+    n: u32,
+}
+
+impl BitWriter {
+    #[inline]
+    fn put(&mut self, v: u32, bits: u32) {
+        self.acc |= (v as u64) << self.n;
+        self.n += bits;
+        while self.n >= 8 {
+            self.out.push(self.acc as u8);
+            self.acc >>= 8;
+            self.n -= 8;
+        }
+    }
+
+    fn finish(mut self) -> Vec<u8> {
+        if self.n > 0 {
+            self.out.push(self.acc as u8);
+        }
+        self.out
+    }
+}
+
+struct BitReader<'a> {
+    src: &'a [u8],
+    pos: usize,
+    acc: u64,
+    n: u32,
+}
+
+impl BitReader<'_> {
+    #[inline]
+    fn get(&mut self, bits: u32) -> u32 {
+        if self.n < bits {
+            if let Some(b) = self.src.get(self.pos..self.pos + 4) {
+                self.acc |= (u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as u64) << self.n;
+                self.pos += 4;
+                self.n += 32;
+            } else {
+                while self.n < bits {
+                    self.acc |= (self.src.get(self.pos).copied().unwrap_or(0) as u64) << self.n;
+                    self.pos += 1;
+                    self.n += 8;
+                }
+            }
+        }
+        let v = (self.acc & ((1u64 << bits) - 1)) as u32;
+        self.acc >>= bits;
+        self.n -= bits;
+        v
+    }
+}
+
+
+// ---------- Experiment: bands decoded side by side ----------
+
+#[inline(always)]
+fn renorm_at(x: &mut u32, rans: &[u8], rp: &mut usize) {
+    if BRANCHLESS {
+        // Branchless: always load (clamped inside the buffer), shift by 0 or 16.
+        let need = (*x < RANS_L) as u32;
+        let at = (*rp).min(rans.len() - 2);
+        // SAFETY: rans.len() >= 8, so at + 2 <= len.
+        let w = unsafe { u16::from_le_bytes([*rans.get_unchecked(at), *rans.get_unchecked(at + 1)]) } as u32;
+        *x = (*x << (need * 16)) | (w & need.wrapping_neg());
+        *rp += 2 * need as usize;
+        return;
+    }
+    if *x < RANS_L {
+        let w = match rans.get(*rp..*rp + 2) {
+            Some(b) => u16::from_le_bytes([b[0], b[1]]) as u32,
+            None => 0,
+        };
+        *rp += 2;
+        *x = (*x << 16) | w;
+    }
+}
+const BRANCHLESS: bool = true;
+
+#[inline(always)]
+fn dbin(x: &mut u32, rans: &[u8], rp: &mut usize, b: &mut Bin) -> bool {
+    let f0 = b.f0();
+    let slot = *x & (SCALE - 1);
+    let bit = slot >= f0;
+    *x = if bit { (SCALE - f0) * (*x >> SCALE_BITS) + slot - f0 } else { f0 * (*x >> SCALE_BITS) + slot };
+    renorm_at(x, rans, rp);
+    b.update(bit);
+    bit
+}
+
+pub struct Dec<'a> {
+    rans: &'a [u8],
+    rp: usize,
+    xs: [u32; 2],
+    si: usize,
+    bits: BitReader<'a>,
+    m: Models,
+    p: Padded,
+    prev: [i32; 4],
+    zrow: Vec<bool>,
+    zleft: bool,
+    x: usize,
+    y: usize,
+    w: usize,
+    pub left: usize,
+}
+
+impl<'a> Dec<'a> {
+    pub fn new(src: &'a [u8], w: usize, h: usize, ch: usize) -> Result<Self> {
+        ensure!(src.len() >= 8, "pixel data truncated");
+        let rans_len = u32::from_le_bytes(src[0..4].try_into().unwrap()) as usize;
+        ensure!(rans_len >= 8 && 4 + rans_len <= src.len(), "pixel data truncated");
+        let rans = &src[4..4 + rans_len];
+        Ok(Dec {
+            rans,
+            rp: 8,
+            xs: [u32::from_le_bytes(rans[0..4].try_into().unwrap()), u32::from_le_bytes(rans[4..8].try_into().unwrap())],
+            si: 0,
+            bits: BitReader { src: &src[4 + rans_len..], pos: 0, acc: 0, n: 0 },
+            m: Models::new(),
+            p: Padded::new(w, h, ch),
+            prev: [0; 4],
+            zrow: vec![false; w + 2],
+            zleft: false,
+            x: 0,
+            y: 0,
+            w,
+            left: w * h,
+        })
+    }
+
+    #[inline(always)]
+    pub fn pixel(&mut self, lut: &[u8; 1024]) {
+        let ch = self.p.ch;
+        let (x0, i) = (self.x, self.p.at(self.x, self.y));
+        let zi = self.zleft as usize + 2 * self.zrow[x0 + 1] as usize + 4 * self.zrow[x0 + 2] as usize;
+        let any = {
+            let s = self.si & 1;
+            self.si += 1;
+            dbin(&mut self.xs[s], self.rans, &mut self.rp, &mut self.m.zero[zi])
+        };
+        self.zleft = !any;
+        self.zrow[x0 + 1] = !any;
+        let mut g_res = 0;
+        for &c in order(ch) {
+            let (pred, act, c2) = self.p.context(i, c, self.prev[c], lut);
+            let c2 = c2 + 3 * if c == 1 { 0 } else { gclass(g_res) };
+            let coded = if any {
+                let s = self.si & 1;
+                self.si += 1;
+                let model = self.m.tok(c, act, c2);
+                let x = &mut self.xs[s];
+                let slot = *x & (SCALE - 1);
+                let tok = model.find(slot);
+                let (lo, hi) = (model.lo(tok), model.hi(tok));
+                *x = (hi - lo) * (*x >> SCALE_BITS) + slot - lo;
+                renorm_at(x, self.rans, &mut self.rp);
+                model.update(tok);
+                let k = class_of(tok);
+                let rem = if false {
+                    // Decode the top bit unconditionally and keep it only when it exists.
+                    let has = (k > 0 && tok != 15) as u32;
+                    let s = self.si & 1;
+                    let b = self.m.top(c, k, act);
+                    let (mut x2, mut rp2, mut b2) = (self.xs[s], self.rp, *b);
+                    let top = dbin(&mut x2, self.rans, &mut rp2, &mut b2);
+                    let keep = has != 0;
+                    self.xs[s] = if keep { x2 } else { self.xs[s] };
+                    self.rp = if keep { rp2 } else { self.rp };
+                    b.0 = if keep { b2.0 } else { b.0 };
+                    self.si += has as usize;
+                    let km1 = k.saturating_sub(1) * has;
+                    (((top as u32) & has) << km1) | self.bits.get(km1)
+                } else if k > 0 && tok != 15 {
+                    let s = self.si & 1;
+                    self.si += 1;
+                    let top = dbin(&mut self.xs[s], self.rans, &mut self.rp, self.m.top(c, k, act));
+                    ((top as u32) << (k - 1)) | if k > 1 { self.bits.get(k - 1) } else { 0 }
+                } else {
+                    0
+                };
+                untokenize(tok, rem)
+            } else {
+                0
+            };
+            self.prev[c] = (coded as i8 as i32).abs().min(64);
+            let r = if (c == 0 || c == 2) && ch >= 3 { (coded + g_res) as i8 as i32 } else { coded };
+            if c == 1 && ch >= 3 {
+                g_res = coded;
+            }
+            self.p.buf[i + c] = (pred + r) as u8;
+        }
+        self.x += 1;
+        if self.x == self.w {
+            self.x = 0;
+            self.y += 1;
+            self.zleft = false;
+        }
+        self.left -= 1;
+    }
+
+    pub fn rows_into(&self, out: &mut [u8]) {
+        let (w, ch) = (self.w, self.p.ch);
+        for (y, row) in out.chunks_exact_mut(w * ch).enumerate() {
+            let i = self.p.at(0, y);
+            row.copy_from_slice(&self.p.buf[i..i + w * ch]);
+        }
+    }
+}
+
+fn band_rows(h: usize, k: usize) -> Vec<(usize, usize)> {
+    let per = h.div_ceil(k);
+    (0..k).map(|b| ((b * per).min(h), ((b + 1) * per).min(h))).filter(|(a, b)| b > a).collect()
+}
+
+pub fn encode_bands(px: &[u8], w: usize, h: usize, ch: usize, k: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (a, b) in band_rows(h, k) {
+        let e = encode(&px[a * w * ch..b * w * ch], w, b - a, ch);
+        out.extend_from_slice(&(e.len() as u32).to_le_bytes());
+        out.extend_from_slice(&e);
+    }
+    out
+}
+
+pub fn decode_bands(src: &[u8], w: usize, h: usize, ch: usize, k: usize) -> Result<Vec<u8>> {
+    let lut = act_lut();
+    let bands = band_rows(h, k);
+    let mut decs = Vec::new();
+    let mut pos = 0;
+    for &(a, b) in &bands {
+        let n = u32::from_le_bytes(src[pos..pos + 4].try_into()?) as usize;
+        decs.push(Dec::new(&src[pos + 4..pos + 4 + n], w, b - a, ch)?);
+        pos += 4 + n;
+    }
+    match decs.as_mut_slice() {
+        [a] => {
+            while a.left > 0 {
+                a.pixel(&lut);
+            }
+        }
+        [a, b] => {
+            while b.left > 0 {
+                a.pixel(&lut);
+                b.pixel(&lut);
+            }
+            while a.left > 0 {
+                a.pixel(&lut);
+            }
+        }
+        [a, b, c, d] => {
+            while d.left > 0 {
+                a.pixel(&lut);
+                b.pixel(&lut);
+                c.pixel(&lut);
+                d.pixel(&lut);
+            }
+            for x in [a, b, c] {
+                while x.left > 0 {
+                    x.pixel(&lut);
+                }
+            }
+        }
+        other => {
+            for x in other {
+                while x.left > 0 {
+                    x.pixel(&lut);
+                }
+            }
+        }
+    }
+    let mut px = vec![0u8; w * h * ch];
+    for (d, &(a, b)) in decs.iter().zip(&bands) {
+        d.rows_into(&mut px[a * w * ch..b * w * ch]);
+    }
+    Ok(px)
+}
+
+// ---------- Experiment: one decoder per channel count, fewer instructions ----------
+
+const CLASS: [u32; 16] = [0, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 7];
+
+/// `dbin` without the clamp: the update rule keeps a probability within 31..=32737.
+#[inline(always)]
+fn dbin_nc(x: &mut u32, rans: &[u8], rp: &mut usize, b: &mut Bin) -> bool {
+    let f0 = b.0 as u32;
+    let slot = *x & (SCALE - 1);
+    let bit = slot >= f0;
+    *x = if bit { (SCALE - f0) * (*x >> SCALE_BITS) + slot - f0 } else { f0 * (*x >> SCALE_BITS) + slot };
+    renorm_at(x, rans, rp);
+    b.update(bit);
+    bit
+}
+
+const RATE_BY_LEN: [u8; 17] = [2, 2, 2, 3, 3, 4, 4, 5, 5, 7, 7, 7, 7, 7, 7, 7, 7];
+
+/// Targets for the table update after symbol `s`, offset by -2^14 like `update`.
+fn targets() -> Box<[[i16; 16]; 16]> {
+    let mut t = Box::new([[0i16; 16]; 16]);
+    for s in 0..16 {
+        for i in 0..16 {
+            t[s][i] = (if i > s { SCALE as i32 - 16 + i as i32 } else { i as i32 } - 16384) as i16;
+        }
+    }
+    t
+}
+
+#[inline(always)]
+fn update_fast(c: &mut Cdf16, s: usize, tg: &[[i16; 16]; 16]) {
+    let len = 32 - (c.n as u32 | 3).leading_zeros();
+    // n is a u16, so len <= 16.
+    let rate = RATE_BY_LEN[len as usize] as i16;
+    c.n = c.n.saturating_add(1);
+    #[cfg(target_arch = "aarch64")]
+    // SAFETY: NEON is part of every aarch64 target; `c.c` is 16 u16s and `tg[s & 15]` 16 i16s.
+    unsafe {
+        use std::arch::aarch64::*;
+        let off = vdupq_n_s16(16384);
+        let shift = vdupq_n_s16(-rate);
+        let t = tg.get_unchecked(s & 15).as_ptr();
+        for half in 0..2 {
+            let ptr = c.c.as_mut_ptr().add(half * 8);
+            let cur = vsubq_s16(vreinterpretq_s16_u16(vld1q_u16(ptr)), off);
+            let next = vaddq_s16(cur, vshlq_s16(vsubq_s16(vld1q_s16(t.add(half * 8)), cur), shift));
+            vst1q_u16(ptr, vreinterpretq_u16_s16(vaddq_s16(next, off)));
+        }
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        let _ = tg;
+        let _ = rate;
+        c.update(s);
+    }
+}
+
+pub fn decode_fast(src: &[u8], w: usize, h: usize, ch: usize) -> Result<Vec<u8>> {
+    match ch {
+        1 => decode_ch::<1>(src, w, h),
+        2 => decode_ch::<2>(src, w, h),
+        3 => decode_ch::<3>(src, w, h),
+        4 => decode_ch::<4>(src, w, h),
+        _ => anyhow::bail!("pixel data has {ch} channels"),
+    }
+}
+
+fn decode_ch<const CH: usize>(src: &[u8], w: usize, h: usize) -> Result<Vec<u8>> {
+    ensure!(src.len() >= 8, "pixel data truncated");
+    let rans_len = u32::from_le_bytes(src[0..4].try_into().unwrap()) as usize;
+    ensure!(rans_len >= 8 && 4 + rans_len <= src.len(), "pixel data truncated");
+    let rans = &src[4..4 + rans_len];
+    let mut bits = BitReader { src: &src[4 + rans_len..], pos: 0, acc: 0, n: 0 };
+    let mut xs = [u32::from_le_bytes(rans[0..4].try_into().unwrap()), u32::from_le_bytes(rans[4..8].try_into().unwrap())];
+    let mut si = 0usize;
+    let mut rp = 8usize;
+    let lut = act_lut();
+    let tg = targets();
+    let mut tok: Vec<Cdf16> = vec![Cdf16::new(); 4 * ACT * C2];
+    let mut top: Vec<Bin> = vec![HALF; 4 * 8 * ACT];
+    let mut zero = [HALF; 8];
+    // Coding order: green first for colour images.
+    let ord: [usize; CH] = std::array::from_fn(|k| if CH >= 3 { [1, 0, 2, 3][k] } else { k });
+    let stride = (w + 2) * CH;
+    let mut buf = vec![0u8; (h + 1) * stride];
+    let mut prev = [0i32; 4];
+    let mut zrow = vec![0u8; w + 2];
+    for y in 0..h {
+        let row = (y + 1) * stride + CH;
+        let mut zleft = 0usize;
+        for x0 in 0..w {
+            let i = row + x0 * CH;
+            // SAFETY: x0 + 2 < w + 2.
+            let zi = zleft + 2 * unsafe { *zrow.get_unchecked(x0 + 1) } as usize + 4 * unsafe { *zrow.get_unchecked(x0 + 2) } as usize;
+            let any = {
+                let s = si & 1;
+                si += 1;
+                dbin_nc(&mut xs[s], rans, &mut rp, &mut zero[zi & 7])
+            };
+            zleft = !any as usize;
+            // SAFETY: as above.
+            unsafe { *zrow.get_unchecked_mut(x0 + 1) = !any as u8 };
+            // SAFETY: `i` is an interior pixel of the padded buffer, so its
+            // west, north, north-west and north-east neighbours are inside it.
+            let bp = buf.as_mut_ptr();
+            let px = |o: usize| -> i32 { unsafe { *bp.add(o) as i32 } };
+            if !any {
+                for &c in &ord {
+                    let (wv, nv, nw) = (px(i - CH + c), px(i - stride + c), px(i - stride - CH + c));
+                    unsafe { *bp.add(i + c) = med(wv, nv, nw) as u8 };
+                }
+                prev = [0; 4];
+                continue;
+            }
+            let mut g_res = 0i32;
+            for &c in &ord {
+                let (wv, nv, nw, ne) = (px(i - CH + c), px(i - stride + c), px(i - stride - CH + c), px(i - stride + CH + c));
+                let pred = med(wv, nv, nw);
+                let pe = prev[c];
+                let act = lut[((wv - nw).abs() + (nv - nw).abs() + (nv - ne).abs() + pe) as usize & 1023] as usize;
+                let ga = g_res.unsigned_abs();
+                let gc = (ga > 0) as usize + (ga > 2) as usize + (ga > 8) as usize;
+                let c2 = (pe != 0) as usize + (pe >= 8) as usize + 3 * if CH >= 3 && c != 1 { gc } else { 0 };
+                let ti = (c * ACT + act) * C2 + c2;
+                // SAFETY: c < 4, act < ACT, c2 < C2.
+                let model = unsafe { tok.get_unchecked_mut(ti) };
+                let s = si & 1;
+                si += 1;
+                let x = &mut xs[s];
+                let slot = *x & (SCALE - 1);
+                let t = model.find(slot);
+                let (lo, hi) = (model.lo(t), model.hi(t));
+                *x = (hi - lo) * (*x >> SCALE_BITS) + slot - lo;
+                renorm_at(x, rans, &mut rp);
+                update_fast(model, t, &tg);
+                let k = CLASS[t & 15];
+                let rem = if k > 0 && t != 15 {
+                    let s = si & 1;
+                    si += 1;
+                    // SAFETY: c < 4, k < 8, act < ACT.
+                    let b = unsafe { top.get_unchecked_mut(top_index(c, k, act)) };
+                    let tb = dbin_nc(&mut xs[s], rans, &mut rp, b);
+                    ((tb as u32) << (k - 1)) | if k > 1 { bits.get(k - 1) } else { 0 }
+                } else {
+                    0
+                };
+                let mag = (((t != 0) as i32) << k) + rem as i32;
+                let coded = if t >= 8 { -mag } else { mag };
+                prev[c] = (coded as i8 as i32).abs().min(64);
+                let r = if CH >= 3 && (c == 0 || c == 2) { (coded + g_res) as i8 as i32 } else { coded };
+                if CH >= 3 && c == 1 {
+                    g_res = coded;
+                }
+                unsafe { *bp.add(i + c) = (pred + r) as u8 };
+            }
+        }
+    }
+    let mut out = vec![0u8; w * h * CH];
+    for y in 0..h {
+        let i = (y + 1) * stride + CH;
+        out[y * w * CH..(y + 1) * w * CH].copy_from_slice(&buf[i..i + w * CH]);
+    }
+    Ok(out)
+}
+
+// ---------- Experiment: the lean decoder, bands side by side ----------
+
+pub struct Fast<'a, const CH: usize> {
+    rans: &'a [u8],
+    rp: usize,
+    xs: [u32; 2],
+    si: usize,
+    bits: BitReader<'a>,
+    tok: Vec<Cdf16>,
+    top: Vec<Bin>,
+    zero: [Bin; 8],
+    buf: Vec<u8>,
+    stride: usize,
+    prev: [i32; 4],
+    zrow: Vec<u8>,
+    zleft: usize,
+    x: usize,
+    y: usize,
+    w: usize,
+    pub left: usize,
+}
+
+impl<'a, const CH: usize> Fast<'a, CH> {
+    pub fn new(src: &'a [u8], w: usize, h: usize) -> Result<Self> {
+        ensure!(src.len() >= 8, "pixel data truncated");
+        let rans_len = u32::from_le_bytes(src[0..4].try_into().unwrap()) as usize;
+        ensure!(rans_len >= 8 && 4 + rans_len <= src.len(), "pixel data truncated");
+        let rans = &src[4..4 + rans_len];
+        Ok(Fast {
+            rans,
+            rp: 8,
+            xs: [u32::from_le_bytes(rans[0..4].try_into().unwrap()), u32::from_le_bytes(rans[4..8].try_into().unwrap())],
+            si: 0,
+            bits: BitReader { src: &src[4 + rans_len..], pos: 0, acc: 0, n: 0 },
+            tok: vec![Cdf16::new(); 4 * ACT * C2],
+            top: vec![HALF; 4 * 8 * ACT],
+            zero: [HALF; 8],
+            buf: vec![0u8; (h + 1) * (w + 2) * CH],
+            stride: (w + 2) * CH,
+            prev: [0; 4],
+            zrow: vec![0u8; w + 2],
+            zleft: 0,
+            x: 0,
+            y: 0,
+            w,
+            left: w * h,
+        })
+    }
+
+    #[inline(always)]
+    pub fn pixel(&mut self, lut: &[u8; 1024], tg: &[[i16; 16]; 16]) {
+        let ord: [usize; CH] = std::array::from_fn(|k| if CH >= 3 { [1, 0, 2, 3][k] } else { k });
+        let stride = self.stride;
+        let x0 = self.x;
+        let i = (self.y + 1) * stride + (x0 + 1) * CH;
+        // SAFETY: x0 + 2 < w + 2.
+        let zi = self.zleft + 2 * unsafe { *self.zrow.get_unchecked(x0 + 1) } as usize + 4 * unsafe { *self.zrow.get_unchecked(x0 + 2) } as usize;
+        let any = {
+            let s = self.si & 1;
+            self.si += 1;
+            dbin(&mut self.xs[s], self.rans, &mut self.rp, &mut self.zero[zi & 7])
+        };
+        self.zleft = !any as usize;
+        unsafe { *self.zrow.get_unchecked_mut(x0 + 1) = !any as u8 };
+        let bp = self.buf.as_mut_ptr();
+        // SAFETY: `i` is an interior pixel of the padded buffer.
+        let px = |o: usize| -> i32 { unsafe { *bp.add(o) as i32 } };
+        if !any {
+            for &c in &ord {
+                let (wv, nv, nw) = (px(i - CH + c), px(i - stride + c), px(i - stride - CH + c));
+                unsafe { *bp.add(i + c) = med(wv, nv, nw) as u8 };
+            }
+            self.prev = [0; 4];
+        } else {
+            let mut g_res = 0i32;
+            for &c in &ord {
+                let (wv, nv, nw, ne) = (px(i - CH + c), px(i - stride + c), px(i - stride - CH + c), px(i - stride + CH + c));
+                let pred = med(wv, nv, nw);
+                let pe = self.prev[c];
+                let act = lut[((wv - nw).abs() + (nv - nw).abs() + (nv - ne).abs() + pe) as usize & 1023] as usize;
+                let c2 = (pe != 0) as usize + (pe >= 8) as usize + 3 * if CH >= 3 && c != 1 { gclass(g_res) } else { 0 };
+                let model = unsafe { self.tok.get_unchecked_mut((c * ACT + act) * C2 + c2) };
+                let s = self.si & 1;
+                self.si += 1;
+                let x = &mut self.xs[s];
+                let slot = *x & (SCALE - 1);
+                let t = model.find(slot);
+                let (lo, hi) = (model.lo(t), model.hi(t));
+                *x = (hi - lo) * (*x >> SCALE_BITS) + slot - lo;
+                renorm_at(x, self.rans, &mut self.rp);
+                update_fast(model, t, tg);
+                let k = class_of(t);
+                let rem = if k > 0 && t != 15 {
+                    let s = self.si & 1;
+                    self.si += 1;
+                    let b = unsafe { self.top.get_unchecked_mut(top_index(c, k, act)) };
+                    let tb = dbin(&mut self.xs[s], self.rans, &mut self.rp, b);
+                    ((tb as u32) << (k - 1)) | if k > 1 { self.bits.get(k - 1) } else { 0 }
+                } else {
+                    0
+                };
+                let coded = untokenize(t, rem);
+                self.prev[c] = (coded as i8 as i32).abs().min(64);
+                let r = if CH >= 3 && (c == 0 || c == 2) { (coded + g_res) as i8 as i32 } else { coded };
+                if CH >= 3 && c == 1 {
+                    g_res = coded;
+                }
+                unsafe { *bp.add(i + c) = (pred + r) as u8 };
+            }
+        }
+        self.x += 1;
+        if self.x == self.w {
+            self.x = 0;
+            self.y += 1;
+            self.zleft = 0;
+        }
+        self.left -= 1;
+    }
+
+    fn rows_into(&self, out: &mut [u8]) {
+        for (y, row) in out.chunks_exact_mut(self.w * CH).enumerate() {
+            let i = (y + 1) * self.stride + CH;
+            row.copy_from_slice(&self.buf[i..i + self.w * CH]);
+        }
+    }
+}
+
+pub fn decode_fast_bands(src: &[u8], w: usize, h: usize, ch: usize, k: usize) -> Result<Vec<u8>> {
+    match ch {
+        1 => fast_bands::<1>(src, w, h, k),
+        2 => fast_bands::<2>(src, w, h, k),
+        3 => fast_bands::<3>(src, w, h, k),
+        4 => fast_bands::<4>(src, w, h, k),
+        _ => anyhow::bail!("pixel data has {ch} channels"),
+    }
+}
+
+fn fast_bands<const CH: usize>(src: &[u8], w: usize, h: usize, k: usize) -> Result<Vec<u8>> {
+    let (lut, tg) = (act_lut(), targets());
+    let bands = band_rows(h, k);
+    let mut decs = Vec::new();
+    let mut pos = 0;
+    for &(a, b) in &bands {
+        let n = u32::from_le_bytes(src[pos..pos + 4].try_into()?) as usize;
+        decs.push(Fast::<CH>::new(&src[pos + 4..pos + 4 + n], w, b - a)?);
+        pos += 4 + n;
+    }
+    match decs.as_mut_slice() {
+        [a, b] => {
+            while b.left > 0 {
+                a.pixel(&lut, &tg);
+                b.pixel(&lut, &tg);
+            }
+            while a.left > 0 {
+                a.pixel(&lut, &tg);
+            }
+        }
+        other => {
+            for x in other {
+                while x.left > 0 {
+                    x.pixel(&lut, &tg);
+                }
+            }
+        }
+    }
+    let mut px = vec![0u8; w * h * CH];
+    for (d, &(a, b)) in decs.iter().zip(&bands) {
+        d.rows_into(&mut px[a * w * CH..b * w * CH]);
+    }
+    Ok(px)
+}
