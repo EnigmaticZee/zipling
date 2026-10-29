@@ -93,8 +93,53 @@ fn dos_time(secs: i64) -> u32 {
     }
 }
 
+/// Files at least this large are compressed in pieces on several cores.
+const PIECED: usize = 4 << 20;
+/// Size of those pieces.
+const PIECE: usize = 1 << 20;
+
+/// Deflate of one piece of a large file, as pigz does it: primed with the 32 KiB
+/// before it (so matches reach back across the cut) and ended with a sync flush
+/// (byte-aligned, not final), so the pieces join into one ordinary Deflate stream.
+fn deflate_piece(raw: &[u8], start: usize, end: usize, level: u32) -> Option<Vec<u8>> {
+    let mut c = flate2::Compress::new(flate2::Compression::new(level), false);
+    if start > 0 {
+        c.set_dictionary(&raw[start.saturating_sub(32 << 10)..start]).ok()?;
+    }
+    let piece = &raw[start..end];
+    let flush = if end == raw.len() { flate2::FlushCompress::Finish } else { flate2::FlushCompress::Sync };
+    let mut out = Vec::with_capacity(piece.len() / 2 + 64);
+    loop {
+        let before = c.total_in() as usize;
+        match c.compress_vec(&piece[before..], &mut out, flush) {
+            Ok(flate2::Status::StreamEnd) => break,
+            Ok(_) if c.total_in() as usize == piece.len() && out.len() < out.capacity() => break,
+            Ok(_) => out.reserve(piece.len() / 4 + 64),
+            Err(_) => return None,
+        }
+    }
+    (c.total_in() as usize == piece.len()).then_some(out)
+}
+
 fn compress(raw: Bytes, level: u32) -> Ready {
     let crc = crc32fast::hash(&raw);
+    if level > 0 && raw.len() >= PIECED {
+        use rayon::prelude::*;
+        let starts: Vec<usize> = (0..raw.len()).step_by(PIECE).collect();
+        let pieces: Option<Vec<Vec<u8>>> =
+            starts.par_iter().map(|&s| deflate_piece(&raw, s, (s + PIECE).min(raw.len()), level)).collect();
+        if let Some(pieces) = pieces {
+            let len: usize = pieces.iter().map(Vec::len).sum();
+            if len < raw.len() {
+                let mut out = Vec::with_capacity(len);
+                for p in pieces {
+                    out.extend_from_slice(&p);
+                }
+                return Ready { method: 8, crc, size: raw.len() as u64, data: Bytes::Owned(out) };
+            }
+        }
+        return Ready { method: 0, crc, size: raw.len() as u64, data: raw };
+    }
     if level > 0 && !raw.is_empty() {
         let mut c = flate2::Compress::new(flate2::Compression::new(level), false);
         let mut out = Vec::with_capacity(raw.len() / 2 + 64);

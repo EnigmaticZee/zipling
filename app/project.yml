@@ -195,10 +195,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.zipling
         PRODUCT_NAME: Zipling
-        # The Rust engine: C header + module map, and the static library.
+        # The Rust engine: C header + module map, and the static library (whose
+        # bundled libbsc is C++, hence libc++).
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/../engine/arca-ffi/include
         LIBRARY_SEARCH_PATHS: $(SRCROOT)/../engine/target/xcode/release
-        OTHER_LDFLAGS: [-larca_ffi, -liconv]
+        OTHER_LDFLAGS: [-larca_ffi, -liconv, -lc++]
         # The engine is built for Apple silicon only for now.
         ARCHS: arm64
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -289,7 +290,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.observantsystems.zipling.quicklook
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/../engine/arca-ffi/include
         LIBRARY_SEARCH_PATHS: $(SRCROOT)/../engine/target/xcode/release
-        OTHER_LDFLAGS: [-larca_ffi, -liconv]
+        OTHER_LDFLAGS: [-larca_ffi, -liconv, -lc++]
         ARCHS: arm64
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual

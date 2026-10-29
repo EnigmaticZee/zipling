@@ -99,6 +99,29 @@ enum Engine {
         return result
     }
 
+    /// Makes a ZIP archive with the engine's own writer: every core (large files in
+    /// pieces), Deflate at `level`, UTF-8 names, permissions, times, links as links.
+    /// No passwords or split volumes: 7-Zip makes those.
+    static func zip(
+        _ inputs: [URL], into output: URL, level: Int, leaveOutMacFiles: Bool, task: EngineTask,
+        progress: @escaping @Sendable (UInt64, UInt64) -> Void
+    ) async throws -> ZipCreateResult {
+        let request = try json(ZipCreateRequest(inputs: inputs.map(\.path), output: output.path, level: level,
+                                                leaveOutMacFiles: leaveOutMacFiles))
+        return try await withProgress(progress) { ctx in
+            try decode(arca_zip_create(request, task.handle, trampoline, ctx))
+        }
+    }
+
+    /// Checks every entry of a ZIP archive (its CRC-32s), writing nothing. Throws an
+    /// error whose `isUnsupported` is true for archives the engine doesn't read.
+    static func verifyZip(_ archive: URL, task: EngineTask) async throws {
+        let path = archive.path
+        let _: ZipVerifyResult = try await withProgress({ _, _ in }) { ctx in
+            try decode(arca_zip_verify(path, task.handle, trampoline, ctx))
+        }
+    }
+
     static func verify(
         _ archive: URL, task: EngineTask, progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws -> ExtractResult {
@@ -164,6 +187,24 @@ enum Engine {
         let only: [String]
         let overwrite: Bool
         let quarantine: [UInt8]?
+    }
+
+    private struct ZipCreateRequest: Encodable {
+        let inputs: [String]
+        let output: String
+        let level: Int
+        let leaveOutMacFiles: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case inputs, output, level
+            case leaveOutMacFiles = "leave_out_mac_files"
+        }
+    }
+
+    private struct ZipVerifyResult: Decodable, Sendable {
+        let entries: UInt64
+        let bytes: UInt64
+        let seconds: Double
     }
 
     private struct ZipExtractRequest: Encodable {

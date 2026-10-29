@@ -91,6 +91,14 @@ struct TransformStat: Decodable, Sendable {
     }
 }
 
+struct ZipCreateResult: Decodable, Sendable {
+    let files: UInt64
+    let dirs: UInt64
+    let inputBytes: UInt64
+    let outputBytes: UInt64
+    let seconds: Double
+}
+
 struct ExtractResult: Decodable, Sendable {
     let files: UInt64
     let bytes: UInt64
