@@ -33,7 +33,8 @@ write queue, one-call metadata), Lepton without LLVM's memset idiom, engine-side
 quarantine, bsc (BWT) codec with threaded decoding, level-9 PNG skip at Default,
 image-lane block size. Dead ends: long-range pre-pass, hint-guided LZMA, LZMA
 match finders, parallel LZMA2 segments, band-parallel pixel decoding, multi-
-symbol Lepton size classes, ARM64 byte planes, GPU, LZRAVEN.
+symbol Lepton size classes, ARM64 byte planes, GPU, LZRAVEN, Mach-O sections
+to bsc.
 
 Next: ZIP writer in the app; final quiet-Mac benchmarks of the presets against
 the options (ask the user first).
@@ -950,6 +951,32 @@ classes are only 443 M of Lepton's 930 M decisions (signs, residual bits and
 counts are the rest), so the coder would do ~25% less work, not a multiple.
 Fails "at least as small"; the JPEG lever needs a different idea.
 
+### Mach-O split into code, strings and tables (dead end)
+
+Idea: Mach-O files are ~60% machine code (LZMA's best case) and ~40% sections
+that look like text (Objective-C method names, C strings, Swift names, symbol
+tables), so send the second part to bsc. `examples/machosplit.rs` takes the 24
+Mach-O files of the apps set (99.5 MB), arm64-filters them as packing does, and
+splits them into code (61.5 MB), string sections and symbol names (13.2 MB),
+and everything else (24.8 MB: pointers, offsets, relocations, signatures). One
+thread, dictionary covering the whole input:
+
+| Input | LZMA fb 32 | LZMA fb 273 | bsc (LZP 18/128) | bsc (no LZP) |
+|---|---:|---:|---:|---:|
+| whole, 99.5 MB | 14.545 MB, 30.4 s | 14.000 MB, 40.2 s | | |
+| code, 61.5 MB | 9.166 MB, 21.8 s | 8.704 MB, 26.4 s | | |
+| not code, 38.0 MB | 5.360 MB, 7.6 s | 5.272 MB, 11.7 s | 7.865 MB, 1.4 s | 7.821 MB, 1.4 s |
+| strings, 13.2 MB | 1.423 MB, 2.5 s | 1.404 MB, 4.1 s | 1.524 MB, 0.37 s | 1.426 MB, 0.36 s |
+| other, 24.8 MB | 4.037 MB, 4.8 s | | | |
+
+Code and the rest as two LZMA streams: 14.526 MB (−0.13%) for 3% less CPU, too
+little for a new transform. bsc loses by 46% on the non-code part (binary tables
+are LZ data) and only ties on the strings, which are full of long repeated
+prefixes (mangled Swift names, selector families) that LZ codes as well as a
+BWT. Splitting the strings out also costs LZMA 0.1 MB of cross-references
+(three streams: 14.626 MB). bsc's only gain is speed on the 13% of bytes that
+are strings: ~2 s of CPU in 30, at 7x the decode time.
+
 ### Apple Silicon GPU (agenda item 4): no stage worth moving
 
 Measured CPU by stage (saved folder, thread seconds):
@@ -1124,6 +1151,9 @@ with `lsregister -u`.
 - Code-signature page hashes: only 0.19 MB in 99.5 MB of app binaries (16 KB
   pages on current macOS), ~0.4% of the compressed apps set. Kept as a small
   idea, not a lever.
+- Mach-O sections to bsc: the non-code 38 MB of the apps' binaries is 46% bigger
+  with bsc than LZMA, the strings alone tie (1.426 vs 1.423 MB); code and the
+  rest as two LZMA streams gain 0.13%. See Deep research.
 - GPU: every heavy stage is a serial adaptive coder; the data-parallel 2–5%
   is not worth moving (see Deep research).
 - Hint-guided LZMA (the pre-pass's repeats taken as single matches): +1.3–10%
