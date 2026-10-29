@@ -1,6 +1,10 @@
 /* deflate.h -- internal compression state
  * Copyright (C) 1995-2026 Jean-loup Gailly
  * For conditions of distribution and use, see copyright notice in zlib.h
+ *
+ * Altered for Arca (2026): a faster match search for levels 8 and 9 with the
+ * same output, marked "Arca" below. Not the original software; see
+ * ARCA-NOTES.md.
  */
 
 /* WARNING: this file should *not* be used by applications. It is
@@ -284,6 +288,15 @@ typedef struct internal_state {
 
     int slid;
     /* True if the hash table has been slid since it was cleared. */
+
+    /* Arca: a faster search for levels 8 and 9 with the same results (see
+     * fast_match in deflate.c). */
+    int arca_fast;        /* on for this stream */
+    Posf *head4, *prev4;  /* chains of strings sharing their first 4 bytes */
+    Posf *head8, *prev8;  /* ... and their first 8 bytes */
+    unsigned *cnt3;       /* per hash bucket: strings added so far */
+    unsigned *ord3;       /* per window position: its bucket's count before it */
+    uInt long_next;       /* next string to add to the 4- and 8-byte chains */
 
 } FAR deflate_state;
 

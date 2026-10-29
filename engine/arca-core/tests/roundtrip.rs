@@ -152,11 +152,16 @@ fn disk_images_are_expanded_and_rebuilt() {
     write(&content.join("blob.bin"), &noise(1 << 20, 11));
     let src = tmp.path().join("tree");
     fs::create_dir_all(&src).unwrap();
-    for format in ["UDZO", "ULFO"] {
+    // hdiutil's default zlib level (1), the level-9 images many installers use
+    // (re-created at Max with the setting found on the first chunk), and LZFSE.
+    let images = [("UDZO", "UDZO", "zlib-level=1"), ("UDZO-9", "UDZO", "zlib-level=9"), ("ULFO", "ULFO", "")];
+    for (name, format, key) in images {
         let made = std::process::Command::new("hdiutil")
-            .args(["create", "-quiet", "-format", format, "-volname", "Image", "-srcfolder"])
+            .args(["create", "-quiet", "-format", format, "-volname", "Image"])
+            .args(if key.is_empty() { vec![] } else { vec!["-imagekey", key] })
+            .arg("-srcfolder")
             .arg(&content)
-            .arg(src.join(format!("{format}.dmg")))
+            .arg(src.join(format!("{name}.dmg")))
             .status()
             .is_ok_and(|s| s.success());
         if !made {
@@ -164,13 +169,13 @@ fn disk_images_are_expanded_and_rebuilt() {
         }
     }
     let archive = tmp.path().join("a.arca");
-    let stats = pack(std::slice::from_ref(&src), &archive, &PackOptions::preset(Level::Balanced)).unwrap();
-    assert!(stats.transforms.iter().any(|(name, t)| *name == "deflate" && t.files == 2), "{:?}", stats.transforms);
-    let total: u64 = ["UDZO", "ULFO"].iter().map(|f| fs::metadata(src.join(format!("{f}.dmg"))).unwrap().len()).sum();
+    let stats = pack(std::slice::from_ref(&src), &archive, &PackOptions::preset(Level::Max)).unwrap();
+    assert!(stats.transforms.iter().any(|(name, t)| *name == "deflate" && t.files == 3), "{:?}", stats.transforms);
+    let total: u64 = images.iter().map(|(f, ..)| fs::metadata(src.join(format!("{f}.dmg"))).unwrap().len()).sum();
     assert!(fs::metadata(&archive).unwrap().len() < total * 2 / 3, "the images' text compresses once expanded");
     let out = tmp.path().join("out");
     Archive::open(&archive).unwrap().extract(&out, &ExtractOptions::default()).unwrap();
-    for f in ["UDZO", "ULFO"] {
+    for (f, ..) in images {
         assert_eq!(fs::read(out.join(format!("tree/{f}.dmg"))).unwrap(), fs::read(src.join(format!("{f}.dmg"))).unwrap(), "{f}");
     }
 }
