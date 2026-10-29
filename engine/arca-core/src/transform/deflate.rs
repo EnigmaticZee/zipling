@@ -23,10 +23,15 @@
 //!
 //! With bit `REPLAY` (0x10) set in the version byte, each stream's two lengths are
 //! followed by how it is re-created: `u8 0` preflate (with its corrections, as
-//! above), or `u8 1 | level | window bits | memory level | strategy` for a stream
+//! above); `u8 1 | level | window bits | memory level | strategy` for a stream
 //! that stock zlib wrote, which running zlib 1.3.2 again re-creates byte for byte
-//! (no corrections). Most PNGs made on a Mac are such streams (ImageIO writes
-//! zlib level 1), and the re-run costs less than preflate's analysis.
+//! (no corrections); `u8 2 | literal runs` for an LZFSE stream (disk images,
+//! asset catalogs) that the pinned lzfse 1.0 re-creates with that setting. Most
+//! PNGs made on a Mac are zlib streams (ImageIO writes level 1), and a re-run
+//! costs less than preflate's analysis.
+//!
+//! Despite the name, the transform also takes containers whose streams are
+//! LZFSE: UDIF disk images and asset catalogs (`Assets.car`).
 
 use crate::classify::DeflateKind;
 use crate::transform::pixels;
@@ -44,10 +49,19 @@ const MAX_PLAIN_TOTAL: usize = 512 << 20;
 /// Version-byte flag: streams carry their re-creation method (see the module docs).
 const REPLAY: u8 = 0x10;
 
+/// How a stream is re-created at extraction.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Method {
+    /// preflate, from the plain text and its corrections.
+    Preflate,
+    /// Running stock zlib again with these settings (no corrections).
+    Zlib(ZlibParams),
+    /// Running the pinned lzfse with this `literal_runs` setting.
+    Lzfse(u8),
+}
+
 struct StreamRec {
-    /// Stock zlib's settings when re-running it re-creates the stream exactly
-    /// (then there are no corrections).
-    zlib: Option<ZlibParams>,
+    method: Method,
     corrections: Vec<u8>,
     plain: Vec<u8>,
     /// File ranges (offset, len) covered by this stream's compressed bytes, in order.
@@ -66,10 +80,18 @@ struct Scanner<'a> {
     budget: AtomicIsize,
 }
 
-/// A Deflate stream starting `skip` bytes into the virtual stream made of `pieces`.
+/// A Deflate stream starting `skip` bytes into the virtual stream made of `pieces`,
+/// or (with `lzfse` set to its decoded length) a whole LZFSE stream.
 struct Candidate {
     pieces: Vec<(usize, usize)>,
     skip: usize,
+    lzfse: Option<usize>,
+}
+
+impl Candidate {
+    fn deflate(pieces: Vec<(usize, usize)>, skip: usize) -> Self {
+        Candidate { pieces, skip, lzfse: None }
+    }
 }
 
 impl Scanner<'_> {
@@ -90,8 +112,12 @@ impl Scanner<'_> {
         if input.len() < MIN_STREAM {
             return None;
         }
-        let (zlib, corrections, plain, consumed) = match self.replay(virt, skip) {
-            Some((params, plain, consumed)) => (Some(params), Vec::new(), plain, consumed),
+        let replayed = match c.lzfse {
+            Some(raw_len) => Some(self.lzfse(input, raw_len)?),
+            None => self.replay(virt, skip),
+        };
+        let (method, corrections, plain, consumed) = match replayed {
+            Some((method, plain, consumed)) => (method, Vec::new(), plain, consumed),
             None => {
                 let config = self.config;
                 let res = catch_unwind(AssertUnwindSafe(|| preflate_whole_deflate_stream(input, &config))).ok()?.ok()?;
@@ -105,7 +131,7 @@ impl Scanner<'_> {
                 if consumed < MIN_STREAM || chunk.corrections.len() * 4 > consumed {
                     return None;
                 }
-                (None, chunk.corrections, plain.text().to_vec(), consumed)
+                (Method::Preflate, chunk.corrections, plain.text().to_vec(), consumed)
             }
         };
         if self.budget.fetch_sub(plain.len() as isize, Ordering::Relaxed) < plain.len() as isize {
@@ -129,14 +155,31 @@ impl Scanner<'_> {
                 break;
             }
         }
-        Some(StreamRec { zlib, corrections, plain, spans })
+        Some(StreamRec { method, corrections, plain, spans })
+    }
+
+    /// Decodes a whole LZFSE stream and checks that the pinned lzfse re-creates
+    /// it: first with macOS's current setting, then with lzfse 1.0's. Streams
+    /// under 4 KiB are skipped (both encoders use LZVN there, and theirs differ).
+    fn lzfse(&self, stream: &[u8], raw_len: usize) -> Option<(Method, Vec<u8>, usize)> {
+        let limit = self.config.plain_text_limit.min(self.budget.load(Ordering::Relaxed).max(0) as usize);
+        if raw_len < 4096 || raw_len > limit || std::env::var_os("ARCA_EXP_NO_LZFSE").is_some() {
+            return None;
+        }
+        let plain = lzfse_pinned::decode(stream, raw_len)?;
+        for runs in [lzfse_pinned::MACOS_LITERAL_RUNS, 8] {
+            if lzfse_pinned::encode(&plain, runs, stream.len()).as_deref() == Some(stream) {
+                return Some((Method::Lzfse(runs), plain, stream.len()));
+            }
+        }
+        None
     }
 
     /// Re-creates a zlib-wrapped stream (`skip` = 2: the header comes first) by
     /// running stock zlib again, when its header says level 1-5. Returns the
     /// settings, the plain text and the Deflate stream's length. Levels 6-9 are
     /// left to preflate, which rebuilds them faster than zlib re-runs them.
-    fn replay(&self, virt: &[u8], skip: usize) -> Option<(ZlibParams, Vec<u8>, usize)> {
+    fn replay(&self, virt: &[u8], skip: usize) -> Option<(Method, Vec<u8>, usize)> {
         if skip != 2 || std::env::var_os("ARCA_EXP_NO_REPLAY").is_some() {
             return None;
         }
@@ -171,7 +214,7 @@ impl Scanner<'_> {
                 for strategy in if level >= 4 { &[0u8, 1][..] } else { &[0u8][..] } {
                     let p = ZlibParams { level, window_bits, mem_level, strategy: *strategy };
                     if zlib_pinned::matches(&plain, p, target) {
-                        return Some((p, plain, consumed));
+                        return Some((Method::Zlib(p), plain, consumed));
                     }
                 }
             }
@@ -203,7 +246,7 @@ impl Scanner<'_> {
         let candidates = zip_deflate_entries(d)
             .into_iter()
             .filter(|&(start, csize)| start.checked_add(csize).is_some_and(|e| e <= d.len()))
-            .map(|(start, csize)| Candidate { pieces: vec![(start, csize)], skip: 0 })
+            .map(|(start, csize)| Candidate::deflate(vec![(start, csize)], 0))
             .collect();
         self.analyze_all(candidates)
     }
@@ -232,7 +275,7 @@ impl Scanner<'_> {
             if p >= d.len() {
                 break;
             }
-            let Some(rec) = self.analyze(&Candidate { pieces: vec![(p, d.len() - p)], skip: 0 }) else { break };
+            let Some(rec) = self.analyze(&Candidate::deflate(vec![(p, d.len() - p)], 0)) else { break };
             let consumed: usize = rec.spans.iter().map(|s| s.1).sum();
             out.push(rec);
             pos = p + consumed + 8;
@@ -265,12 +308,13 @@ impl Scanner<'_> {
             return Vec::new();
         }
         // zlib: 2-byte header, raw Deflate, 4-byte Adler-32 (left as literal).
-        self.analyze(&Candidate { pieces: idat, skip: 2 }).into_iter().collect()
+        self.analyze(&Candidate::deflate(idat, 2)).into_iter().collect()
     }
 
     /// A UDIF disk image: its `koly` trailer points at an XML property list whose
     /// `blkx` entries are base64 `mish` tables, one row per chunk of the image.
-    /// zlib chunks (most images: `hdiutil`'s default, level 1) are expanded.
+    /// zlib chunks (UDZO, `hdiutil`'s default, level 1) and LZFSE chunks (ULFO)
+    /// are expanded.
     fn scan_dmg(&self) -> Vec<StreamRec> {
         let d = self.data;
         let be32 = |b: &[u8], o: usize| b.get(o..o + 4).map_or(0, |x| u32::from_be_bytes(x.try_into().unwrap())) as u64;
@@ -289,15 +333,41 @@ impl Scanner<'_> {
             let n = be32(&mish, 200).min((mish.len().saturating_sub(204) / 40) as u64) as usize;
             for i in 0..n {
                 let c = 204 + 40 * i;
-                let (kind, off, len) = (be32(&mish, c), be64(&mish, c + 24), be64(&mish, c + 32));
+                let (kind, sectors, off, len) = (be32(&mish, c), be64(&mish, c + 16), be64(&mish, c + 24), be64(&mish, c + 32));
                 let at = fork.checked_add(base).and_then(|v| v.checked_add(off));
                 let fits = at.and_then(|a| a.checked_add(len)).is_some_and(|e| e <= d.len() as u64);
-                if kind == 0x8000_0005 && fits && len as usize >= MIN_STREAM {
-                    candidates.push(Candidate { pieces: vec![(at.unwrap() as usize, len as usize)], skip: 2 });
+                if !fits || (len as usize) < MIN_STREAM {
+                    continue;
+                }
+                let pieces = vec![(at.unwrap() as usize, len as usize)];
+                match kind {
+                    0x8000_0005 => candidates.push(Candidate::deflate(pieces, 2)),
+                    0x8000_0007 if sectors < 1 << 22 => {
+                        candidates.push(Candidate { pieces, skip: 0, lzfse: Some(sectors as usize * 512) })
+                    }
+                    _ => {}
                 }
             }
         }
         candidates.sort_unstable_by_key(|c| c.pieces[0].0);
+        self.analyze_all(candidates)
+    }
+
+    /// An asset catalog (`Assets.car`, a BOM store): its renditions hold LZFSE
+    /// streams, found by walking their block headers from `bvx` to `bvx$`.
+    fn scan_car(&self) -> Vec<StreamRec> {
+        let d = self.data;
+        let mut candidates = Vec::new();
+        let mut at = 0usize;
+        while let Some(p) = memmem::find(&d[at..], b"bvx").map(|p| p + at) {
+            match lzfse_extent(&d[p..]) {
+                Some((len, raw_len)) => {
+                    candidates.push(Candidate { pieces: vec![(p, len)], skip: 0, lzfse: Some(raw_len) });
+                    at = p + len;
+                }
+                None => at = p + 3,
+            }
+        }
         self.analyze_all(candidates)
     }
 
@@ -320,7 +390,7 @@ impl Scanner<'_> {
                 continue;
             }
             let bound = end_finder.find(&d[s..]).map_or(d.len(), |e| s + e);
-            candidates.push(Candidate { pieces: vec![(s, bound - s)], skip: 2 });
+            candidates.push(Candidate::deflate(vec![(s, bound - s)], 2));
         }
         self.analyze_all(candidates)
     }
@@ -398,6 +468,29 @@ fn zip_deflate_entries(d: &[u8]) -> Vec<(usize, usize)> {
     out.sort_unstable();
     out.dedup_by(|b, a| b.0 < a.0 + a.1);
     out
+}
+
+/// The length and decoded length of the LZFSE stream at the start of `d`, read
+/// from its block headers (v2 LZFSE, LZVN and stored blocks, then `bvx$`).
+fn lzfse_extent(d: &[u8]) -> Option<(usize, usize)> {
+    let le32 = |o: usize| d.get(o..o + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize);
+    let le64 = |o: usize| d.get(o..o + 8).map(|b| u64::from_le_bytes(b.try_into().unwrap()));
+    let (mut p, mut raw) = (0usize, 0usize);
+    loop {
+        let magic = d.get(p..p + 4)?;
+        let size = match magic {
+            b"bvx$" => return (p > 0).then_some((p + 4, raw)),
+            b"bvx2" => {
+                let (v0, v1, v2) = (le64(p + 8)?, le64(p + 16)?, le64(p + 24)?);
+                (v2 & 0xFFFF_FFFF) as usize + ((v0 >> 20) & 0xF_FFFF) as usize + ((v1 >> 40) & 0xF_FFFF) as usize
+            }
+            b"bvxn" => 12 + le32(p + 8)?,
+            b"bvx-" => 8 + le32(p + 4)?,
+            _ => return None,
+        };
+        raw = raw.checked_add(le32(p + 4)?)?;
+        p = p.checked_add(size).filter(|&e| e <= d.len())?;
+    }
 }
 
 /// Decodes standard base64, skipping whitespace; `None` on anything else.
@@ -484,6 +577,7 @@ pub fn encode(
         DeflateKind::Png => sc.scan_png(),
         DeflateKind::Pdf => sc.scan_pdf(),
         DeflateKind::Dmg => sc.scan_dmg(),
+        DeflateKind::AssetCatalog => sc.scan_car(),
     };
     if streams.is_empty() {
         return None;
@@ -538,20 +632,24 @@ pub fn encode(
     }
 
     let mut w = Writer::new();
-    let replayed = streams.iter().any(|s| s.zlib.is_some());
+    let replayed = streams.iter().any(|s| s.method != Method::Preflate);
     w.u8(if coded_pixels.is_some() { 2 } else { 1 } | if replayed { REPLAY } else { 0 });
     w.uv(streams.len() as u64);
     for s in &streams {
         w.uv(s.corrections.len() as u64);
         w.uv(s.plain.len() as u64);
         if replayed {
-            match s.zlib {
-                None => w.u8(0),
-                Some(p) => {
+            match s.method {
+                Method::Preflate => w.u8(0),
+                Method::Zlib(p) => {
                     w.u8(1);
                     for v in [p.level, p.window_bits, p.mem_level, p.strategy] {
                         w.u8(v);
                     }
+                }
+                Method::Lzfse(runs) => {
+                    w.u8(2);
+                    w.u8(runs);
                 }
             }
         }
@@ -599,22 +697,22 @@ pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
     ensure!(version == 1 || version == 2, "unknown deflate layout version");
     let n = r.len()?;
     let mut lens = Vec::with_capacity(n.min(1 << 16));
-    let mut zlib = Vec::with_capacity(n.min(1 << 16));
+    let mut methods = Vec::with_capacity(n.min(1 << 16));
     for _ in 0..n {
         let (c, p) = (r.len()?, r.len()?);
         lens.push((c, p));
-        zlib.push(match replayed.then(|| r.u8()).transpose()? {
-            None | Some(0) => None,
-            Some(1) => {
-                ensure!(c == 0, "a re-run zlib stream has no corrections");
-                Some(ZlibParams { level: r.u8()?, window_bits: r.u8()?, mem_level: r.u8()?, strategy: r.u8()? })
-            }
+        let method = match replayed.then(|| r.u8()).transpose()? {
+            None | Some(0) => Method::Preflate,
+            Some(1) => Method::Zlib(ZlibParams { level: r.u8()?, window_bits: r.u8()?, mem_level: r.u8()?, strategy: r.u8()? }),
+            Some(2) => Method::Lzfse(r.u8()?),
             Some(_) => anyhow::bail!("unknown deflate stream method"),
-        });
+        };
+        ensure!(c == 0 || method == Method::Preflate, "a re-run stream has no corrections");
+        methods.push(method);
     }
     let nops = r.len()?;
     let mut ops = Vec::with_capacity(nops.min(1 << 16));
-    // Each stream's length: what a zlib re-run must produce.
+    // Each stream's length: what a re-run must produce.
     let mut stream_len = vec![0u64; n];
     for _ in 0..nops {
         let v = r.uv()?;
@@ -654,13 +752,18 @@ pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
     let recreated: Vec<Vec<u8>> = (0..n)
         .into_par_iter()
         .with_max_len(1)
-        .map(|i| match zlib[i] {
-            Some(params) => {
-                // Bounded by the stored file's size, so a damaged layout can't ask for more.
+        .map(|i| match methods[i] {
+            // Re-run lengths are bounded by the stored file's size, so a damaged
+            // layout can't ask for more.
+            Method::Zlib(params) => {
                 ensure!(stream_len[i] <= size, "stream longer than its file");
                 zlib_pinned::deflate(plains[i], params, stream_len[i] as usize).ok_or_else(|| anyhow::anyhow!("zlib re-run gave a different stream"))
             }
-            None => catch_unwind(AssertUnwindSafe(|| recreate_whole_deflate_stream(plains[i], corrections[i])))
+            Method::Lzfse(runs) => {
+                ensure!(stream_len[i] <= size, "stream longer than its file");
+                lzfse_pinned::encode(plains[i], runs, stream_len[i] as usize).ok_or_else(|| anyhow::anyhow!("lzfse re-run gave a different stream"))
+            }
+            Method::Preflate => catch_unwind(AssertUnwindSafe(|| recreate_whole_deflate_stream(plains[i], corrections[i])))
                 .map_err(|_| anyhow::anyhow!("preflate panicked"))?
                 .map_err(|e| anyhow::anyhow!("deflate recreate failed: {e:?}")),
         })
@@ -751,6 +854,25 @@ mod tests {
                 assert_eq!(decode(&e.stored, data.len() as u64).unwrap(), data, "level {level}");
             }
         }
+    }
+
+    /// A made-up asset catalog: LZFSE streams written with both settings between
+    /// other bytes, one of them too short to bother with.
+    #[test]
+    fn lzfse_streams_are_re_run() {
+        let image = |seed: u32, n: usize| -> Vec<u8> { (0..n as u32).map(|i| ((i / 7 + seed) % 13) as u8 * 17 ^ (i % 5) as u8).collect() };
+        let mut data = b"BOMStore".to_vec();
+        data.extend_from_slice(&[0x5A; 300]);
+        for (runs, n) in [(3u8, 200_000), (8, 90_000), (3, 1000)] {
+            let z = lzfse_pinned::compress(&image(n as u32, n), runs);
+            assert!(z.starts_with(b"bvx"));
+            data.extend_from_slice(&z);
+            data.extend_from_slice(b"MLEC rendition header bytes");
+        }
+        let e = encode(&data, DeflateKind::AssetCatalog, 256, 128, false, None).unwrap();
+        assert!(e.stored[0] & REPLAY != 0);
+        assert!(e.stored.len() > 290_000, "both big streams expanded");
+        assert_eq!(decode(&e.stored, data.len() as u64).unwrap(), data);
     }
 
     #[test]

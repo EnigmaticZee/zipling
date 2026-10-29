@@ -23,6 +23,7 @@ liblzma-sys = { version = "0.4", features = ["static"] }
 lzma-sdk = { path = "../vendor/lzma-sdk" }
 libbsc = { path = "../vendor/libbsc" }
 zlib-pinned = { path = "../vendor/zlib" }
+lzfse-pinned = { path = "../vendor/lzfse" }
 memchr = "2"
 memmap2 = "0.9"
 ppmd-rust = "1.5"

@@ -1,0 +1,21 @@
+/* Arca: lzfse's global symbols get an arca_ prefix so they can't clash with
+ * another copy of lzfse in the app. */
+#define fse_init_decoder_table arca_fse_init_decoder_table
+#define fse_init_encoder_table arca_fse_init_encoder_table
+#define fse_init_value_decoder_table arca_fse_init_value_decoder_table
+#define fse_normalize_freq arca_fse_normalize_freq
+#define lzfse_decode arca_lzfse_decode_
+#define lzfse_decode_buffer arca_lzfse_decode_buffer
+#define lzfse_decode_buffer_with_scratch arca_lzfse_decode_buffer_with_scratch
+#define lzfse_decode_scratch_size arca_lzfse_decode_scratch_size
+#define lzfse_encode_base arca_lzfse_encode_base
+#define lzfse_encode_buffer arca_lzfse_encode_buffer
+#define lzfse_encode_buffer_with_scratch arca_lzfse_encode_buffer_with_scratch
+#define lzfse_encode_finish arca_lzfse_encode_finish
+#define lzfse_encode_init arca_lzfse_encode_init
+#define lzfse_encode_scratch_size arca_lzfse_encode_scratch_size
+#define lzfse_encode_translate arca_lzfse_encode_translate
+#define lzvn_decode arca_lzvn_decode
+#define lzvn_encode arca_lzvn_encode
+#define lzvn_encode_buffer arca_lzvn_encode_buffer
+#define lzvn_encode_scratch_size arca_lzvn_encode_scratch_size
