@@ -624,6 +624,64 @@ Ideas queued, with why:
   the saved folder). The engine could set it through the descriptor it already
   holds. Needs an optional field in the extract request (FFI stays 9 functions).
 
+### Long-range pre-pass before LZMA (dead end on size)
+
+Goal: take the code lane's repetition (static libraries, 46:1) off LZMA fb 273,
+which spends ~31 s on one 64 MiB block. Prototype `examples/lrp.rs`: gear rolling
+hash over 64 bytes, content-defined anchors (~1 in 32), a 4M-slot table, matches
+verified and extended both ways, kept when at least MIN bytes; references stored
+as three columns (literal-run lengths, match lengths, distances with 0 = repeat),
+each LZMA-coded; the literals LZMA fb 273 coded. Round trip checked.
+
+Saved folder's first code block (67.1 MB), one thread, CPU:
+
+| | Size | CPU |
+|---|---:|---:|
+| LZMA fb 273 alone | 1.391 MB | 33.7 s |
+| pre-pass, MIN 256 (95,729 refs cover 52.8%) | 1.276 + refs 0.295 = **1.571 MB** | **17.2 s** |
+| pre-pass, MIN 1024 | 1.398 MB | 31.9 s |
+| pre-pass, MIN 4096 | 1.397 MB | 32.2 s |
+| pre-pass, MIN 16384 | 1.394 MB | 32.9 s |
+
+Twice as fast at MIN 256, but 13% bigger: LZMA codes the same matches in ~1.2
+bytes each (repeat distances, context-coded lengths), the reference columns in
+~3.1. Even free references would only reach 1.276 MB, and the repeats are mostly
+256–1,024 bytes (whole duplicate objects are already removed by chunk dedup), so
+longer minimums cover 1–2%. Fails "at least as small"; FreeArc's REP (512-byte
+minimum) has the same trade-off.
+
+### Literature survey (background agent, 2026-10-28)
+
+Ranked leads from 2024–26 papers and projects; each still needs a test here:
+
+1. **BWT (libbsc + libsais, Apache-2.0) instead of PPMd for text.** LTCB enwik9:
+   bsc 163.9 MB at 23 ns/B compress, 8 ns/B decompress; 7-Zip PPMd 179.0 MB at
+   ~500 ns/B both ways. Blocks decode in parallel: the route to Ultra extracting
+   on all cores. Needs the source (download: ask).
+2. **Deflate replay before preflate**: when a stream is exactly zlib (level,
+   memLevel, window), store those bytes and re-run the encoder. Preflate's author
+   calls preflate "quite slow"; brute-force zlib matching (precomp, reflate) is
+   50–500% faster on small streams. First check which encoders made our PNGs.
+3. **Fast LZMA2** radix match finder (BSD-3): 20–100% faster, 1–5% larger. Known.
+4. **LZRAVEN/LZMESH**: tested above (dead end, needs macOS 27).
+5. **Similarity grouping** of near-duplicate files into the same block (compsort:
+   −11.5% on an initrd with xz). MinHash over the CDC chunk hashes already computed.
+6. **Mach-O**: code-signature page hashes (SHA-256 per 4 KB page, 0.8–1.3% of a
+   binary, incompressible) can be recomputed at extraction and checked at pack
+   time; per-slice filters for universal binaries; lc/lp for 4-byte code.
+7. **Pixel codec**: JPEG XL's gain from e2 to e7 is learned context trees and
+   per-channel predictor choice; a small tree keeps decoding fast.
+8. **JPEG**: nothing beats Lepton (2023: Lepton 42 ms encode, 22 ms decode, 19.5%;
+   JPEG XL transcode 53 / 68 ms, 14.3%). Our encode+verify is twice the decode
+   because `encode_lepton_verify` decodes everything again.
+9. **OpenZL** (Meta, BSD): format-aware, fits CSV/columnar data; format unstable.
+10. **GPU**: no Metal compression code exists; published GPU codecs are CUDA
+    (DietGPU rANS, GPULZ, Recoil). Arca's hot loops are serial context models;
+    only tile-parallel pixel residuals or BWT suffix sorting could map to a GPU.
+11. Approximate LZ77 via string synchronizing sets (arXiv 2609.30193): 12–19x
+    faster parsing, no code published.
+12. Extraction: `clonefile()` for duplicate files on APFS.
+
 ## Engine ZIP reader and writer
 
 **Reader** (`arca-core/src/zip.rs`, CLI `arca unzip` / `arca ziptest`): parses the
@@ -669,4 +727,6 @@ with `lsregister -u`.
 
 ## Dead ends
 
-(none yet)
+- Long-range pre-pass before LZMA (2x faster on code, 13% bigger): see Deep research.
+- LZRAVEN (needs macOS 27), Apple LZMA, QoS classes, narrowing preflate
+  candidates, 32 MiB binary blocks: see their sections.
