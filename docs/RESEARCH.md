@@ -1047,6 +1047,11 @@ with `lsregister -u`.
 
 - Long-range pre-pass before LZMA (2x faster on code, 13% bigger): see Deep research.
 - Multi-symbol size classes inside Lepton: +0.63% for ~25% less coder work.
+- ARM64 code in byte planes (57.6 MB of the apps' `__text`): LZMA fb 273 13.15 →
+  17.79 MB, bsc 17.26 → 22.03 MB. LZMA stays best on raw machine code.
+- Code-signature page hashes: only 0.19 MB in 99.5 MB of app binaries (16 KB
+  pages on current macOS), ~0.4% of the compressed apps set. Kept as a small
+  idea, not a lever.
 - GPU: every heavy stage is a serial adaptive coder; the data-parallel 2–5%
   is not worth moving (see Deep research).
 - Hint-guided LZMA (the pre-pass's repeats taken as single matches): +1.3–10%
