@@ -661,6 +661,12 @@ path needs a zlib whose output never changes: macOS's libz could change with an
 OS update, so it would need a pinned copy (zlib source is not on this Mac; a
 download). Worth ~7 s of Default's CPU (~0.8 s).
 
+**Level-9 PNGs skipped at Default.** Default's search limit (256) makes preflate
+reject almost every PNG from zlib levels 7-9 after a full analysis. The zlib
+header's FLEVEL (3 for levels 7-9) now skips them up front when the limit is
+under 1024. Saved folder, three alternating runs: PNG analysis 11.0 → 6.3 s of
+CPU, pack CPU 63.2 → 57.9 s, size 245.48 → 245.47 MiB; wall 9.1-9.2 → 8.8-9.2 s.
+
 **The pixel codec at Default** (`ARCA_EXP_PIXELS=1`): 245.48 → **233.57 MiB**
 (−4.9%) and make 9.4 → 7.8–8.2 s (the codec replaces zstd-12 on 536 MB of
 pixels), but extraction 2.74 → 3.0–3.3 s, behind Zipgeist's 3.0 s. Extraction is
@@ -1054,6 +1060,8 @@ with `lsregister -u`.
   apart), but indexing the preload costs as much as coding it: 64 MiB Mach-O
   block, 16 MiB segments, 32 MiB window: 10.538 MB, 42.7 s CPU, 12.3 s wall,
   against 10.536 MB, 17.3 s CPU, 12.2 s wall with the two-thread match finder.
+- Hash-chain match finders on Mach-O (fb 32, one thread): hc4 10.800 MB / 18.7 s,
+  hc5 11.005 MB / 18.4 s against bt4 10.529 MB / 22.6 s: +2.6-4.5% for 17-19% less CPU.
 - ARM64 code in byte planes (57.6 MB of the apps' `__text`): LZMA fb 273 13.15 →
   17.79 MB, bsc 17.26 → 22.03 MB. LZMA stays best on raw machine code.
 - Code-signature page hashes: only 0.19 MB in 99.5 MB of app binaries (16 KB
