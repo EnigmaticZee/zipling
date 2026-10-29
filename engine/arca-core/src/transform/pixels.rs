@@ -57,14 +57,15 @@ static TARGETS: [[i16; 16]; 16] = {
 /// almost everything on that symbol, so every symbol keeps a frequency >= 1.
 #[derive(Clone)]
 struct Cdf16 {
-    c: [u16; 16],
+    /// Cumulative frequencies; entry 16 is always SCALE, so `hi` needs no test.
+    c: [u16; 17],
     /// Symbols seen, for the warm-up: adapt fast at first, then settle.
     n: u16,
 }
 
 impl Cdf16 {
     fn new() -> Self {
-        let mut c = [0u16; 16];
+        let mut c = [0u16; 17];
         for (i, v) in c.iter_mut().enumerate() {
             *v = (i as u32 * SCALE / 16) as u16;
         }
@@ -73,12 +74,12 @@ impl Cdf16 {
 
     #[inline]
     fn lo(&self, s: usize) -> u32 {
-        self.c[s] as u32
+        self.c[s & 15] as u32
     }
 
     #[inline]
     fn hi(&self, s: usize) -> u32 {
-        if s == 15 { SCALE } else { self.c[s + 1] as u32 }
+        self.c[(s & 15) + 1] as u32
     }
 
     /// The symbol whose interval holds `slot`: how many of entries 1..=15 are at
@@ -86,7 +87,7 @@ impl Cdf16 {
     #[inline(always)]
     fn find(&self, slot: u32) -> usize {
         #[cfg(target_arch = "aarch64")]
-        // SAFETY: NEON is part of every aarch64 target; `c` is 16 u16s.
+        // SAFETY: NEON is part of every aarch64 target; `c` has at least 16 u16s.
         unsafe {
             use std::arch::aarch64::*;
             let v = vdupq_n_u16(slot as u16);
@@ -158,7 +159,8 @@ impl Bin {
     #[inline]
     fn update(&mut self, bit: bool) {
         let p = self.0 as i32;
-        self.0 = if bit { (p - (p >> 5)) as u16 } else { (p + ((SCALE as i32 - p) >> 5)) as u16 };
+        let (down, up) = (p - (p >> 5), p + ((SCALE as i32 - p) >> 5));
+        self.0 = if bit { down } else { up } as u16;
     }
 }
 
@@ -185,7 +187,7 @@ impl Models {
 
     #[inline(always)]
     fn top(&mut self, c: usize, k: u32, act: usize) -> &mut Bin {
-        &mut self.top[top_index(c, k, act)]
+        &mut self.top[top_index(c, k & 7, act)]
     }
 }
 
@@ -212,15 +214,11 @@ fn untokenize(tok: usize, rem: u32) -> i32 {
     if tok >= 8 { -mag } else { mag }
 }
 
+/// The median of a, b and a + b - c (LOCO-I's edge detector), as a clamp:
+/// branch-free, which matters on photos where every outcome is likely.
 #[inline]
 fn med(a: i32, b: i32, c: i32) -> i32 {
-    if c >= a.max(b) {
-        a.min(b)
-    } else if c <= a.min(b) {
-        a.max(b)
-    } else {
-        a + b - c
-    }
+    (a + b - c).clamp(a.min(b), a.max(b))
 }
 
 fn bucket(v: i32) -> u8 {
@@ -418,14 +416,14 @@ fn encode_ch<const CH: usize>(px: &[u8], w: usize, h: usize) -> Vec<u8> {
 
 /// Refills a state that fell below RANS_L with the next 16-bit word. No branch:
 /// decoding is bound by instruction count, and whether a refill is due is a
-/// coin toss. Past the end of the data the words read as 0.
+/// coin toss. A valid stream never reads past its end (each state finishes at
+/// RANS_L); a damaged one rereads its last word and decodes to garbage.
 #[inline(always)]
 fn renorm(x: &mut u32, rans: &[u8], rp: &mut usize) {
     let need = (*x < RANS_L) as u32;
-    let w = match rans.get(*rp..*rp + 2) {
-        Some(b) => u16::from_le_bytes([b[0], b[1]]) as u32,
-        None => 0,
-    };
+    // rans holds at least the two 4-byte states, so this stays inside it.
+    let at = (*rp).min(rans.len() - 2);
+    let w = u16::from_le_bytes([rans[at], rans[at + 1]]) as u32;
     *x = (*x << (need * 16)) | (w & need.wrapping_neg());
     *rp += 2 * need as usize;
 }
@@ -435,7 +433,9 @@ fn decode_bin(x: &mut u32, rans: &[u8], rp: &mut usize, b: &mut Bin) -> bool {
     let f0 = b.f0();
     let slot = *x & (SCALE - 1);
     let bit = slot >= f0;
-    *x = if bit { (SCALE - f0) * (*x >> SCALE_BITS) + slot - f0 } else { f0 * (*x >> SCALE_BITS) + slot };
+    // Selects rather than a branch: the bit is as unpredictable as it is cheap.
+    let (start, freq) = if bit { (f0, SCALE - f0) } else { (0, f0) };
+    *x = freq * (*x >> SCALE_BITS) + slot - start;
     renorm(x, rans, rp);
     b.update(bit);
     bit
@@ -453,76 +453,111 @@ pub fn decode(src: &[u8], w: usize, h: usize, ch: usize) -> Result<Vec<u8>> {
     }
 }
 
-/// One decoder per channel count, so the channel loops unroll: decoding speed
+/// One decoder per channel count, with the channels written out: decoding speed
 /// is set by the number of instructions per pixel.
+// The last channel's green residual is set and never read.
+#[allow(unused_assignments)]
+#[inline(never)]
 fn decode_ch<const CH: usize>(src: &[u8], w: usize, h: usize) -> Result<Vec<u8>> {
     ensure!(src.len() >= 8, "pixel data truncated");
     let rans_len = u32::from_le_bytes(src[0..4].try_into().unwrap()) as usize;
     ensure!(rans_len >= 8 && 4 + rans_len <= src.len(), "pixel data truncated");
     let rans = &src[4..4 + rans_len];
     let mut bits = BitReader { src: &src[4 + rans_len..], pos: 0, acc: 0, n: 0 };
-    let mut xs = [u32::from_le_bytes(rans[0..4].try_into().unwrap()), u32::from_le_bytes(rans[4..8].try_into().unwrap())];
-    // Which state the next symbol uses.
-    let mut si = 0usize;
+    // `x` decodes the next symbol and `y` the one after; symbols alternate
+    // between the two states, so they swap after each (and stay in registers).
+    let mut x = u32::from_le_bytes(rans[0..4].try_into().unwrap());
+    let mut y = u32::from_le_bytes(rans[4..8].try_into().unwrap());
     let mut rp = 8usize;
     let lut = act_lut();
     let mut m = Models::new();
     let mut p = Padded::<CH>::new(w, h);
     let mut prev = [0i32; 4];
     let mut zrow = vec![false; w + 2];
-    for y in 0..h {
+    // Runs `$f` for each channel in coding order, with the channel a constant.
+    macro_rules! channels {
+        ($f:ident) => {
+            match CH {
+                1 => $f!(0),
+                2 => {
+                    $f!(0);
+                    $f!(1);
+                }
+                3 => {
+                    $f!(1);
+                    $f!(0);
+                    $f!(2);
+                }
+                _ => {
+                    $f!(1);
+                    $f!(0);
+                    $f!(2);
+                    $f!(3);
+                }
+            }
+        };
+    }
+    for row in 0..h {
         let mut zleft = false;
         for x0 in 0..w {
-            let i = p.at(x0, y);
+            let i = p.at(x0, row);
             let z = &mut m.zero[zleft as usize + 2 * zrow[x0 + 1] as usize + 4 * zrow[x0 + 2] as usize];
-            let any = decode_bin(&mut xs[si & 1], rans, &mut rp, z);
-            si += 1;
+            let any = decode_bin(&mut x, rans, &mut rp, z);
+            std::mem::swap(&mut x, &mut y);
             zleft = !any;
             zrow[x0 + 1] = !any;
             if !any {
                 // Every residual is zero: each channel is its prediction.
-                for c in order::<CH>() {
-                    let (wv, nv, nw, _) = p.around(i, c);
-                    p.buf[i + c] = med(wv, nv, nw) as u8;
+                macro_rules! flat {
+                    ($c:expr) => {{
+                        let (wv, nv, nw, _) = p.around(i, $c);
+                        p.buf[i + $c] = med(wv, nv, nw) as u8;
+                    }};
                 }
+                channels!(flat);
                 prev = [0; 4];
                 continue;
             }
             let mut g_res = 0;
-            for c in order::<CH>() {
-                let (pred, act, c2) = p.context(i, c, prev[c], &lut);
-                let c2 = c2 + 3 * if CH >= 3 && c != 1 { gclass(g_res) } else { 0 };
-                let model = m.tok(c, act, c2);
-                let x = &mut xs[si & 1];
-                si += 1;
-                let slot = *x & (SCALE - 1);
-                let tok = model.find(slot);
-                let (lo, hi) = (model.lo(tok), model.hi(tok));
-                *x = (hi - lo) * (*x >> SCALE_BITS) + slot - lo;
-                renorm(x, rans, &mut rp);
-                model.update(tok);
-                let k = CLASS[tok & 15];
-                let rem = if k > 0 && tok != 15 {
-                    let top = decode_bin(&mut xs[si & 1], rans, &mut rp, m.top(c, k, act));
-                    si += 1;
-                    ((top as u32) << (k - 1)) | if k > 1 { bits.get(k - 1) } else { 0 }
-                } else {
-                    0
-                };
-                let coded = untokenize(tok, rem);
-                prev[c] = (coded as i8 as i32).abs().min(64);
-                let r = if CH >= 3 && (c == 0 || c == 2) { (coded + g_res) as i8 as i32 } else { coded };
-                if CH >= 3 && c == 1 {
-                    g_res = coded;
-                }
-                p.buf[i + c] = (pred + r) as u8;
+            macro_rules! coded {
+                ($c:expr) => {{
+                    let c: usize = $c;
+                    let (pred, act, c2) = p.context(i, c, prev[c], &lut);
+                    // Clamped (a no-op) so the table indexes need no bounds checks.
+                    let act = act.min(ACT - 1);
+                    let c2 = c2 + 3 * if CH >= 3 && c != 1 { gclass(g_res) } else { 0 };
+                    let model = m.tok(c, act, c2);
+                    let slot = x & (SCALE - 1);
+                    let tok = model.find(slot) & 15;
+                    let (lo, hi) = (model.lo(tok), model.hi(tok));
+                    x = (hi - lo) * (x >> SCALE_BITS) + slot - lo;
+                    renorm(&mut x, rans, &mut rp);
+                    std::mem::swap(&mut x, &mut y);
+                    model.update(tok);
+                    let k = CLASS[tok];
+                    let rem = if k > 0 && tok != 15 {
+                        let top = decode_bin(&mut x, rans, &mut rp, m.top(c, k, act));
+                        std::mem::swap(&mut x, &mut y);
+                        ((top as u32) << (k - 1)) | if k > 1 { bits.get(k - 1) } else { 0 }
+                    } else {
+                        0
+                    };
+                    let coded = untokenize(tok, rem);
+                    prev[c] = (coded as i8 as i32).abs().min(64);
+                    let r = if CH >= 3 && (c == 0 || c == 2) { (coded + g_res) as i8 as i32 } else { coded };
+                    if CH >= 3 && c == 1 {
+                        g_res = coded;
+                    }
+                    p.buf[i + c] = (pred + r) as u8;
+                }};
             }
+            channels!(coded);
         }
     }
     let mut px = vec![0u8; w * h * CH];
-    for y in 0..h {
-        let i = p.at(0, y);
-        px[y * w * CH..(y + 1) * w * CH].copy_from_slice(&p.buf[i..i + w * CH]);
+    for row in 0..h {
+        let i = p.at(0, row);
+        px[row * w * CH..(row + 1) * w * CH].copy_from_slice(&p.buf[i..i + w * CH]);
     }
     Ok(px)
 }

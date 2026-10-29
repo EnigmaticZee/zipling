@@ -112,6 +112,12 @@ impl PackOptions {
                 deflate_steps_per_byte: 128,
                 png_pixels: matches!(level, Level::Max | Level::Ultra)
                     || std::env::var_os("ARCA_EXP_PIXELS").is_some(),
+                // Experiment for Default: keep the codec for the images where it
+                // saves the most per pixel decoded (see RESEARCH.md).
+                png_pixels_per_byte_saved: match level {
+                    Level::Balanced => std::env::var("ARCA_EXP_PIXEL_GAIN").ok().and_then(|v| v.parse().ok()).unwrap_or(50),
+                    _ => 0,
+                },
             },
             dedup: true,
             probe: matches!(level, Level::Fast | Level::Balanced),

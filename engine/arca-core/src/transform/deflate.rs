@@ -328,14 +328,15 @@ fn png_geometry(d: &[u8]) -> Option<(usize, usize, usize)> {
 /// `self_check` asks preflate to re-create each stream as it goes. Callers that
 /// verify the whole transformed file afterwards (the default) turn it off: one
 /// round trip proves the same thing at a third less work. With `pixels`, a PNG's
-/// pixels are coded with the pixel codec when that beats compressing its rows.
+/// pixels are coded with the pixel codec when that beats compressing its rows
+/// (and, when the value is not 0, saves a byte per that many pixel bytes).
 pub fn encode(
     data: &[u8],
     kind: DeflateKind,
     max_chain: u32,
     steps_per_byte: u32,
     self_check: bool,
-    pixels: bool,
+    pixels: Option<u32>,
 ) -> Option<Encoded> {
     let sc = Scanner {
         data,
@@ -385,9 +386,10 @@ pub fn encode(
 
     // Pixel mode: when the pixel codec's output is under 0.9x what zstd-1 makes of
     // the rows, LZMA would not beat it either (on the saved folder this choice is
-    // within 1% of picking the better of the codec and xz-9 per image).
+    // within 1% of picking the better of the codec and xz-9 per image). 0.9x
+    // zstd-1 is also close to zstd-12 (median 0.88x), so it measures the saving.
     let mut coded_pixels = None;
-    if pixels && kind == DeflateKind::Png && streams.len() == 1 {
+    if let (Some(per_byte), DeflateKind::Png, 1) = (pixels, kind, streams.len()) {
         if let Some((pw, ph, ch)) = png_geometry(data) {
             let rows = &streams[0].plain;
             if let Some((types, px)) = pixels::unfilter(rows, pw, ph, ch) {
@@ -395,8 +397,10 @@ pub fn encode(
                     let _p = crate::prof::span("fwd.pixels", px.len() as u64);
                     pixels::encode(&px, pw, ph, ch)
                 };
-                let lz = zstd::bulk::compress(rows, 1).map_or(usize::MAX, |c| c.len());
-                if coded.len() as u64 * 10 < lz as u64 * 9 {
+                let lz = zstd::bulk::compress(rows, 1).map_or(usize::MAX, |c| c.len()) as i64;
+                // Bytes saved against 0.9x zstd-1, in tenths.
+                let saved10 = lz * 9 - coded.len() as i64 * 10;
+                if saved10 > 0 && (per_byte == 0 || saved10 * per_byte as i64 >= px.len() as i64 * 10) {
                     coded_pixels = Some((pw, ph, ch, types, coded));
                 }
             }
@@ -477,7 +481,10 @@ pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
         let corrections = vec![r.raw(lens[0].0)?];
         let literal = r.raw(lit_len)?;
         let types = r.raw(ph)?;
-        let px = pixels::decode(r.raw(coded_len)?, pw, ph, ch)?;
+        let px = {
+            let _p = crate::prof::span("inverse.pixels", (pw * ph * ch) as u64);
+            pixels::decode(r.raw(coded_len)?, pw, ph, ch)?
+        };
         rebuilt_rows = pixels::refilter(types, &px, pw, ph, ch)?;
         (corrections, literal, vec![&rebuilt_rows[..]])
     } else {

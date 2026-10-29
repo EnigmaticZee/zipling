@@ -20,7 +20,7 @@ fn main() {
         let data = std::fs::read(path).unwrap();
         let Class::DeflateContainer(kind) = classify(&data[..data.len().min(4096)]) else { continue };
         let t = cpu();
-        let out = deflate::encode(&data, kind, chain, 128, false, false).map(|e| e.stored);
+        let out = deflate::encode(&data, kind, chain, 128, false, None).map(|e| e.stored);
         let tf = cpu() - t;
         let e = g.entry(group.to_owned()).or_default();
         e.0 += 1;
