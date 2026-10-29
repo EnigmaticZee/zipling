@@ -1148,6 +1148,22 @@ ULFO image of the apps set (97.1 MB), round trips identical:
 | Default | 87.84 MB | **75.09 MB (−14.5%)** | 2.8 s | 0.41 s |
 | Max | 86.96 MB | **59.25 MB (−31.9%)** | 13.2 s | 0.92 s |
 
+**What expanding DMGs costs (user's question, 2026-10-29).** The dmgs set with
+the transforms (on) and with `--no-transforms` (off: the DMG bytes compressed as
+they are, which is what other archivers do); busy Mac, two alternating runs each,
+round trips identical:
+
+| Level | On | Off |
+|---|---|---|
+| Default | 557.0 MB, 7.6-7.7 s, extract 1.3 s | 619.7 MB, 0.74-0.77 s, extract 0.22 s |
+| Max | 450.6 MB, 50.4-51.2 s, extract 4.5-4.7 s | 610.6 MB, 11.3 s, extract 1.2 s |
+
+Expanding costs ~10x the time at Default and ~4.5x at Max, for 10% and 26%
+smaller. The time goes into compressing the expanded data (2-3x the DMG bytes),
+not into re-creating the chunks. Off, compressing already-compressed bytes saves
+almost nothing (−0.1% / −1.5%), so no archiver that stores DMGs as they are can
+get near the "on" sizes.
+
 ### zlib levels 8-9: an exact, faster match search (in the engine, 2026-10-29)
 
 The real-world sets brought app installers made with `hdiutil -imagekey
