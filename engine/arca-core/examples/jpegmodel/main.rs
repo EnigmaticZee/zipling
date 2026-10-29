@@ -9,6 +9,7 @@ mod codec;
 mod modelf;
 mod modelg;
 mod modelm;
+mod fast;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -658,47 +659,84 @@ struct BW {
     n: u32,
 }
 impl BW {
+    /// Appends `l` bits of `v`; whole bytes leave 32 bits at a time, 0xFF bytes stuffed.
+    #[inline(always)]
     fn put(&mut self, v: u32, l: u32) {
-        if l == 0 { return; }
         self.acc = (self.acc << l) | (v as u64 & ((1u64 << l) - 1));
         self.n += l;
-        while self.n >= 8 {
-            let b = (self.acc >> (self.n - 8)) as u8;
-            self.out.push(b);
-            if b == 0xFF { self.out.push(0); }
-            self.n -= 8;
+        if self.n >= 32 {
+            self.n -= 32;
+            let w = (self.acc >> self.n) as u32;
+            let bytes = w.to_be_bytes();
+            // any 0xFF byte? (haszero trick on the inverted word)
+            let inv = !w;
+            if (inv.wrapping_sub(0x0101_0101) & !inv & 0x8080_8080) == 0 {
+                self.out.extend_from_slice(&bytes);
+            } else {
+                for b in bytes {
+                    self.out.push(b);
+                    if b == 0xFF { self.out.push(0); }
+                }
+            }
         }
     }
     fn pad(&mut self) {
-        if self.n > 0 { let k = 8 - self.n; self.put((1 << k) - 1, k); }
+        // flush whole bytes, then pad the last partial byte with ones
+        while self.n >= 8 {
+            self.n -= 8;
+            let b = (self.acc >> self.n) as u8;
+            self.out.push(b);
+            if b == 0xFF { self.out.push(0); }
+        }
+        if self.n > 0 {
+            let k = 8 - self.n;
+            let b = (((self.acc << k) | ((1 << k) - 1)) & 0xFF) as u8;
+            self.out.push(b);
+            if b == 0xFF { self.out.push(0); }
+            self.n = 0;
+        }
+        self.acc = 0;
     }
 }
 
+#[inline(always)]
 fn enc_block(w: &mut BW, blk: &[i16; 64], pred: &mut i32, dct: &[(u32, u32); 256], act: &[(u32, u32); 256]) {
-    let mag = |v: i32| -> (u32, u32) {
+    #[inline(always)]
+    fn mag(v: i32) -> (u32, u32) {
         let a = v.unsigned_abs();
         let s = 32 - a.leading_zeros();
-        let bits = if v < 0 { (v - 1) as u32 } else { v as u32 };
-        (s, bits & ((1u32 << s) - 1).max(0))
-    };
+        // negative values send v - 1 in s bits
+        (s, (v + (v >> 31)) as u32 & ((1u32 << s) - 1))
+    }
     let diff = blk[0] as i32 - *pred;
     *pred = blk[0] as i32;
     let (s, b) = mag(diff);
     let (c, l) = dct[s as usize];
-    w.put(c, l);
-    w.put(b, s);
-    let mut run = 0;
+    w.put((c << s) | b, l + s);
+    // walk the nonzero positions via a bitmask
+    let mut nzmask = 0u64;
     for k in 1..64 {
-        let v = blk[k] as i32;
-        if v == 0 { run += 1; continue; }
-        while run > 15 { let (c, l) = act[0xF0]; w.put(c, l); run -= 16; }
-        let (s, b) = mag(v);
-        let (c, l) = act[((run << 4) | s) as usize];
-        w.put(c, l);
-        w.put(b, s);
-        run = 0;
+        nzmask |= ((blk[k] != 0) as u64) << k;
     }
-    if run > 0 { let (c, l) = act[0]; w.put(c, l); }
+    let mut last = 0u32;
+    while nzmask != 0 {
+        let k = nzmask.trailing_zeros();
+        nzmask &= nzmask - 1;
+        let mut run = k - last - 1;
+        while run > 15 {
+            let (c, l) = act[0xF0];
+            w.put(c, l);
+            run -= 16;
+        }
+        let (s, b) = mag(blk[k as usize] as i32);
+        let (c, l) = act[((run << 4) | s) as usize];
+        w.put((c << s) | b, l + s);
+        last = k;
+    }
+    if last < 63 {
+        let (c, l) = act[0];
+        w.put(c, l);
+    }
 }
 
 fn reencode(img: &Image, sc: &Scan) -> Vec<u8> {
@@ -803,6 +841,56 @@ fn repeats(files: &[std::path::PathBuf]) {
     println!("blocks {blocks}, with AC {nzb}; AC repeats an earlier block: {rep} ({:.1}% of AC blocks), DC equal too {rep_dc}; their nonzeros {:.1}% of all", 100.0 * rep as f64 / nzb as f64, 100.0 * nz_rep as f64 / nz_all as f64);
 }
 
+fn run_fast(files: &[std::path::PathBuf]) {
+    use std::time::Instant;
+    let (mut inb, mut outb, mut side, mut raw, mut ra) = (0u64, 0u64, 0u64, 0u64, 0u64);
+    let (mut te, mut td, mut th, mut ok, mut n) = (0f64, 0f64, 0f64, 0, 0);
+    for f in files {
+        let d = fs::read(f).unwrap();
+        let Ok(img) = read_jpeg(&d) else { continue };
+        n += 1;
+        inb += img.scans.iter().map(|s| (s.end - s.start) as u64).sum::<u64>();
+        let mut coefs: Vec<Vec<[i16; 64]>> = img.comps.iter().map(|c| c.coef.clone()).collect();
+        let t = Instant::now();
+        let bytes = {
+            let mut planes: Vec<fast::Plane> = coefs.iter_mut().zip(&img.comps).map(|(cf, c)| fast::Plane { coef: cf, bw: c.bw, bh: c.bh }).collect();
+            fast::encode(&mut planes)
+        };
+        te += t.elapsed().as_secs_f64();
+        outb += bytes.len() as u64;
+        let (a, b, c) = fast::sizes(&bytes);
+        side += a as u64; raw += b as u64; ra += c as u64;
+        let mut dec: Vec<Vec<[i16; 64]>> = img.comps.iter().map(|c| vec![[0i16; 64]; c.coef.len()]).collect();
+        let t = Instant::now();
+        let reps = if std::env::var_os("NO_DECODE").is_some() { 0 } else if std::env::var_os("DECODE3").is_some() { 3 } else { 1 };
+        for _ in 1..reps {
+            let mut planes: Vec<fast::Plane> = dec.iter_mut().zip(&img.comps).map(|(cf, c)| fast::Plane { coef: cf, bw: c.bw, bh: c.bh }).collect();
+            fast::decode(&bytes, &mut planes);
+        }
+        if reps > 0 {
+            let mut planes: Vec<fast::Plane> = dec.iter_mut().zip(&img.comps).map(|(cf, c)| fast::Plane { coef: cf, bw: c.bw, bh: c.bh }).collect();
+            fast::decode(&bytes, &mut planes);
+        }
+        td += t.elapsed().as_secs_f64();
+        let t = Instant::now();
+        let img2 = Image { comps: img.comps.iter().zip(dec).map(|(c, cf)| Comp { id: c.id, tq: c.tq, h: c.h, v: c.v, bw: c.bw, bh: c.bh, coef: cf }).collect(),
+            scans: vec![], dc: img.dc.clone(), ac: img.ac.clone(), dri: img.dri, width: img.width, height: img.height, hmax: img.hmax, vmax: img.vmax, qt: img.qt.clone() };
+        let mut same = true;
+        for sc in &img.scans {
+            let r = reencode(&img2, sc);
+            same &= r[..] == d[sc.start..sc.end];
+        }
+        th += t.elapsed().as_secs_f64();
+        if same { ok += 1; } else { eprintln!("{}: round trip differs", f.display()); }
+    }
+    println!("fast: {n} images, scans {:.2} MB -> {:.2} MB ({:.1}% smaller): tables {:.2} MB, raw bits {:.2} MB, rANS {:.2} MB; identical {ok}/{n}",
+        inb as f64 / 1e6, outb as f64 / 1e6, 100.0 * (1.0 - outb as f64 / inb as f64), side as f64 / 1e6, raw as f64 / 1e6, ra as f64 / 1e6);
+    println!("  one core: encode {:.2} s ({:.0} MB/s), decode {:.2} s ({:.0} MB/s), Huffman re-encode {:.2} s ({:.0} MB/s)",
+        te, inb as f64 / 1e6 / te, td, inb as f64 / 1e6 / td, th, inb as f64 / 1e6 / th);
+    println!("  decode: tables {:.2} s, symbols {} ({:.2} per input byte)", fast::T_TABLES.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9,
+        fast::T_SYMS.load(std::sync::atomic::Ordering::Relaxed), fast::T_SYMS.load(std::sync::atomic::Ordering::Relaxed) as f64 / inb as f64);
+}
+
 fn run_codec(files: &[std::path::PathBuf]) {
     use std::time::Instant;
     let (mut inb, mut outb, mut te, mut td, mut th, mut ok, mut n) = (0u64, 0u64, 0f64, 0f64, 0f64, 0, 0);
@@ -858,6 +946,10 @@ fn main() {
     }
     walk(Path::new(&dir), &mut files);
     files.sort();
+    if std::env::args().any(|a| a == "--fast") {
+        run_fast(&files);
+        return;
+    }
     if std::env::args().any(|a| a == "--repeats") {
         repeats(&files);
         return;
