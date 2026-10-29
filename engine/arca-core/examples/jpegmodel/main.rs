@@ -11,6 +11,8 @@ mod modelg;
 mod modelm;
 mod fast;
 mod modelh;
+mod modelr;
+mod lite;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -900,6 +902,89 @@ fn run_lepton(files: &[std::path::PathBuf]) {
     println!("  headers: {:.2} MB raw, zstd-19 per file {:.2} MB, solid {:.2} MB", hdr_raw.len() as f64 / 1e6, hdr_files as f64 / 1e6, solid as f64 / 1e6);
 }
 
+fn run_lite(files: &[std::path::PathBuf], threads: usize) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
+    let mut jobs = Vec::new();
+    for f in files {
+        let d = fs::read(f).unwrap();
+        let Ok(img) = read_jpeg(&d) else { continue };
+        jobs.push((d, img));
+    }
+    jobs.sort_by_key(|j| std::cmp::Reverse(j.0.len()));
+    let total: u64 = jobs.iter().map(|j| j.0.len() as u64).sum();
+    let mut packed: Vec<Option<Vec<u8>>> = vec![None; jobs.len()];
+    for &t in &[1usize, threads] {
+        // pack
+        let next = AtomicUsize::new(0);
+        let start = Instant::now();
+        let results: Vec<std::sync::Mutex<Option<Vec<u8>>>> = (0..jobs.len()).map(|_| std::sync::Mutex::new(None)).collect();
+        std::thread::scope(|sc| {
+            for _ in 0..t {
+                sc.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    if i >= jobs.len() { break; }
+                    let (d, img) = &jobs[i];
+                    *results[i].lock().unwrap() = lite::pack(d, img);
+                });
+            }
+        });
+        let tp = start.elapsed().as_secs_f64();
+        packed = results.into_iter().map(|m| m.into_inner().unwrap()).collect();
+        // unpack (whole files: headers copied, scans re-written)
+        let next = AtomicUsize::new(0);
+        let bad = AtomicUsize::new(0);
+        let start = Instant::now();
+        std::thread::scope(|sc| {
+            for _ in 0..t {
+                sc.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    if i >= jobs.len() { break; }
+                    let (d, img) = &jobs[i];
+                    let Some(p) = &packed[i] else { bad.fetch_add(1, Ordering::Relaxed); continue };
+                    let scans = lite::unpack(p, img);
+                    let mut out = Vec::with_capacity(d.len());
+                    let mut at = 0;
+                    for (s, sd) in img.scans.iter().zip(&scans) {
+                        out.extend_from_slice(&d[at..s.start]);
+                        out.extend_from_slice(sd);
+                        at = s.end;
+                    }
+                    out.extend_from_slice(&d[at..]);
+                    if out != *d { bad.fetch_add(1, Ordering::Relaxed); }
+                });
+            }
+        });
+        let tu = start.elapsed().as_secs_f64();
+        println!("lite on {t} thread(s): pack {:.3} s ({:.0} MB/s), unpack {:.3} s ({:.0} MB/s), not exact {}",
+            tp, total as f64 / 1e6 / tp, tu, total as f64 / 1e6 / tu, bad.load(Ordering::Relaxed));
+    }
+    if std::env::var_os("LOOP_UNPACK").is_some() {
+        let t = Instant::now();
+        for _ in 0..8 {
+            for (i, (_, img)) in jobs.iter().enumerate() {
+                std::hint::black_box(lite::unpack(packed[i].as_ref().unwrap(), img));
+            }
+        }
+        let el = t.elapsed().as_secs_f64();
+        let n = lite::SYMS.load(std::sync::atomic::Ordering::Relaxed);
+        println!("unpack x8 one thread: {:.2} s; AC symbols counted {} ({:.2} ns each)", el, n, el * 1e9 / n as f64 * 9.0 / 8.0);
+    }
+    println!("pack phases (all runs, all threads): parse {:.2} s, tables + write {:.2} s",
+        lite::T_PARSE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9, lite::T_WRITE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9);
+    let size: u64 = packed.iter().map(|p| p.as_ref().map_or(0, |v| v.len() as u64)).sum();
+    let scans: u64 = jobs.iter().map(|(_, img)| img.scans.iter().map(|s| (s.end - s.start) as u64).sum::<u64>()).sum();
+    let mut hdr = Vec::new();
+    for (d, img) in &jobs {
+        let mut at = 0;
+        for s in &img.scans { hdr.extend_from_slice(&d[at..s.start]); at = s.end; }
+        hdr.extend_from_slice(&d[at..]);
+    }
+    let h = zstd::bulk::compress(&hdr, 19).unwrap().len() as u64;
+    println!("lite: {} files {:.2} MB, scans {:.2} MB -> {:.2} MB ({:.1}% smaller); with headers (solid) {:.2} MB",
+        jobs.len(), total as f64 / 1e6, scans as f64 / 1e6, size as f64 / 1e6, 100.0 * (1.0 - size as f64 / scans as f64), (size + h) as f64 / 1e6);
+}
+
 fn run_parallel(files: &[std::path::PathBuf], threads: usize) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Instant;
@@ -1088,6 +1173,10 @@ fn main() {
     if std::env::var_os("UNIQUE").is_some() {
         files = uniq(files);
     }
+    if std::env::args().any(|a| a == "--lite") {
+        run_lite(&files, 10);
+        return;
+    }
     if std::env::args().any(|a| a == "--par") {
         run_parallel(&files, 10);
         return;
@@ -1142,6 +1231,11 @@ fn main() {
                     let (b, dcs) = modelg::estimate_g(&img);
                     t.bits[5] += b;
                     t.decisions[5] += dcs;
+                }
+                if std::env::var("WITH_R").is_ok() {
+                    let (b, side) = modelr::estimate_r(&img);
+                    t.bits[3] += b;
+                    t.raw[3] += side;
                 }
                 if std::env::var("WITH_H").is_ok() {
                     t.bits[7] += modelh::estimate_h(&img);
