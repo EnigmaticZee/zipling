@@ -19,7 +19,12 @@ fn main() {
     ] {
         cpp.file(format!("libbsc/{f}.cpp"));
     }
+    cpp.file("src/arca_bsc.cpp");
     cpp.compile("bsc");
-    cc::Build::new().opt_level(3).warnings(false).define("NDEBUG", None).file("libbsc/bwt/libsais/libsais.c").compile("sais");
+    // libsais goes in through Arca's file, which includes it and adds a
+    // threaded inverse BWT.
+    cc::Build::new().opt_level(3).warnings(false).define("NDEBUG", None).file("src/arca_sais.c").compile("sais");
     println!("cargo:rerun-if-changed=libbsc");
+    println!("cargo:rerun-if-changed=src/arca_bsc.cpp");
+    println!("cargo:rerun-if-changed=src/arca_sais.c");
 }

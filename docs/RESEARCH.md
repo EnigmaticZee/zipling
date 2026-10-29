@@ -851,6 +851,34 @@ Both 7-Zip Ultra targets hold with room to spare (source 8.09 < 8.5 MB, Silesia
 45.97 < 48.7 MB). Extraction of text-heavy sets is slower at Max: a 64 MiB bsc
 block decodes on one core in ~1.6 s, and those sets have few blocks.
 
+**Smaller text blocks** cost size on source code (Max + bsc, size / make /
+extract): source 16 MiB 8.368 MB / 1.22 / 0.76 s, 32 MiB 8.274 / 1.27 / 1.12 s,
+64 MiB 8.094 / 1.86 / 1.75 s; Silesia 16 MiB 46.137 MB / 0.73 s, 32 MiB 45.975 /
+1.08 s, 64 MiB 45.971 / 2.02 s; the saved folder hardly changes (221.85–222.12
+MB, 3.1–3.3 s). Deciding the LZMA2 fallback on a 4 MiB sample brought Silesia's
+Max make time from 18.4 to 14.9 s.
+
+**Decoding one bsc block on several cores.** A bsc block's decode is 54% QLFC
+(entropy), 41% inverse BWT and 5% LZP (samples on Silesia text). bsc's format
+already splits the QLFC stream into 24–32 independent sub-blocks for a 64 MiB
+block and stores 8–16 sampled BWT indexes, but only an OpenMP build decodes them
+in parallel. `vendor/libbsc/src/arca_bsc.cpp` runs bsc_decompress's stages with
+plain threads (same format, same checks) and `src/arca_sais.c` (which includes
+libsais.c unchanged) adds the threaded inverse BWT. Byte-identical; one block:
+
+| Block | one thread | threaded (wall) |
+|---|---:|---:|
+| saved folder text, 60 MB | 1.47 s | 0.51 s |
+| Silesia text, 68 MB | 1.91 s | 0.67 s |
+| static libraries, 67 MB | 0.52 s | 0.22 s |
+| Silesia x86 tar, 67 MB | 3.93 s | 0.92 s |
+
+Extraction, Max against Max + bsc (three runs each): source 0.50 s → 0.97–1.00 s
+(1.78 s before threading), Silesia 0.69–0.70 → 0.94–1.03 s (2.04 s), saved folder
+2.86–3.03 → 3.25–3.38 s (CPU-bound there). bsc needs ~4–6x LZMA2's decode CPU,
+so text-heavy archives extract slower than with LZMA2, still well ahead of the
+7-Zip and Zipgeist numbers measured on 2026-10-26.
+
 ### Apple Silicon GPU (agenda item 4): no stage worth moving
 
 Measured CPU by stage (saved folder, thread seconds):
