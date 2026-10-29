@@ -193,6 +193,12 @@ impl Scanner<'_> {
         if idat.is_empty() {
             return Vec::new();
         }
+        // The zlib header's FLEVEL says 3 for levels 7-9. With a short search
+        // limit (Default) preflate rejects nearly all of those after doing the
+        // whole analysis (2.7 s of CPU on the saved folder's 92 level-9 PNGs).
+        if self.config.max_chain_length < 1024 && d.get(idat[0].0 + 1).is_some_and(|&flg| flg >> 6 == 3) {
+            return Vec::new();
+        }
         // zlib: 2-byte header, raw Deflate, 4-byte Adler-32 (left as literal).
         self.analyze(&Candidate { pieces: idat, skip: 2 }).into_iter().collect()
     }
