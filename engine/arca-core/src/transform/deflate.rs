@@ -366,16 +366,9 @@ impl Scanner<'_> {
         // One encoder wrote every chunk. If stock zlib at some level re-creates
         // the first level 6-9 chunk (`hdiutil -imagekey zlib-level=9`, as many
         // app installers are made), the rest are tried with the same setting.
-        // Max and Ultra only: at Default it costs 4x the time to make and 7x to
-        // extract for 18% less (research: `ARCA_EXP_DMG_DEEP` turns it on).
         let span = |c: &Candidate| &d[c.pieces[0].0..c.pieces[0].0 + c.pieces[0].1];
         let deep = |c: &Candidate| c.lzfse.is_none() && zlib_header(span(c)).is_some_and(|(flevel, _)| flevel >= 2);
-        let wanted = (self.config.max_chain_length >= 1024 || std::env::var_os("ARCA_EXP_DMG_DEEP").is_some())
-            && std::env::var_os("ARCA_EXP_NO_DEEP").is_none();
-        let known = match candidates.iter().find(|c| deep(c)) {
-            Some(first) if wanted => self.probe_zlib(span(first)),
-            _ => None,
-        };
+        let known = candidates.iter().find(|c| deep(c)).and_then(|first| self.probe_zlib(span(first)));
         for c in candidates.iter_mut().filter(|c| deep(c)) {
             c.zlib = known;
         }

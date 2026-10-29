@@ -60,6 +60,9 @@ enum Cmd {
         /// Override preflate's match-search depth (research).
         #[arg(long)]
         deflate_chain: Option<u32>,
+        /// Expand disk images (`.dmg`): on or off (default: on at Max and Ultra).
+        #[arg(long, value_parser = ["on", "off"])]
+        disk_images: Option<String>,
         /// Research: set a lane's codec, e.g. `--lane image=zstd:19` or
         /// `--lane binary=xz:9e` (lanes: text, binary, image).
         #[arg(long)]
@@ -136,7 +139,7 @@ fn human(n: u64) -> String {
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
-        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, code_block_mib, image_block_mib, deflate_chain, lane, json } => {
+        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, code_block_mib, image_block_mib, deflate_chain, disk_images, lane, json } => {
             let level = match level {
                 LevelArg::Fast => Level::Fast,
                 LevelArg::Balanced => Level::Balanced,
@@ -151,6 +154,10 @@ fn main() -> Result<()> {
                 o.transforms.jpeg = false;
                 o.transforms.deflate = false;
                 o.transforms.arm64 = false;
+                o.transforms.disk_images = false;
+            }
+            if let Some(v) = disk_images {
+                o.transforms.disk_images = v == "on";
             }
             o.dedup = !no_dedup;
             if let Some(l) = codec_level {
