@@ -1,11 +1,14 @@
-//! Size estimate for a light JPEG coefficient coder (research prototype, 2026-10-29).
+//! Size estimate for a light JPEG coefficient coder.
 //! Decodes baseline JPEGs to quantised coefficients, then charges every binary
 //! decision of a candidate model to an adaptive probability (LZMA-style, 12-bit),
 //! so the totals are what a real adaptive binary coder would write.
 //!
-//!   cargo run --release --example jpegmodel -- <dir> [--codec]
+//!   jpegest <dir>
 
 mod codec;
+mod modelf;
+mod modelg;
+mod modelm;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -134,6 +137,7 @@ fn extend(v: u32, s: u32) -> i32 {
 
 pub struct Comp {
     pub id: u8,
+    pub tq: u8,
     pub h: usize,
     pub v: usize,
     pub bw: usize, // blocks per row (padded to MCU)
@@ -157,6 +161,7 @@ pub struct Image {
     pub height: usize,
     pub hmax: usize,
     pub vmax: usize,
+    pub qt: HashMap<u8, [u16; 64]>,
 }
 
 fn read_jpeg(d: &[u8]) -> Result<Image, String> {
@@ -171,6 +176,7 @@ fn read_jpeg(d: &[u8]) -> Result<Image, String> {
     let mut dri = 0usize;
     let mut scans = 0;
     let mut scan_list: Vec<Scan> = vec![];
+    let mut qt: HashMap<u8, [u16; 64]> = HashMap::new();
     let mut dc_raw: HashMap<u8, ([u8; 16], Vec<u8>)> = HashMap::new();
     let mut ac_raw: HashMap<u8, ([u8; 16], Vec<u8>)> = HashMap::new();
     while i + 4 <= d.len() {
@@ -194,7 +200,7 @@ fn read_jpeg(d: &[u8]) -> Result<Image, String> {
                 let nc = seg[5] as usize;
                 for c in 0..nc {
                     let hv = seg[7 + 3 * c];
-                    comps.push(Comp { id: seg[6 + 3 * c], h: (hv >> 4) as usize, v: (hv & 15) as usize, bw: 0, bh: 0, coef: vec![] });
+                    comps.push(Comp { id: seg[6 + 3 * c], tq: seg[8 + 3 * c], h: (hv >> 4) as usize, v: (hv & 15) as usize, bw: 0, bh: 0, coef: vec![] });
                 }
                 hmax = comps.iter().map(|c| c.h).max().unwrap();
                 vmax = comps.iter().map(|c| c.v).max().unwrap();
@@ -219,6 +225,20 @@ fn read_jpeg(d: &[u8]) -> Result<Image, String> {
                     let raw = (counts, seg[p + 17..p + 17 + n].to_vec());
                     if tc == 0 { dc.insert(th, h); dc_raw.insert(th, raw); } else { ac.insert(th, h); ac_raw.insert(th, raw); }
                     p += 17 + n;
+                }
+            }
+            0xDB => {
+                let mut p = 0;
+                while p < seg.len() {
+                    let pq = seg[p] >> 4;
+                    let tq = seg[p] & 15;
+                    let mut t = [0u16; 64];
+                    for k in 0..64 {
+                        let v = if pq == 0 { seg[p + 1 + k] as u16 } else { u16::from_be_bytes([seg[p + 1 + 2 * k], seg[p + 2 + 2 * k]]) };
+                        t[modelf::ZZ[k]] = v;
+                    }
+                    qt.insert(tq, t);
+                    p += 1 + 64 * (1 + pq as usize);
                 }
             }
             0xDD => dri = u16::from_be_bytes([seg[0], seg[1]]) as usize,
@@ -320,7 +340,7 @@ fn read_jpeg(d: &[u8]) -> Result<Image, String> {
     if scans == 0 || comps.is_empty() {
         return Err("no scan".into());
     }
-    Ok(Image { comps, scans: scan_list, dc: dc_raw, ac: ac_raw, dri, width, height, hmax, vmax })
+    Ok(Image { comps, scans: scan_list, dc: dc_raw, ac: ac_raw, dri, width, height, hmax, vmax, qt })
 }
 
 // ---------- cost model ----------
@@ -406,9 +426,9 @@ fn code_signed(c: &mut Coder, ctx: &mut Ctx, base: u64, v: i32, sign_ctx: u64) {
 
 #[derive(Default)]
 struct Totals {
-    raw: [f64; 4],
-    bits: [f64; 4],
-    decisions: [u64; 4],
+    raw: [f64; 8],
+    bits: [f64; 8],
+    decisions: [u64; 8],
 }
 
 /// Model A: no neighbours (close to JPEG's own arithmetic coding).
@@ -730,6 +750,59 @@ fn reencode(img: &Image, sc: &Scan) -> Vec<u8> {
     w.out
 }
 
+fn repeats(files: &[std::path::PathBuf]) {
+    // blocks whose 63 AC values equal an earlier block of the same component
+    let (mut blocks, mut nzb, mut rep, mut nz_all, mut nz_rep, mut rep_dc) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+    for f in files {
+        let d = fs::read(f).unwrap();
+        let Ok(img) = read_jpeg(&d) else { continue };
+        for c in &img.comps {
+            let mut seen: HashMap<[i16; 63], i16> = HashMap::new();
+            for b in &c.coef {
+                blocks += 1;
+                let nz = b[1..].iter().filter(|&&v| v != 0).count() as u64;
+                nz_all += nz;
+                if nz == 0 { continue; }
+                nzb += 1;
+                let mut key = [0i16; 63];
+                key.copy_from_slice(&b[1..]);
+                match seen.get(&key) {
+                    Some(&dc) => { rep += 1; nz_rep += nz; if dc == b[0] { rep_dc += 1; } }
+                    None => { seen.insert(key, b[0]); }
+                }
+            }
+        }
+    }
+    // dense repeats and how far back they are (in distinct-block order)
+    let (mut dense_rep, mut dense_nz, mut near) = (0u64, 0u64, [0u64; 4]);
+    for f in files {
+        let d = fs::read(f).unwrap();
+        let Ok(img) = read_jpeg(&d) else { continue };
+        for c in &img.comps {
+            let mut last: HashMap<[i16; 63], usize> = HashMap::new();
+            let mut order = 0usize;
+            for (bi, b) in c.coef.iter().enumerate() {
+                let nz = b[1..].iter().filter(|&&v| v != 0).count() as u64;
+                if nz < 6 { continue; }
+                let mut key = [0i16; 63];
+                key.copy_from_slice(&b[1..]);
+                if let Some(&o) = last.get(&key) {
+                    dense_rep += 1;
+                    dense_nz += nz;
+                    let dist = order - o;
+                    let same_nb = (bi >= 1 && c.coef[bi - 1][1..] == b[1..]) || (bi >= c.bw && c.coef[bi - c.bw][1..] == b[1..]);
+                    if same_nb { near[0] += 1 } else if dist <= 16 { near[1] += 1 } else if dist <= 256 { near[2] += 1 } else { near[3] += 1 }
+                }
+                last.insert(key, order);
+                order += 1;
+            }
+        }
+    }
+    println!("dense (6+ nonzeros) repeats: {dense_rep}, their nonzeros {:.1}% of all; same as left/up {}, within 16 {}, within 256 {}, further {}",
+        100.0 * dense_nz as f64 / nz_all as f64, near[0], near[1], near[2], near[3]);
+    println!("blocks {blocks}, with AC {nzb}; AC repeats an earlier block: {rep} ({:.1}% of AC blocks), DC equal too {rep_dc}; their nonzeros {:.1}% of all", 100.0 * rep as f64 / nzb as f64, 100.0 * nz_rep as f64 / nz_all as f64);
+}
+
 fn run_codec(files: &[std::path::PathBuf]) {
     use std::time::Instant;
     let (mut inb, mut outb, mut te, mut td, mut th, mut ok, mut n) = (0u64, 0u64, 0f64, 0f64, 0f64, 0, 0);
@@ -753,11 +826,11 @@ fn run_codec(files: &[std::path::PathBuf]) {
         let t = Instant::now();
         let mut md = codec::Model::new();
         let mut dd = codec::Dec::new(&bytes);
-        let mut img2 = Image { comps: vec![], scans: vec![], dc: img.dc.clone(), ac: img.ac.clone(), dri: img.dri, width: img.width, height: img.height, hmax: img.hmax, vmax: img.vmax };
+        let mut img2 = Image { comps: vec![], scans: vec![], dc: img.dc.clone(), ac: img.ac.clone(), dri: img.dri, width: img.width, height: img.height, hmax: img.hmax, vmax: img.vmax, qt: img.qt.clone() };
         for (ci, c) in img.comps.iter().enumerate() {
             let mut coef = vec![[0i16; 64]; c.coef.len()];
             codec::code_component(&mut dd, &mut md, ci.min(1), &mut coef, c.bw, c.bh);
-            img2.comps.push(Comp { id: c.id, h: c.h, v: c.v, bw: c.bw, bh: c.bh, coef });
+            img2.comps.push(Comp { id: c.id, tq: c.tq, h: c.h, v: c.v, bw: c.bw, bh: c.bh, coef });
         }
         td += t.elapsed().as_secs_f64();
         let t = Instant::now();
@@ -785,6 +858,10 @@ fn main() {
     }
     walk(Path::new(&dir), &mut files);
     files.sort();
+    if std::env::args().any(|a| a == "--repeats") {
+        repeats(&files);
+        return;
+    }
     if std::env::args().any(|a| a == "--codec") {
         run_codec(&files);
         return;
@@ -813,7 +890,22 @@ fn main() {
                 }
                 if same { exact += 1; }
                 scan_ok += d.len() as u64;
-                estimate(&img, &mut t);
+                if std::env::var("ONLY_F").is_err() { estimate(&img, &mut t); }
+                if std::env::var("ONLY_G").is_err() {
+                    let (b, dcs) = modelf::estimate_f(&img);
+                    t.bits[4] += b;
+                    t.decisions[4] += dcs;
+                }
+                if std::env::var("ONLY_M").is_err() {
+                    let (b, dcs) = modelg::estimate_g(&img);
+                    t.bits[5] += b;
+                    t.decisions[5] += dcs;
+                }
+                if std::env::var("WITH_M").is_ok() {
+                    let (b, dcs) = modelm::estimate_m(&img);
+                    t.bits[6] += b;
+                    t.decisions[6] += dcs;
+                }
             }
             Err(e) => {
                 failed += 1;
@@ -824,10 +916,58 @@ fn main() {
     }
     println!("{} files, {:.2} MB; baseline decoded {:.2} MB ({} not), Huffman decode {:.2} s, total {:.1} s",
         files.len(), total as f64 / 1e6, scan_ok as f64 / 1e6, failed, dec_time, t0.elapsed().as_secs_f64());
-    for (i, name) in ["A: no neighbours (T.81-like)", "B: neighbour contexts + LOCO-I DC", "D: B's contexts, multi-symbol (rANS-able)", "E: D with static per-image tables (raw = table bits)"].iter().enumerate() {
+    for (i, name) in ["A: no neighbours (T.81-like)", "B: neighbour contexts + LOCO-I DC", "D: B's contexts, multi-symbol (rANS-able)", "E: D with static per-image tables (raw = table bits)", "F: B + edge-continuity predictions", "G: fine expected-magnitude contexts", "M: three models mixed + APM"].iter().enumerate() {
         let mb = t.bits[i] / 8e6;
         println!("  {name}: {:.2} MB of coefficients ({:.1}% of the decoded files), {:.1} decisions per input byte, {:.2} raw bits per input byte",
             mb, 100.0 * (1.0 - mb / (scan_ok as f64 / 1e6)), t.decisions[i] as f64 / scan_ok as f64, t.raw[i] / scan_ok as f64);
+    }
+    {
+        let g = modelf::CAT.lock().unwrap();
+        println!("  F by part (MB): count {:.2}, interior {:.2}, top row {:.2}, left column {:.2}, DC {:.2}", g[0] / 8e6, g[1] / 8e6, g[2] / 8e6, g[3] / 8e6, g[4] / 8e6);
+    }
+    {
+        let g = modelg::IDEAL.lock().unwrap();
+        println!("  G as static per-image tables: ideal {:.2} MB, + every used histogram {:.2} MB", g[0] / 8e6, (g[0] + g[1]) / 8e6);
+    }
+    {
+        // trained tables, two folds: train on the other half's counts, charge this half
+        let imgs = modelg::PER_IMAGE.lock().unwrap();
+        let mut tot_global = 0.0;
+        let mut tot_hybrid = 0.0;
+        for fold in 0..2 {
+            let mut train: HashMap<u64, Vec<f64>> = HashMap::new();
+            for (i, (st, _)) in imgs.iter().enumerate() {
+                if i % 2 == fold { continue; }
+                for (k, v) in st {
+                    let t = train.entry(*k).or_insert_with(|| vec![0.0; v.len()]);
+                    for (a, b) in t.iter_mut().zip(v) { *a += *b as f64; }
+                }
+            }
+            for (i, (st, raw)) in imgs.iter().enumerate() {
+                if i % 2 != fold { continue; }
+                tot_global += raw;
+                tot_hybrid += raw;
+                for (k, v) in st {
+                    let n = v.len() as f64;
+                    let tot: u32 = v.iter().sum();
+                    // global table, smoothed
+                    let (tr, trt) = match train.get(k) {
+                        Some(t) => (t.clone(), t.iter().sum::<f64>()),
+                        None => (vec![0.0; v.len()], 0.0),
+                    };
+                    let mut g = 0.0;
+                    for (s, &c) in v.iter().enumerate() {
+                        if c > 0 { g += c as f64 * -((tr[s] + 0.02) / (trt + 0.02 * n)).log2(); }
+                    }
+                    // own histogram: entropy + 6 bits per used symbol + 4 per context
+                    let mut own = 4.0;
+                    for &c in v.iter() { if c > 0 { own += c as f64 * (tot as f64 / c as f64).log2() + 6.0; } }
+                    tot_global += g + 1.0 / 8.0; // a flag per used context, roughly
+                    tot_hybrid += g.min(own) + 1.0;
+                }
+            }
+        }
+        println!("  G with trained tables (2-fold): global only {:.2} MB, global or own per context {:.2} MB", tot_global / 8e6, tot_hybrid / 8e6);
     }
     println!("  re-encoded byte for byte: {exact} of {}", files.len() - failed);
     let _ = other;

@@ -207,6 +207,39 @@ is about 76 MB, 11% under the best rival. It aims at 50-100+ MB/s per core, so
 the set would pack and unpack in about 0.1-0.2 s on 10 cores (zstd -3: 0.26 s /
 0.27 s). Lepton stays at Max and Ultra.
 
+**Photos, round 2: smaller than Lepton, built for speed.** Lepton's share of
+the 71.1 MB is about 70.2 MB of coefficients (headers about 0.6 MB, the
+progressive files about 0.3 MB). Coefficient sizes, adaptive cost unless
+marked:
+
+| Model | Coefficients |
+|---|---:|
+| B (above) | 72.77 MB |
+| F: edge coefficients and DC predicted from pixel continuity across block edges, as residuals | 79.15 MB |
+| F, with the gradient on both sides of the edge matched | 81.00 MB |
+| F, edge prediction as context instead of a residual | 72.81 MB |
+| G: expected magnitude from four neighbours (above, left, above-left, above-right), half-octave levels | 72.97 MB |
+| M: three context models mixed (logistic mixer + APM) | 71.61 MB |
+| **G + block copy** (a block with 6+ nonzeros may copy the AC values of an earlier block with the same count) | **70.63 MB** |
+| G + block copy, static tables per image, every table sent | **70.77 MB** |
+| G + block copy, built-in tables trained on the other half (2-fold), own table where it pays | **69.91 MB** |
+| G + block copy, static, no table cost (bound) | 68.69 MB |
+
+Edge prediction fails on this set: a third of it is screen graphics with hard
+edges, where pixels don't continue across block edges. Finer contexts hurt an
+adaptive coder (too little data per context) but not a static one.
+
+Block copy is new: Lepton, Brunsli and packJPG model only neighbouring blocks.
+57% of the 12.1 M blocks with AC values repeat an earlier block exactly; the
+202,435 repeats with 6+ nonzeros hold 4.3% of all nonzeros, mostly 16-256
+distinct blocks back. Coding "same as the d-th earlier block with this count"
+costs a flag per dense block plus the distance.
+
+With block copy, a static-table coder (table-driven rANS, no adaptation)
+matches Lepton's size, or beats it with built-in tables. Next: build it and
+measure decoding speed. Mixing + block copy (an estimated ~69.3 MB) is the
+candidate for Max and Ultra.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64
