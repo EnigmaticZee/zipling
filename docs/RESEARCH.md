@@ -53,8 +53,8 @@ WebP-style tools in the pixel codec for flat images, similarity ordering, bzip2
 
 Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
-96 of 144 rival results on all three measures at once. Next: the fixes listed
-there, starting with Fast's fixed cost on large incompressible files.
+96 of 144 rival results on all three measures at once. Next: the build order
+in "After the checkpoint", starting with our own JPEG coder.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -164,6 +164,101 @@ least as small, as always):
   zstd -19's 0.23 s and Zipgeist 7z's 0.71 s and 0.90 s.
 - Memory: Max at 6-8 GB on the large sets is the first to cut; streaming
   like `ditto` is out of reach for a multi-core compressor.
+
+## After the checkpoint: direction and first measurements (2026-10-29 evening)
+
+**Decided with the user.** The aim: every level beats every rival setting in
+its class on size, packing and unpacking at once (144 of 144 on the checkpoint
+board, 96 today), with leads in multiples where we already win. Memory is not
+worked on now. The rule is: no more than the hungriest rival on the same files.
+The 8 GB Mac test comes after Arca beats everyone, with every rival under the
+same limit. The research works from our own ideas and measurements; papers are
+a check, not the source.
+
+Corrections to the first idea list: zlib's deep search is already fast
+(`fast_match`), and parallel LZMA2 segments are a dead end (re-indexing the
+history costs as much as coding it; see Dead ends).
+
+**Photos: a JPEG coder of our own** (`engine/arca-core/examples/jpegmodel`).
+Rivals sit at 85.3-93.3 MB on the photo set (98.40 MB; 397 baseline JPEGs, 3
+progressive). Lepton saves 27.7% but decodes at ~10 MB/s per core, and nothing
+fast is smaller than 85.3 MB. So the target is the rivals, not Lepton.
+
+The prototype decodes each JPEG's Huffman codes to quantised coefficients.
+Re-encoding them with the file's own tables gives back all 397 scans byte for
+byte, with no corrections needed. Size of the coefficients, with the cost
+charged as an adaptive coder would pay it:
+
+| Model | Coefficients | Saved | Symbols per input byte |
+|---|---:|---:|---:|
+| A: no neighbours (like JPEG's arithmetic mode) | 76.02 MB | 22.5% | 9.7 binary |
+| B: neighbour contexts (above/left nonzero counts and magnitudes per coefficient), DC by LOCO-I prediction | 72.77 MB | 25.8% | 8.4 binary |
+| D: B's contexts as multi-symbol alphabets | 73.97 MB | 24.6% | 3.3 + 1.7 raw bits |
+| E: D with static tables per image (table cost included) | 74.46 MB | 24.1% | 3.3, no adaptation |
+
+(Saved = against the 98.06 MB of decoded files.) B built as a real coder
+(LZMA-style binary range coder): 95.80 MB of scans → 72.66 MB, every round
+trip identical. One core: encode 22 MB/s, decode 17 MB/s, too close to
+Lepton's speed. One binary decision at a time is the limit there.
+
+E is the design: per-image static tables cost 0.5 MB over adaptive coding and
+allow table-driven rANS decoding. With headers and the progressive files that
+is about 76 MB, 11% under the best rival. It aims at 50-100+ MB/s per core, so
+the set would pack and unpack in about 0.1-0.2 s on 10 cores (zstd -3: 0.26 s /
+0.27 s). Lepton stays at Max and Ultra.
+
+**Apple's apps: two copies of the same code.** Every large binary in the apps
+set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
+the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64
+filter, 64 MiB dictionary):
+
+| Binary | Slice 1 alone | Slice 2 alone | Both | Second slice's extra cost |
+|---|---:|---:|---:|---:|
+| Maps | 4.73 MB | 4.79 MB | 7.63 MB | 2.90 MB (61% of alone) |
+| Mail | 1.41 MB | 1.42 MB | 2.12 MB | 0.71 MB (50%) |
+
+LZMA recovers only 39-50% of the overlap: shifted code breaks its matches and
+changes every PC-relative field. zstd `--patch-from` does worse (5.26 MB for
+Maps' second slice). Idea: a slice-delta transform that matches functions
+across slices (`LC_FUNCTION_STARTS`) and diffs instructions with PC-relative
+fields mapped through the address shift, so slice 2 costs a fraction of slice
+1. It would also make the slices independent blocks that can be packed in
+parallel. If it reaches about 20% of a slice, Default on the apps set drops
+below every rival's size (62.4 → about 58 MB; xz -6 59.0, WinRAR Best 58.7).
+
+**DMGs: what each one costs** (Default; one DMG at a time; busy Mac, CPU
+seconds are the reliable numbers):
+
+| DMG | Chunks | Expanded saves | Unpack with expansion |
+|---|---|---:|---:|
+| CleanMyMac (210.5 MB) | 439 LZFSE | 45.7 MB (22%) | 0.80 s, 4.7 CPU-s |
+| Discord (215.1 MB) | 485 zlib level 9 | 39.8 MB (18.5%) | 2.55 s, 19.4 CPU-s |
+| Nuvio (186.3 MB) | 234 zlib level 1, 61 raw (64 MB) | 13.8 MB (7.4%) | 0.66 s, 3.6 CPU-s |
+| Burnish (7.3 MB) | 21 zlib level 1, 2 raw | 1.1 MB | 0.03 s |
+
+The rebuild is the match search: Discord's profile is 57% search (`walk_long`,
+`longest_match`), 17% `deflate_slow`'s own loop and 7% Huffman. CleanMyMac's
+is 58% LZFSE search and match coding. Hints that shorten the search can make
+it at most ~2x faster. So the plan is cost-aware expansion: expand a chunk when
+its saving is worth its rebuild time at that level, so Discord's level-9
+chunks at Max/Ultra only. Without expansion the gap is small: raw chunks
+compress 3.5% (zstd -3) to 7.5% (zstd -19); zlib and LZFSE chunks 0.3-1.1%.
+
+**Fast's CPU** (third-party apps, busy samples): zstd 23%, BLAKE3 19%, zstd's
+long-distance matching 9%, FastCDC 5%, Mach-O filters 3%. Threads waiting:
+26%. Duplicate-finding is a third of Fast's work. A fast 128-bit hash with
+byte comparison before a duplicate is accepted would be as safe for
+deduplication at a fraction of BLAKE3's cost.
+
+**Build order** (the gain each removes from the 48 misses):
+
+1. The JPEG coder (photos, 9).
+2. Fast without the extra cost, and big files split across cores (Silesia,
+   third-party apps and DMGs against the fast rivals, about 10).
+3. The slice-delta transform for Apple binaries (apps, 5).
+4. Cost-aware DMG expansion and compressed raw chunks (DMGs against the strong
+   rivals, about 11).
+5. Faster text decoding at Max (Silesia and source code, about 8).
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
