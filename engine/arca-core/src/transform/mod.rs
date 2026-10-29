@@ -33,6 +33,10 @@ pub struct TransformOpts {
     /// this many pixel bytes (0: any saving). Decoding pixels costs extraction
     /// time, so Default keeps the codec for the images where it pays most.
     pub png_pixels_per_byte_saved: u32,
+    /// Expand the LZFSE streams of asset catalogs (`Assets.car`). Their decoded
+    /// images are ~17x the stored bytes: smaller with LZMA or bsc, but LZMA
+    /// spends ~9x the CPU on them and zstd does worse than LZFSE (see RESEARCH.md).
+    pub asset_catalogs: bool,
 }
 
 pub struct Prepared<'a> {
@@ -47,6 +51,7 @@ pub struct Prepared<'a> {
 pub fn applies(class: Class, opts: &TransformOpts) -> bool {
     match class {
         Class::Jpeg => opts.jpeg,
+        Class::DeflateContainer(crate::classify::DeflateKind::AssetCatalog) => opts.deflate && opts.asset_catalogs,
         Class::DeflateContainer(_) => opts.deflate,
         Class::MachO => opts.arm64,
         _ => false,
@@ -83,7 +88,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
     let mut store_from = None;
     let attempt: Option<(Transform, Vec<u8>, Lane)> = match class {
         Class::Jpeg if opts.jpeg => jpeg::encode(data).map(|out| (Transform::Lepton, out, Lane::Store)),
-        Class::DeflateContainer(kind) if opts.deflate => {
+        Class::DeflateContainer(kind) if applies(class, opts) => {
             let png = kind == crate::classify::DeflateKind::Png;
             deflate::encode(data, kind, opts.deflate_chain, opts.deflate_steps_per_byte, !opts.verify, opts.png_pixels.then_some(opts.png_pixels_per_byte_saved)).map(
                 |e| {

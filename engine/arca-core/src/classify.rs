@@ -25,9 +25,11 @@ pub enum DeflateKind {
     Png,
     Pdf,
     Gzip,
-    /// A disk image (UDIF `.dmg`) whose chunks are zlib streams; found by its
-    /// `koly` trailer, since its first bytes are the image's own.
+    /// A disk image (UDIF `.dmg`) whose chunks are zlib or LZFSE streams; found
+    /// by its `koly` trailer, since its first bytes are the image's own.
     Dmg,
+    /// An asset catalog (`Assets.car`, a BOM store) holding LZFSE streams.
+    AssetCatalog,
 }
 
 /// Whether `tail` (a file's last 512 bytes) is a UDIF disk image's trailer.
@@ -67,6 +69,9 @@ pub fn classify(head: &[u8]) -> Class {
     }
     if starts(&[0x1F, 0x8B, 0x08]) {
         return Class::DeflateContainer(DeflateKind::Gzip);
+    }
+    if starts(b"BOMStore") {
+        return Class::DeflateContainer(DeflateKind::AssetCatalog);
     }
     if is_macho(h) {
         return Class::MachO;
@@ -190,5 +195,6 @@ mod tests {
         assert_eq!(classify(b"\x7fELF\x02\x01\x01\x00"), Class::Code);
         assert_eq!(classify(b"!<arch>\n/               "), Class::Code);
         assert_eq!(classify(b"\x00\x00\x00\x18ftypheic"), Class::Compressed);
+        assert_eq!(classify(b"BOMStore\x00\x00\x00\x01"), Class::DeflateContainer(DeflateKind::AssetCatalog));
     }
 }

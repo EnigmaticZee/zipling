@@ -38,11 +38,13 @@ to bsc.
 
 2026-10-29: zlib replay for PNGs (Default −6.6% pack CPU), x86 filter for the
 x86_64 slices of universal binaries (third-party apps −0.7 to −0.8%), DMG disk
-images expanded and rebuilt (UDZO test image −21% at Default, −30% at Max). PGO
-measured (−1 to −4% CPU; for release builds). Leads: LZFSE replay for ULFO disk
-images and Assets.car (needs the open-source LZFSE, a download), WebP-style
-tools in the pixel codec for flat images, similarity ordering. The test sets
-miss third-party apps (x86_64 code) and DMGs: add both before the checkpoint.
+images expanded and rebuilt (UDZO −21%/−30%, ULFO −14.5%/−32% at Default/Max),
+LZFSE replay (macOS's encoder is lzfse 1.0 with one constant changed; pinned
+copy vendored). `Assets.car` expansion is an option (`ARCA_EXP_CAR=1`; cheap
+only with bsc). PGO measured (−1 to −4% CPU; for release builds). Leads:
+WebP-style tools in the pixel codec for flat images, similarity ordering. The
+test sets miss third-party apps (x86_64 code) and DMGs: add both before the
+checkpoint.
 
 Next: the checkpoint benchmark (spec below; ask the user first).
 
@@ -1064,7 +1066,7 @@ Only the Rust code is profiled; LZMA, zstd, bsc and zlib are C built by Apple
 clang, which can't share a profile runtime with rustc's. Worth a step in release
 builds (train, then build with the profile), not a lever.
 
-### Compressed data inside Apple containers: Assets.car (lead, 2026-10-29)
+### Compressed data inside Apple containers: Assets.car (2026-10-29; see LZFSE replay)
 
 Compiled asset catalogs keep most images LZFSE- or LZVN-compressed (`bvx2`/`bvxn`
 blocks ending in `bvx$`), which no archiver can compress further. The saved
@@ -1112,8 +1114,52 @@ outside zlib chunks stay literal. On the UDZO image, round trips identical:
 (Max stays above the 55.8 MB of the bare image: this image's data fork also
 holds 11.7 MB of raw app bytes that no chunk references.) Limits: a file's
 expanded data is capped at 512 MiB (`MAX_PLAIN_TOTAL`), so only the first 512 MiB
-of a big image is expanded; LZFSE (ULFO), LZMA (ULMO) and bzip2 (UDBZ) chunks
-stay as they are until pinned encoders for them are tested.
+of a big image is expanded; LZMA (ULMO) and bzip2 (UDBZ) chunks stay as they are.
+
+LZFSE chunks (ULFO) are expanded too, with the pinned lzfse (next section). The
+ULFO image of the apps set (97.1 MB), round trips identical:
+
+| Level | Before | Now | Make | Extract |
+|---|---:|---:|---:|---:|
+| Default | 87.84 MB | **75.09 MB (−14.5%)** | 2.8 s | 0.41 s |
+| Max | 86.96 MB | **59.25 MB (−31.9%)** | 13.2 s | 0.92 s |
+
+### LZFSE replay: macOS's encoder is lzfse 1.0 with one setting changed
+
+With the user's OK, lzfse 1.0 (Apple's open-source reference, BSD-3, the 2017
+tag; SHA-256 matches Homebrew's) is vendored in `engine/vendor/lzfse`. Out of the
+box it does not re-create what macOS writes today: 127 of the ULFO image's 193
+chunks, 606 of the saved folder's 784 `Assets.car` streams. Comparing the token
+streams (a decoder that lists every literal/match token) showed every difference
+starts where macOS emits a short pending match in a long literal run that lzfse
+1.0 keeps waiting on, then drops when a long match arrives. lzfse 1.0 emits a
+pending match once 8 x 315 literals wait (`8 * LZFSE_ENCODE_MAX_L_VALUE`);
+trying other values, **3 x 315 re-creates all 193 chunks** (1, 2 and 4: 162, 177
+and 180; keeping partial literal runs at block ends, emitting pending matches
+before long ones, and larger hash tables all made it worse). The vendored copy
+carries that number in the encoder state (`literal_runs`, two lines); each stored
+stream records the value that re-creates it (3, else 8).
+
+Coverage with 3: the ULFO image 193 of 193 chunks (84.5 MB); the saved folder's
+`Assets.car` 606 of 784 streams (10.16 of 12.08 MB); the installed apps' 239
+`Assets.car` 20,861 of 29,023 streams (351 of 408 MB). The rest: LZVN streams for
+inputs under 4 KiB (lzfse 1.0's LZVN encoder differs; 7,887 streams, 10.5 MB on
+the installed apps) and 275 LZFSE streams (46.8 MB) from some other encoder
+version. macOS's own libcompression re-creates 362 MB there.
+
+**Assets.car: an option, not in the presets** (`ARCA_EXP_CAR=1`). Its decoded
+renditions are flat images, ~17x the LZFSE bytes. Saved folder (busy Mac, round
+trips identical):
+
+| Level | Without | With | Make CPU | Extract |
+|---|---:|---:|---:|---:|
+| Default | 257.396 MB | 256.170 MB (−0.48%) | 55.9 → 60.8 s | 2.62 → 2.78 s |
+| Max | 221.963 MB | 219.538 MB (−1.09%) | 211.6 → 231.6 s | 2.88 → 3.68 s |
+
+The codec decides it. 64 MB of decoded renditions: bsc (LZP 18/128) 3.354 MB in
+0.67 s (decode 0.75 s, 0.27 s threaded); LZMA fb 32 3.377 MB in 4.71 s (decode
+0.15 s); zstd-12 4.31 MB, worse than keeping the LZFSE. With bsc blocks for this
+data the gain would cost little; decide together with bsc at the checkpoint.
 
 ### Literature survey 2 (background agent, 2026-10-29)
 

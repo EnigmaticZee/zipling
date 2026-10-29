@@ -1,0 +1,11 @@
+[package]
+name = "lzfse-pinned"
+version = "1.0.0"
+edition = "2021"
+publish = false
+description = "Apple's lzfse 1.0 (reference implementation), pinned, for re-creating LZFSE streams macOS wrote"
+license = "BSD-3-Clause"
+build = "build.rs"
+
+[build-dependencies]
+cc = "1"
