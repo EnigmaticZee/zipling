@@ -60,6 +60,7 @@ enum Method {
         case "zstd": "Zstandard"
         case "xz", "lzma2": "LZMA2"
         case "ppmd": "PPMd"
+        case "bsc": "BWT"
         default: "Stored"
         }
     }

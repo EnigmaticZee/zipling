@@ -189,6 +189,7 @@ fn main() -> Result<()> {
                         "xz" => arca_core::Codec::Xz,
                         "lzma2" => arca_core::Codec::Lzma2,
                         "ppmd" => arca_core::Codec::Ppmd,
+                        "bsc" => arca_core::Codec::Bsc,
                         "store" => arca_core::Codec::Store,
                         other => anyhow::bail!("unknown codec {other}"),
                     },

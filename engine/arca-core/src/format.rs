@@ -48,6 +48,9 @@ pub enum Codec {
     /// property byte. (Xz blocks carry an xz container and a CRC-64 that the
     /// block's own BLAKE3 hashes make redundant.)
     Lzma2,
+    /// One libbsc block (BWT via libsais, then QLFC); its own header carries
+    /// everything the decoder needs.
+    Bsc,
 }
 
 impl Codec {
@@ -58,6 +61,7 @@ impl Codec {
             Codec::Xz => 2,
             Codec::Ppmd => 3,
             Codec::Lzma2 => 4,
+            Codec::Bsc => 5,
         }
     }
 
@@ -68,6 +72,7 @@ impl Codec {
             2 => Codec::Xz,
             3 => Codec::Ppmd,
             4 => Codec::Lzma2,
+            5 => Codec::Bsc,
             _ => bail!("unknown codec {t}"),
         })
     }
@@ -79,6 +84,7 @@ impl Codec {
             Codec::Xz => "xz",
             Codec::Ppmd => "ppmd",
             Codec::Lzma2 => "lzma2",
+            Codec::Bsc => "bsc",
         }
     }
 }
