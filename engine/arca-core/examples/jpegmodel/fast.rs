@@ -293,8 +293,19 @@ impl BitW {
 fn quant(c: u32) -> u32 {
     if c == 0 { 0 } else { 1 + ((c as f64).log2() * 2.0).floor() as u32 }.min(40)
 }
+const DEQ: [u32; 64] = {
+    // round(2^((q - 1) / 2)): odd steps use 1.41421356 as 46341/32768
+    let mut t = [0u32; 64];
+    let mut q = 1;
+    while q < 64 {
+        let e = (q - 1) / 2;
+        t[q] = if (q - 1) % 2 == 0 { 1u32 << e } else { (((46341u64 << e) + 16384) >> 15) as u32 };
+        q += 1;
+    }
+    t
+};
 fn dequant(q: u32) -> u32 {
-    if q == 0 { 0 } else { (2f64.powf((q - 1) as f64 / 2.0) + 0.5) as u32 }
+    DEQ[q as usize]
 }
 
 /// Normalises approximate counts to frequencies summing to M (present symbols >= 1).
@@ -311,7 +322,7 @@ fn normalise(w: &[u32], freq: &mut [u32]) {
 }
 
 /// Side stream: which contexts are used and their quantised counts.
-fn code_tables<C: Rc>(c: &mut C, q: &mut [Vec<u32>], used: &mut [Vec<bool>]) {
+fn code_tables<C: Rc>(c: &mut C, q: &mut [Vec<u8>], used: &mut [Vec<bool>]) {
     let mut p_used = vec![2048u16; 8 * 2];
     let mut p_max = vec![2048u16; 8 * 64];
     let mut p_q = vec![2048u16; 8 * 16 * 64];
@@ -333,13 +344,13 @@ fn code_tables<C: Rc>(c: &mut C, q: &mut [Vec<u32>], used: &mut [Vec<bool>]) {
             }
             let amax = node - (1 << abits);
             for s in 0..=amax {
-                let qe = if C::ENC { q[t][ctx * a + s] } else { 0 };
+                let qe = if C::ENC { q[t][ctx * a + s] as u32 } else { 0 };
                 let mut node = 1usize;
                 for i in (0..6).rev() {
                     let bit = c.bit(&mut p_q[(t * 16 + s.min(15)) * 64 + node], (qe >> i) & 1 == 1);
                     node = (node << 1) | bit as usize;
                 }
-                q[t][ctx * a + s] = (node - 64) as u32;
+                q[t][ctx * a + s] = (node - 64) as u8;
             }
         }
     }
@@ -348,8 +359,14 @@ fn code_tables<C: Rc>(c: &mut C, q: &mut [Vec<u32>], used: &mut [Vec<bool>]) {
 pub fn encode(planes: &mut [Plane]) -> Vec<u8> {
     let mut rec = Recorder { events: Vec::new(), counts: TYPES.iter().map(|&(s, a)| vec![0; s * a]).collect(), raw: BitW::new() };
     walk(&mut rec, planes);
+    {
+        let ac = rec.events.iter().filter(|e| e.0 as usize == T_AC).count() as u64;
+        let z = rec.events.iter().filter(|e| e.0 as usize == T_AC && e.2 == 0).count() as u64;
+        N_AC.fetch_add(ac, std::sync::atomic::Ordering::Relaxed);
+        T_ZERO.fetch_add(z, std::sync::atomic::Ordering::Relaxed);
+    }
     // quantise counts, code the tables, then rebuild the exact frequencies the decoder will use
-    let mut q: Vec<Vec<u32>> = rec.counts.iter().map(|v| v.iter().map(|&c| quant(c)).collect()).collect();
+    let mut q: Vec<Vec<u8>> = rec.counts.iter().map(|v| v.iter().map(|&c| quant(c) as u8).collect()).collect();
     let mut used: Vec<Vec<bool>> = TYPES.iter().enumerate().map(|(t, &(s, a))| (0..s).map(|c| rec.counts[t][c * a..(c + 1) * a].iter().any(|&x| x > 0)).collect()).collect();
     let mut be = BEnc::new();
     code_tables(&mut be, &mut q, &mut used);
@@ -389,7 +406,7 @@ pub fn encode(planes: &mut [Plane]) -> Vec<u8> {
 }
 
 /// Frequencies and cumulative tables from the quantised counts.
-fn build(q: &[Vec<u32>], used: &[Vec<bool>]) -> (Vec<Vec<u32>>, Vec<Vec<u16>>) {
+fn build(q: &[Vec<u8>], used: &[Vec<bool>]) -> (Vec<Vec<u32>>, Vec<Vec<u16>>) {
     let mut freqs = Vec::new();
     let mut cums = Vec::new();
     for t in 0..8 {
@@ -400,7 +417,7 @@ fn build(q: &[Vec<u32>], used: &[Vec<bool>]) -> (Vec<Vec<u32>>, Vec<Vec<u16>>) {
         let mut w = vec![0u32; a];
         for ctx in 0..space {
             if !used[t][ctx] { continue; }
-            for s in 0..a { w[s] = dequant(q[t][ctx * a + s]); }
+            for s in 0..a { w[s] = dequant(q[t][ctx * a + s] as u32); }
             normalise(&w, &mut f[ctx * a..(ctx + 1) * a]);
             let mut acc = 0u32;
             for s in 0..a {
@@ -419,9 +436,13 @@ fn build(q: &[Vec<u32>], used: &[Vec<bool>]) -> (Vec<Vec<u32>>, Vec<Vec<u16>>) {
 // ---------- decoder ----------
 
 pub struct Decoder<'a> {
+    map: Vec<Vec<u16>>,
     flat: Vec<u16>,
     base: [usize; 8],
-    x: [u32; 2],
+    bk: Vec<u8>,
+    bbase: [usize; 8],
+    x0: u32,
+    x1: u32,
     i: usize,
     words: &'a [u8],
     wp: usize,
@@ -435,53 +456,36 @@ impl<'a> Io for Decoder<'a> {
     const ENC: bool = false;
     #[inline(always)]
     fn sym<const A: usize>(&mut self, t: usize, ctx: usize, _s: usize) -> usize {
+        let ctx = unsafe { *self.map.get_unchecked(t).get_unchecked(ctx) } as usize;
         let base = self.base[t] + ctx * (A + 1);
-        let xs = &mut self.x[self.i & 1];
         self.i += 1;
-        let slot = (*xs & (M - 1)) as u16;
-        let s: usize;
+        let xs = self.x0;
+        let slot = (xs & (M - 1)) as u16;
+        let mut s: usize;
+        let nx;
         unsafe {
             let p = self.flat.as_ptr().add(base);
             if A == 2 {
                 s = (*p.add(1) <= slot) as usize;
-            } else if A == 64 {
-                use std::arch::aarch64::*;
-                let d = vdupq_n_u16(slot);
-                let mut acc = vdupq_n_u16(0);
-                for j in 0..8 {
-                    acc = vaddq_u16(acc, vshrq_n_u16::<15>(vcleq_u16(vld1q_u16(p.add(1 + 8 * j)), d)));
-                }
-                s = vaddvq_u16(acc) as usize;
-            } else if A == 32 {
-                use std::arch::aarch64::*;
-                let d = vdupq_n_u16(slot);
-                let a0 = vshrq_n_u16::<15>(vcleq_u16(vld1q_u16(p.add(1)), d));
-                let a1 = vshrq_n_u16::<15>(vcleq_u16(vld1q_u16(p.add(9)), d));
-                let a2 = vshrq_n_u16::<15>(vcleq_u16(vld1q_u16(p.add(17)), d));
-                let a3 = vshrq_n_u16::<15>(vcleq_u16(vld1q_u16(p.add(25)), d));
-                s = vaddvq_u16(vaddq_u16(vaddq_u16(a0, a1), vaddq_u16(a2, a3))) as usize;
-            } else if A == 16 {
-                use std::arch::aarch64::*;
-                let d = vdupq_n_u16(slot);
-                let m0 = vcleq_u16(vld1q_u16(p.add(1)), d);
-                let m1 = vcleq_u16(vld1q_u16(p.add(9)), d);
-                s = (vaddvq_u16(vshrq_n_u16::<15>(m0)) + vaddvq_u16(vshrq_n_u16::<15>(m1))) as usize;
             } else {
-                let mut c = 0usize;
-                for j in 1..A {
-                    c += (*p.add(j) <= slot) as usize;
+                // bucket table: first symbol of the 64-slot bucket, then step forward
+                s = *self.bk.as_ptr().add(self.bbase[t] + ctx * 64 + (slot >> 6) as usize) as usize;
+                while *p.add(s + 1) <= slot {
+                    s += 1;
                 }
-                s = c;
             }
             let st = *p.add(s) as u32;
             let f = *p.add(s + 1) as u32 - st;
-            *xs = f * (*xs >> PB) + slot as u32 - st;
-            if *xs < L {
+            let mut x = f * (xs >> PB) + slot as u32 - st;
+            if x < L {
                 let w = u16::from_le_bytes([*self.words.get_unchecked(self.wp), *self.words.get_unchecked(self.wp + 1)]);
                 self.wp += 2;
-                *xs = (*xs << 16) | w as u32;
+                x = (x << 16) | w as u32;
             }
+            nx = x;
         }
+        self.x0 = self.x1;
+        self.x1 = nx;
         s
     }
     #[inline(always)]
@@ -502,6 +506,8 @@ impl<'a> Io for Decoder<'a> {
 }
 
 pub static T_TABLES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static T_ZERO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static N_AC: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static T_SYMS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub fn decode(data: &[u8], planes: &mut [Plane]) {
@@ -511,25 +517,57 @@ pub fn decode(data: &[u8], planes: &mut [Plane]) {
     let rl = u32::from_le_bytes(data[4 + sl..8 + sl].try_into().unwrap()) as usize;
     let raw = &data[8 + sl..8 + sl + rl];
     let words = &data[8 + sl + rl..];
-    let mut q: Vec<Vec<u32>> = TYPES.iter().map(|&(s, a)| vec![0; s * a]).collect();
+    let mut q: Vec<Vec<u8>> = TYPES.iter().map(|&(s, a)| vec![0u8; s * a]).collect();
     let mut used: Vec<Vec<bool>> = TYPES.iter().map(|&(s, _)| vec![false; s]).collect();
     let mut bd = BDec::new(side);
     code_tables(&mut bd, &mut q, &mut used);
-    let (_, cums) = build(&q, &used);
+    // dense tables for the used contexts only
+    let mut map: Vec<Vec<u16>> = Vec::with_capacity(8);
+    let mut base = [0usize; 8];
+    let mut bbase = [0usize; 8];
+    let mut flat: Vec<u16> = Vec::new();
+    let mut bk: Vec<u8> = Vec::new();
+    let mut w = [0u32; 64];
+    let mut f = [0u32; 64];
+    for t in 0..8 {
+        let (space, a) = TYPES[t];
+        base[t] = flat.len();
+        bbase[t] = bk.len();
+        let mut m = vec![u16::MAX; space];
+        let mut dense = 0u16;
+        for ctx in 0..space {
+            if !used[t][ctx] { continue; }
+            m[ctx] = dense;
+            dense += 1;
+            for s in 0..a { w[s] = dequant(q[t][ctx * a + s] as u32); }
+            normalise(&w[..a], &mut f[..a]);
+            let start = flat.len();
+            let mut acc = 0u32;
+            for s in 0..a {
+                flat.push(acc as u16);
+                acc += f[s];
+            }
+            flat.push(acc as u16);
+            if a > 2 {
+                let c = &flat[start..start + a + 1];
+                let mut sym = 0usize;
+                for b in 0..64 {
+                    let lo = (b * 64) as u16;
+                    while c[sym + 1] <= lo { sym += 1; }
+                    bk.push(sym as u8);
+                }
+            }
+        }
+        map.push(m);
+    }
+    flat.extend_from_slice(&[u16::MAX; 16]);
     let rd = |p: usize| (u16::from_le_bytes([words[p], words[p + 1]]) as u32);
     let x0 = rd(0) | (rd(2) << 16);
     let x1 = rd(4) | (rd(6) << 16);
-    let mut base = [0usize; 8];
-    let mut flat = Vec::with_capacity(cums.iter().map(|c| c.len()).sum::<usize>() + 16);
-    for (t, c) in cums.iter().enumerate() {
-        base[t] = flat.len();
-        flat.extend_from_slice(c);
-    }
-    flat.extend_from_slice(&[u16::MAX; 16]);
     let mut words = words.to_vec();
     words.extend_from_slice(&[0; 8]);
     let words: &[u8] = &words;
-    let mut d = Decoder { flat, base, x: [x0, x1], i: 0, words, wp: 8, raw, rp: 0, acc: 0, n: 0 };
+    let mut d = Decoder { map, flat, base, bk, bbase, x0, x1, i: 0, words, wp: 8, raw, rp: 0, acc: 0, n: 0 };
     T_TABLES.fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
     walk(&mut d, planes);
     T_SYMS.fetch_add(d.i as u64, std::sync::atomic::Ordering::Relaxed);
