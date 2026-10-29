@@ -365,6 +365,47 @@ The plan:
 
 Next: build H and measure it.
 
+**Photos: the light mode, built** (`lite.rs`, `--lite`). Better than model H:
+it re-codes JPEG's own symbols (DC size; AC run/size, EOB, ZRL) with static
+Huffman tables per image and per context, keeping JPEG's raw bits. The
+contexts are component class × band of the next position × neighbour nonzero
+counts. Estimate (model R): 77.89 MB. No coefficients are rebuilt. Unpacking
+reads a symbol with our table and writes the photo's own code for it, raw bits
+copied across, in one pass. Packing parses the JPEG once, then writes.
+
+382 unique photos (94.74 MB), every one exact; busy Mac (load ~3.4):
+
+| | Size | Pack, 10 threads | Unpack, 10 threads | One core |
+|---|---:|---:|---:|---:|
+| Light mode | **78.25 MB** (−15.6% of scans, headers solid) | **0.21 s** | **0.20 s** | 60 / 61 MB/s |
+| zstd -3 (full set, checkpoint) | 91.7 MB | 0.26 s | 0.27 s | |
+| Zipgeist tar.zst Fast (†) | 92.1 MB | 0.21 s | 0.50 s | |
+| WinRAR Fastest / Normal / Best | 92.5 / 90.9 / 86.2 MB | 1.09-2.98 s | 0.30-0.38 s | |
+| zstd -19 --long | 85.7 MB | 15.6 s | 0.28 s | |
+| 7-Zip Ultra | 85.3 MB | 6.5 s | 1.67 s | |
+
+That is smaller than every rival and faster to unpack than every rival, tied
+on packing with Zipgeist's fast setting. It is a harness figure: files are
+already in memory and the archive's own work isn't counted.
+
+What moved one core from 50 to 60 MB/s:
+
+- iterating blocks without building a list;
+- reading JPEG data 8 bytes at a time when no 0xFF is among them;
+- a band table instead of a match;
+- 12-bit lookahead in the JPEG reader;
+- 9-bit primary tables per context;
+- codes without decode tables when packing.
+
+No effect: branch-free refills and flushes, 8-bit tables. What's left is the
+chain from one symbol's bits to the next. Reading is 9.6 ns per symbol, near
+libjpeg-turbo's 6-7 ns.
+
+Next: build it into the engine as Fast's JPEG transform (headers to the binary
+lane; verify by re-writing the parsed symbols, which is cheap) and the rANS
+coder as Default's. Then measure the photo set in the real archive against
+every rival on a quiet Mac.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64
