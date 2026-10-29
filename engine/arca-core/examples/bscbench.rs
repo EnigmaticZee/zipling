@@ -26,11 +26,15 @@ fn main() {
         let c = libbsc::compress(&d, s).unwrap();
         let tc = cpu() - t;
         let t = cpu();
-        let back = libbsc::decompress(&c, d.len()).unwrap();
+        let back = libbsc::decompress_threads(&c, d.len(), 1).unwrap();
         let td = cpu() - t;
         assert!(back == d, "bsc round trip failed on {name}");
+        let w = std::time::Instant::now();
+        let back = libbsc::decompress(&c, d.len()).unwrap();
+        let tw = w.elapsed().as_secs_f64();
+        assert!(back == d, "threaded bsc decode differs on {name}");
         let mut line = format!(
-            "{name}: {:.1} MB | bsc {s:?}: {:.3} MB, {tc:.2} s, decode {td:.2} s",
+            "{name}: {:.1} MB | bsc {s:?}: {:.3} MB, {tc:.2} s, decode {td:.2} s (threaded {tw:.2} s wall)",
             d.len() as f64 / 1e6,
             c.len() as f64 / 1e6
         );
