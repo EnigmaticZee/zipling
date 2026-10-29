@@ -287,6 +287,8 @@ impl Archive {
             max_resident: 2 * threads.max(1),
             sched: Mutex::new(Sched {
                 ready: BinaryHeap::new(),
+                writes: BinaryHeap::new(),
+                writing: 0,
                 seq: 0,
                 data: vec![None; nblocks],
                 refs,
@@ -307,7 +309,7 @@ impl Archive {
                 st.waiting.insert(*o, bs.len() as u32);
             }
             st.admit(&x);
-            let n = st.ready.len();
+            let n = st.queued();
             drop(st);
             pool.scope(|s| {
                 for _ in 0..n {
@@ -440,6 +442,12 @@ struct Sched {
     /// unlocks everything else; then the costliest work, so that no long task
     /// starts last.
     ready: BinaryHeap<(u8, u64, Reverse<u64>, Work)>,
+    /// Ready writes of plain chunks, kept apart: up to `CREATORS` of them run
+    /// alongside everything else, so they don't pile up at the end, where the
+    /// cores would wait on the file-creation gate.
+    writes: BinaryHeap<(u8, u64, Reverse<u64>, Work)>,
+    /// Writes running right now.
+    writing: usize,
     seq: u64,
     data: Vec<Option<Arc<Vec<u8>>>>,
     /// Work items that still need each block; at zero the block is dropped.
@@ -475,7 +483,25 @@ fn rebuild_cost(obj: &Object) -> u64 {
 impl Sched {
     fn push(&mut self, class: u8, cost: u64, w: Work) {
         self.seq += 1;
-        self.ready.push((class, cost, Reverse(self.seq), w));
+        let q = if matches!(w, Work::Write(..)) { &mut self.writes } else { &mut self.ready };
+        q.push((class, cost, Reverse(self.seq), w));
+    }
+
+    /// Items waiting to run.
+    fn queued(&self) -> usize {
+        self.ready.len() + self.writes.len()
+    }
+
+    /// The next item: a write while fewer than `CREATORS` run, else the best
+    /// other item (or a write when nothing else is ready).
+    fn pop(&mut self) -> Option<Work> {
+        let write = !self.writes.is_empty() && (self.writing < CREATORS || self.ready.is_empty());
+        if write {
+            self.writing += 1;
+            self.writes.pop().map(|t| t.3)
+        } else {
+            self.ready.pop().map(|t| t.3)
+        }
     }
 
     /// Queues block decodes while memory allows. When nothing else can run,
@@ -485,7 +511,7 @@ impl Sched {
         while let Some(&b) = x.order.get(self.next) {
             let raw = x.archive.index.blocks[b as usize].raw_len;
             let fits = self.resident < x.max_resident && self.resident_bytes + raw <= MAX_RESIDENT_BYTES;
-            let stalled = self.ready.is_empty() && self.running == 0;
+            let stalled = self.queued() == 0 && self.running == 0;
             if !fits && !stalled {
                 break;
             }
@@ -566,7 +592,7 @@ impl Extraction<'_> {
         let w = {
             let mut st = self.sched.lock().unwrap();
             st.running += 1;
-            st.ready.pop().expect("one ready item per job").3
+            st.pop().expect("one ready item per job")
         };
         let failed = self.failed.load(Ordering::Relaxed);
         let t0 = self.trace.as_ref().map(|(s, _)| s.elapsed().as_secs_f64());
@@ -582,12 +608,15 @@ impl Extraction<'_> {
         let spawn = {
             let mut st = self.sched.lock().unwrap();
             st.running -= 1;
+            if matches!(w, Work::Write(..)) {
+                st.writing -= 1;
+            }
             match res {
                 Ok(_) if failed => 0,
                 Ok(decoded) => {
-                    let before = st.ready.len();
+                    let before = st.queued();
                     self.finish(&mut st, w, decoded);
-                    st.ready.len() - before
+                    st.queued() - before
                 }
                 Err(e) => {
                     self.failed.store(true, Ordering::Relaxed);

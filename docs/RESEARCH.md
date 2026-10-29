@@ -747,6 +747,23 @@ the nanosecond, flags, xattrs). Busy Mac, three runs each:
 | Default + pixel codec | 2.98–3.04 s | 2.80–2.97 s | 4.8 → 3.6 s |
 | ZIP (`ditto-mixed.zip`) | 1.05–1.39 s | **0.91–0.99 s** | 3.6–4.0 → 3.0–3.3 s |
 
+**Writes alongside the rest.** The extraction timeline then showed every plain
+write at the end (Max: 2.75–3.5 s), because the scheduler ran the costliest work
+first and writes are cheap; at the end only four threads could create files and
+the other cores waited. Writes now have their own queue: up to four run at any
+time, the other threads decode and rebuild. Saved folder, three alternating runs:
+
+| Extraction | Before | After |
+|---|---:|---:|
+| Fast | 0.80–0.86 s | 0.74–0.88 s |
+| Default | 2.38–2.50 s | **2.19–2.28 s** |
+| Max | 3.05–3.20 s | **2.92–3.02 s** |
+
+Kernel CPU 3.6 → 2.9 s at Default and Max. Max's extraction is CPU-bound from
+0.25 s to the end with no single-file tail (Lepton 10.4 s, Deflate 4.4 s, LZMA2
+3.3 s, pixels 2.6 s), so re-creating one Deflate stream on several cores would
+not shorten it on this folder.
+
 ### LZMA on the code lane: match finders and hint-guided parsing (dead ends)
 
 The code lane's first block (67.1 MB of static libraries, 46:1) at fb 273 on one
