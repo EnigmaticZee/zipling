@@ -24,7 +24,7 @@ fn walk(d: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 fn main() {
     let mut files = Vec::new();
     walk(std::path::Path::new(&std::env::args().nth(1).unwrap()), &mut files);
-    let r: Vec<(usize, usize, f64, f64)> = files
+    let r: Vec<(usize, usize, f64, f64, u64)> = files
         .par_iter()
         .filter_map(|f| {
             let data = std::fs::read(f).ok()?;
@@ -42,9 +42,11 @@ fn main() {
             decode_lepton(&mut Cursor::new(&enc), &mut out, &feat, &pool).ok()?;
             let td = cpu() - t;
             assert_eq!(out, data);
-            Some((data.len(), enc.len(), te, td))
+            Some((data.len(), enc.len(), te, td, crc32fast::hash(&enc) as u64))
         })
         .collect();
     let (a, b, te, td) = r.iter().fold((0, 0, 0.0, 0.0), |s, x| (s.0 + x.0, s.1 + x.1, s.2 + x.2, s.3 + x.3));
+    let digest = r.iter().fold(0u64, |h, x| h.wrapping_mul(31).wrapping_add(x.4));
+    println!("output {b} bytes, digest {digest:016x}");
     println!("{} files {:.1} MB -> {:.1} MB, encode {te:.2} s ({:.1} MB/s), decode {td:.2} s ({:.1} MB/s)", r.len(), a as f64 / 1e6, b as f64 / 1e6, a as f64 / 1e6 / te, a as f64 / 1e6 / td);
 }

@@ -1,0 +1,9 @@
+# Applies to every build in this workspace, the app's (`cargo build -p arca-ffi`
+# from this folder) included.
+[build]
+# LLVM turns loops that fill memory with a repeating value into calls to
+# `memset_pattern16` on Apple targets. In the `wide` SIMD crate every vector
+# constant is such a fill, so Lepton made 19-30 library calls per 8x8 block for
+# its IDCT constants. Without the idiom: Lepton 12% faster both ways, identical
+# output; nothing else measurably slower (saved folder, 2026-10-28).
+rustflags = ["-C", "llvm-args=-disable-loop-idiom-memset"]

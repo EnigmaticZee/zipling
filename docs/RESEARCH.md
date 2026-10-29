@@ -635,7 +635,16 @@ Every file is transformed at 7.9 s; the last image block ends at 9.4 s.
 decode 9–10 MB/s per core, so `encode_lepton_verify` doubles the work; that is the
 price of proving every JPEG comes back exactly. ~10% of its samples are
 `memset_pattern16` inside `adv_predict_dc_pix` (vector constants from the `wide`
-crate); its SIMD is NEON on ARM. Nothing cheaper to cut without patching Lepton.
+crate); its SIMD is NEON on ARM. The calls are LLVM's loop idiom: every vector
+constant in `wide` is an array fill, which LLVM turns into `memset_pattern16`
+on Apple targets (19 calls of 32 bytes per block in the DC predictor alone;
+patching `wide` to build `i32x8` from halves only made it 30 calls of 16 bytes,
+4% faster). **Building with `-C llvm-args=-disable-loop-idiom-memset`**
+(`engine/.cargo/config.toml`, so the app's build too): Lepton encode 9.8 →
+8.6 s, decode 10.4 → 9.1 s on the photos (−12%), byte-identical output; whole
+saved folder, three alternating runs: Default extraction 2.41–2.51 → 2.28–2.44 s,
+Max 3.08–3.23 → 3.00–3.09 s, Fast unchanged, packing CPU 1.5–2 s lower, sizes
+identical.
 
 **PNGs made by stock zlib** (`scratchpad zreplay.c`, every PNG of the saved
 folder): 480 of 644 PNGs (81.9 of 122.9 MB of Deflate) are byte for byte what
