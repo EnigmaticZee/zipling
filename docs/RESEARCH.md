@@ -747,6 +747,32 @@ the nanosecond, flags, xattrs). Busy Mac, three runs each:
 | Default + pixel codec | 2.98–3.04 s | 2.80–2.97 s | 4.8 → 3.6 s |
 | ZIP (`ditto-mixed.zip`) | 1.05–1.39 s | **0.91–0.99 s** | 3.6–4.0 → 3.0–3.3 s |
 
+### LZMA on the code lane: match finders and hint-guided parsing (dead ends)
+
+The code lane's first block (67.1 MB of static libraries, 46:1) at fb 273 on one
+thread spends 42% of its samples in `Bt4_MatchFinder_GetMatches`, 26% in
+`Bt4_MatchFinder_Skip` and 31% in the encoder (optimal parse). Match finders
+(`examples/lzone.rs`, one encode each, one thread):
+
+| Match finder | Size | CPU |
+|---|---:|---:|
+| bt4 (Max) | 1.391 MB | 33.7 s |
+| bt4, 32 cycles | 1.436 MB (+3.2%) | 27.5 s |
+| hc4 | 1.452 MB (+4.4%) | 30.4 s |
+| hc5 | 1.435 MB (+3.2%) | 31.1 s |
+| bt2 / bt3 | 1.400 / 1.397 MB | 34.4 / 34.7 s |
+
+**Hint-guided LZMA** (tried and reverted; the SDK files are unchanged): the
+long-range pre-pass hands LZMA its repeats ([start, end, distance]); inside one,
+the encoder takes it as a single match (checked byte for byte) and skips the
+search, optionally without inserting the skipped positions into the tree. Taking
+hints of 256+ bytes: 1.524–1.528 MB (+10%) in 23.3 s without inserting, 33.4 s
+with; 512+: 1.409 MB (+1.3%) in 27.9 s. Taking a hint only where LZMA's own
+longest match is shorter: 1.390 MB in 32.6 s, i.e. LZMA already finds these
+repeats, and its optimal parse codes them ~10% better than one long match each
+(repeat distances and split points). The time is the parse over long repeats,
+not missed matches.
+
 ### Long-range pre-pass before LZMA (dead end on size)
 
 Goal: take the code lane's repetition (static libraries, 46:1) off LZMA fb 273,
@@ -851,6 +877,8 @@ with `lsregister -u`.
 ## Dead ends
 
 - Long-range pre-pass before LZMA (2x faster on code, 13% bigger): see Deep research.
+- Hint-guided LZMA (the pre-pass's repeats taken as single matches): +1.3–10%
+  for 17–31% less CPU; other match finders: +3–4% for ≤18%. See Deep research.
 - Decoding image bands side by side on one core, and branchless top-bit decoding:
   the pixel decoder is bound by instruction count (see Default).
 - LZRAVEN (needs macOS 27), Apple LZMA, QoS classes, narrowing preflate
