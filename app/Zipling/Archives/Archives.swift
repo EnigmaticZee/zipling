@@ -142,16 +142,19 @@ enum Archives {
         return try await open(dir.appending(path: path), password: password ?? parent.password, scratch: scratch)
     }
 
-    /// Extracts everything, or the given paths, into `dest`.
+    /// Extracts everything, or the given paths, into `dest`. The engine sets
+    /// `quarantine` on what it extracts itself (the result says so); for the other
+    /// backends `SafeExtraction.finalize` does.
     static func extract(
-        _ archive: OpenedArchive, to dest: URL, only: [String], task: EngineTask, cancel: CancelToken,
-        progress: @escaping @Sendable (UInt64, UInt64) -> Void
+        _ archive: OpenedArchive, to dest: URL, only: [String], quarantine: Data? = nil, task: EngineTask,
+        cancel: CancelToken, progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws -> ExtractResult {
         let (files, bytes) = selectionSize(archive.listing, only: only)
         try ensureSpace(bytes, at: dest.deletingLastPathComponent())
         switch archive.backend {
         case .arca:
-            return try await Engine.extract(archive.source, to: dest, only: only, task: task, progress: progress)
+            return try await Engine.extract(archive.source, to: dest, only: only, quarantine: quarantine, task: task,
+                                            progress: progress)
         case .unar:
             let started = Date()
             let indexes = only.isEmpty ? nil : archive.listing.entries.filter { e in
@@ -167,7 +170,8 @@ enum Archives {
             // memory. It declines what it doesn't handle, and 7-Zip takes over.
             if archive.password == nil, (archive.listing.format ?? "").lowercased() == "zip" {
                 do {
-                    return try await Engine.extractZip(archive.source, to: dest, only: only, task: task, progress: progress)
+                    return try await Engine.extractZip(archive.source, to: dest, only: only, quarantine: quarantine,
+                                                       task: task, progress: progress)
                 } catch let error as EngineError where error.isUnsupported {
                     // Fall through to 7-Zip.
                 }

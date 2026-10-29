@@ -55,8 +55,10 @@ enum Extraction {
         defer { try? fm.removeItem(at: staging) }
 
         let result = try await Archives.extract(
-            archive, to: staging, only: roots, task: job.task, cancel: job.cancelToken, progress: job.progressHandler)
-        let report = try SafeExtraction.finalize(staging, quarantine: quarantine)
+            archive, to: staging, only: roots, quarantine: quarantine, task: job.task, cancel: job.cancelToken,
+            progress: job.progressHandler)
+        let report = try SafeExtraction.finalize(staging, quarantine: quarantine,
+                                                 alreadyQuarantined: result.quarantined == true)
 
         // A selection: those items. Everything: whatever actually landed in staging.
         var sources = (roots.isEmpty ? SafeExtraction.names(in: staging.path).sorted() : roots)

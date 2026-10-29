@@ -68,14 +68,18 @@ enum Engine {
         }
     }
 
+    /// With `quarantine`, the engine sets it on every item as it writes them.
     static func extract(
-        _ archive: URL, to dest: URL, only: [String], task: EngineTask,
+        _ archive: URL, to dest: URL, only: [String], quarantine: Data? = nil, task: EngineTask,
         progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws -> ExtractResult {
-        let request = try json(ExtractRequest(archive: archive.path, dest: dest.path, only: only, overwrite: false))
-        return try await withProgress(progress) { ctx in
+        let request = try json(ExtractRequest(archive: archive.path, dest: dest.path, only: only, overwrite: false,
+                                              quarantine: quarantine.map { [UInt8]($0) }))
+        var result: ExtractResult = try await withProgress(progress) { ctx in
             try decode(arca_extract(request, task.handle, trampoline, ctx))
         }
+        result.quarantined = quarantine != nil
+        return result
     }
 
     /// Extracts a ZIP archive with the engine's own reader: every core, every CRC
@@ -83,13 +87,16 @@ enum Engine {
     /// left out. Throws an error whose `isUnsupported` is true for archives it doesn't
     /// handle (encryption, other methods, legacy name encodings, split archives).
     static func extractZip(
-        _ archive: URL, to dest: URL, only: [String], task: EngineTask,
+        _ archive: URL, to dest: URL, only: [String], quarantine: Data? = nil, task: EngineTask,
         progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws -> ExtractResult {
-        let request = try json(ZipExtractRequest(archive: archive.path, dest: dest.path, only: only, overwrite: false))
-        return try await withProgress(progress) { ctx in
+        let request = try json(ZipExtractRequest(archive: archive.path, dest: dest.path, only: only, overwrite: false,
+                                                 quarantine: quarantine.map { [UInt8]($0) }))
+        var result: ExtractResult = try await withProgress(progress) { ctx in
             try decode(arca_zip_extract(request, task.handle, trampoline, ctx))
         }
+        result.quarantined = quarantine != nil
+        return result
     }
 
     static func verify(
@@ -156,6 +163,7 @@ enum Engine {
         let dest: String
         let only: [String]
         let overwrite: Bool
+        let quarantine: [UInt8]?
     }
 
     private struct ZipExtractRequest: Encodable {
@@ -163,5 +171,6 @@ enum Engine {
         let dest: String
         let only: [String]
         let overwrite: Bool
+        let quarantine: [UInt8]?
     }
 }

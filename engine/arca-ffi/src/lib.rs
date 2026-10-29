@@ -259,6 +259,9 @@ struct ExtractRequest {
     only: Vec<String>,
     #[serde(default)]
     overwrite: bool,
+    /// Set as `com.apple.quarantine` on everything extracted.
+    #[serde(default)]
+    quarantine: Option<Vec<u8>>,
 }
 
 #[derive(Serialize)]
@@ -283,7 +286,7 @@ pub unsafe extern "C" fn arca_extract(
     respond(|| {
         let req: ExtractRequest = serde_json::from_str(&arg(request)?).context("bad extract request")?;
         let a = Archive::open(&req.archive)?;
-        let opts = ExtractOptions { overwrite: req.overwrite, only: req.only, hooks, ..Default::default() };
+        let opts = ExtractOptions { overwrite: req.overwrite, only: req.only, quarantine: req.quarantine, hooks, ..Default::default() };
         let s = a.extract(&req.dest, &opts)?;
         Ok(ExtractResult { files: s.files, bytes: s.bytes, seconds: s.seconds })
     })
