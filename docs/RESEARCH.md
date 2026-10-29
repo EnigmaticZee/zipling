@@ -274,6 +274,43 @@ speed. Next, in order:
 Target: 60+ MB/s per core end to end, which puts the photo set at about
 0.15 s on 10 cores against zstd -3's 0.27 s.
 
+**Photos, round 4: measured against Lepton itself, and faster.** Earlier
+"Lepton ≈ 70.2 MB" was inferred from the archive. Measured directly
+(`--lepton`, lepton_jpeg 0.5.8, single thread, the engine's settings), the set
+has 15 duplicate photos (3.32 MB) that the archive stores once. On the 382
+unique baseline photos (94.74 MB):
+
+| Coder | Size | Encode | Decode | Exact |
+|---|---:|---:|---:|---|
+| Lepton | 70.79 MB | 10 MB/s | 10 MB/s | yes |
+| Ours (coefficients 68.83 MB + headers 0.19 MB solid) | **69.01 MB (−2.5%)** | 16 MB/s | **35 MB/s** + Huffman 95 MB/s | 382/382 |
+
+Per file, headers would be 1.25 MB with zstd-19 (69.93 MB in all, still under
+Lepton). This round's speed steps, size unchanged:
+
+- The rANS states swap after each symbol and stay in registers.
+- A 64-bucket table per context gives the first candidate symbol.
+- Tables cover used contexts only, through a per-type map.
+- Table levels are stored as bytes.
+
+Decode went 27 → 35 MB/s. Decoding the 382 photos once: 28.3 G instructions
+in 8.4 G cycles (IPC 3.4), 112 instructions per symbol. In the profile, the
+symbol step is 38%, per-block bookkeeping 32%, value assembly 11%, table setup
+10%, raw bits 5%.
+
+End to end on one core: 2.63 s decoding + 0.97 s Huffman = about 26 MB/s,
+2.6x Lepton. On 10 cores the photo set would extract in about 0.4 s, against
+Lepton's 1.2 s today, zstd -3's 0.27 s and WinRAR's 0.37 s. Not enough yet:
+
+1. Decode in MCU order straight into the Huffman writer, with row buffers
+   instead of whole-image coefficient arrays.
+2. Finer bucket tables, or 10-bit frequencies with direct lookup.
+3. Fewer table decisions: send tables only for contexts with enough samples
+   and fall back to a parent context.
+
+Coding runs of zeros won't help: zeros are 47% of coefficient symbols, so a
+run symbol plus a value symbol isn't fewer symbols.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64

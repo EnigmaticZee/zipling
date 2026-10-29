@@ -841,15 +841,59 @@ fn repeats(files: &[std::path::PathBuf]) {
     println!("blocks {blocks}, with AC {nzb}; AC repeats an earlier block: {rep} ({:.1}% of AC blocks), DC equal too {rep_dc}; their nonzeros {:.1}% of all", 100.0 * rep as f64 / nzb as f64, 100.0 * nz_rep as f64 / nz_all as f64);
 }
 
+fn run_lepton(files: &[std::path::PathBuf]) {
+    use std::time::Instant;
+    let (mut n, mut inb, mut lep, mut te, mut td) = (0, 0u64, 0u64, 0f64, 0f64);
+    let (mut hdr_files, mut hdr_raw) = (0u64, Vec::new());
+    for f in files {
+        let d = fs::read(f).unwrap();
+        let Ok(img) = read_jpeg(&d) else { continue };
+        n += 1;
+        inb += d.len() as u64;
+        let mut feat = lepton_jpeg::EnabledFeatures::compat_lepton_vector_write();
+        feat.max_processor_threads = 1;
+        let pool = lepton_jpeg::SingleThreadPool::default();
+        let t = Instant::now();
+        let mut out = Vec::new();
+        lepton_jpeg::encode_lepton(&mut std::io::Cursor::new(&d), &mut std::io::Cursor::new(&mut out), &feat, &pool).unwrap();
+        te += t.elapsed().as_secs_f64();
+        lep += out.len() as u64;
+        let mut rf = lepton_jpeg::EnabledFeatures::compat_lepton_vector_read();
+        rf.max_processor_threads = 1;
+        let t = Instant::now();
+        let mut back = Vec::new();
+        lepton_jpeg::decode_lepton(&mut std::io::Cursor::new(&out), &mut back, &rf, &pool).unwrap();
+        td += t.elapsed().as_secs_f64();
+        assert!(back == d);
+        // the header bytes (everything but scan data), for our side of the comparison
+        let mut h = Vec::new();
+        let mut at = 0;
+        for sc in &img.scans { h.extend_from_slice(&d[at..sc.start]); at = sc.end; }
+        h.extend_from_slice(&d[at..]);
+        hdr_files += zstd::bulk::compress(&h, 19).unwrap().len() as u64;
+        hdr_raw.extend_from_slice(&h);
+    }
+    let solid = zstd::bulk::compress(&hdr_raw, 19).unwrap().len();
+    println!("lepton: {n} baseline files, {:.2} MB -> {:.2} MB; one core encode {:.2} s ({:.0} MB/s), decode {:.2} s ({:.0} MB/s)",
+        inb as f64 / 1e6, lep as f64 / 1e6, te, inb as f64 / 1e6 / te, td, inb as f64 / 1e6 / td);
+    println!("  headers: {:.2} MB raw, zstd-19 per file {:.2} MB, solid {:.2} MB", hdr_raw.len() as f64 / 1e6, hdr_files as f64 / 1e6, solid as f64 / 1e6);
+}
+
 fn run_fast(files: &[std::path::PathBuf]) {
     use std::time::Instant;
     let (mut inb, mut outb, mut side, mut raw, mut ra) = (0u64, 0u64, 0u64, 0u64, 0u64);
+    let mut hdr_raw: Vec<u8> = Vec::new();
     let (mut te, mut td, mut th, mut ok, mut n) = (0f64, 0f64, 0f64, 0, 0);
     for f in files {
         let d = fs::read(f).unwrap();
         let Ok(img) = read_jpeg(&d) else { continue };
         n += 1;
         inb += img.scans.iter().map(|s| (s.end - s.start) as u64).sum::<u64>();
+        {
+            let mut at = 0;
+            for sc in &img.scans { hdr_raw.extend_from_slice(&d[at..sc.start]); at = sc.end; }
+            hdr_raw.extend_from_slice(&d[at..]);
+        }
         let mut coefs: Vec<Vec<[i16; 64]>> = img.comps.iter().map(|c| c.coef.clone()).collect();
         let t = Instant::now();
         let bytes = {
@@ -883,10 +927,14 @@ fn run_fast(files: &[std::path::PathBuf]) {
         th += t.elapsed().as_secs_f64();
         if same { ok += 1; } else { eprintln!("{}: round trip differs", f.display()); }
     }
+    let solid = zstd::bulk::compress(&hdr_raw, 19).unwrap().len() as u64;
+    println!("fast total with headers (solid zstd-19 {:.2} MB): {:.2} MB", solid as f64 / 1e6, (outb + solid) as f64 / 1e6);
     println!("fast: {n} images, scans {:.2} MB -> {:.2} MB ({:.1}% smaller): tables {:.2} MB, raw bits {:.2} MB, rANS {:.2} MB; identical {ok}/{n}",
         inb as f64 / 1e6, outb as f64 / 1e6, 100.0 * (1.0 - outb as f64 / inb as f64), side as f64 / 1e6, raw as f64 / 1e6, ra as f64 / 1e6);
     println!("  one core: encode {:.2} s ({:.0} MB/s), decode {:.2} s ({:.0} MB/s), Huffman re-encode {:.2} s ({:.0} MB/s)",
         te, inb as f64 / 1e6 / te, td, inb as f64 / 1e6 / td, th, inb as f64 / 1e6 / th);
+    println!("  AC symbols {}, zeros among them {:.1}%", fast::N_AC.load(std::sync::atomic::Ordering::Relaxed),
+        100.0 * fast::T_ZERO.load(std::sync::atomic::Ordering::Relaxed) as f64 / fast::N_AC.load(std::sync::atomic::Ordering::Relaxed) as f64);
     println!("  decode: tables {:.2} s, symbols {} ({:.2} per input byte)", fast::T_TABLES.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9,
         fast::T_SYMS.load(std::sync::atomic::Ordering::Relaxed), fast::T_SYMS.load(std::sync::atomic::Ordering::Relaxed) as f64 / inb as f64);
 }
@@ -938,6 +986,16 @@ fn run_codec(files: &[std::path::PathBuf]) {
 fn main() {
     let dir = std::env::args().nth(1).expect("dir");
     let mut files = vec![];
+    fn uniq(files: Vec<std::path::PathBuf>) -> Vec<std::path::PathBuf> {
+        use std::hash::{Hash, Hasher};
+        let mut seen = std::collections::HashSet::new();
+        files.into_iter().filter(|f| {
+            let d = fs::read(f).unwrap();
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            d.hash(&mut h);
+            seen.insert((h.finish(), d.len()))
+        }).collect()
+    }
     fn walk(p: &Path, out: &mut Vec<std::path::PathBuf>) {
         for e in fs::read_dir(p).unwrap() {
             let e = e.unwrap().path();
@@ -946,6 +1004,13 @@ fn main() {
     }
     walk(Path::new(&dir), &mut files);
     files.sort();
+    if std::env::var_os("UNIQUE").is_some() {
+        files = uniq(files);
+    }
+    if std::env::args().any(|a| a == "--lepton") {
+        run_lepton(&files);
+        return;
+    }
     if std::env::args().any(|a| a == "--fast") {
         run_fast(&files);
         return;
