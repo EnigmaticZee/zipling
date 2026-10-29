@@ -624,6 +624,89 @@ Ideas queued, with why:
   the saved folder). The engine could set it through the descriptor it already
   holds. Needs an optional field in the extract request (FFI stays 9 functions).
 
+### Default: where its time goes now (2026-10-28 evening)
+
+Saved folder, Default, busy Mac: 245.48 MiB in 9.4–9.6 s, 65.6 s of CPU. Thread
+seconds: Lepton encode + verify 23.0, preflate on PNGs 10.7 + verify 2.3, PDFs
+1.5, blocks ~24 (zstd-15 text 58 MB, zstd-12 binary 358 MB and image 536 MB).
+Every file is transformed at 7.9 s; the last image block ends at 9.4 s.
+
+**Lepton** (`examples/leptbench.rs`, one thread per file): encode 9–10 MB/s,
+decode 9–10 MB/s per core, so `encode_lepton_verify` doubles the work; that is the
+price of proving every JPEG comes back exactly. ~10% of its samples are
+`memset_pattern16` inside `adv_predict_dc_pix` (vector constants from the `wide`
+crate); its SIMD is NEON on ARM. Nothing cheaper to cut without patching Lepton.
+
+**PNGs made by stock zlib** (`scratchpad zreplay.c`, every PNG of the saved
+folder): 480 of 644 PNGs (81.9 of 122.9 MB of Deflate) are byte for byte what
+macOS's zlib makes: level 1 56.1 MB (ImageIO's default), level 9 18.2 MB, level 6
+5.7 MB. On those, preflate at Default takes 3.9 s forward + 1.35 s verify (level
+1) where inflate + one zlib re-run takes 1.8 s and is its own check; re-creation
+costs the same either way (zlib -1 1.53 s, preflate 1.35 s). Level 9 is 6 MB/s in
+zlib, slower than preflate. Default also spends 2.7 s rejecting 92 level-9 PNGs
+its chain limit refuses (the zlib header's FLEVEL = 3 says so up front). A replay
+path needs a zlib whose output never changes: macOS's libz could change with an
+OS update, so it would need a pinned copy (zlib source is not on this Mac; a
+download). Worth ~7 s of Default's CPU (~0.8 s).
+
+**The pixel codec at Default** (`ARCA_EXP_PIXELS=1`): 245.48 → **233.57 MiB**
+(−4.9%) and make 9.4 → 7.8–8.2 s (the codec replaces zstd-12 on 536 MB of
+pixels), but extraction 2.74 → 3.0–3.3 s, behind Zipgeist's 3.0 s. Extraction is
+CPU-bound from 0.25 s to the end (Lepton 11.8 s, Deflate + pixels 8.6 s).
+
+**Faster pixel decoding, same format.** Counting instructions (`/usr/bin/time -l`)
+showed the decoder executing ~100 instructions per byte at 4.7 per cycle: bound by
+instruction count, not by dependency chains or branch misses. Hence:
+
+| Try | Decode (docs PNGs, 1 GB of pixels) | Size |
+|---|---|---|
+| engine before | 110 MB/s | 64.659 MB |
+| two or four bands decoded side by side, one core | 108 / 107 MB/s | +0.36 / +0.93% |
+| branchless rANS refill | 112 MB/s | same |
+| branchless top bit (decode always, keep when needed) | 95 MB/s | same |
+| **one decoder per channel count, flat pixels skip the context, table-driven update and tokens** | **171–182 MB/s** | **same bytes** |
+
+The encoder got the same treatment (103 → 119 MB/s) and writes byte-identical
+output on all 559 PNGs, so archives are unchanged. PNG row filters now run one
+loop per filter type: refilter 595 MB/s → 10.8 GB/s, unfilter 634 → 842 MB/s.
+Flat graphics decode at ~300 MB/s, photo-like images at ~135 MB/s (82
+instructions per byte; going further needs a format change, e.g. static tables).
+
+## Writing files (extraction)
+
+Fast extraction of the saved folder was 1.0 s with 1.1 s of user CPU and **5.0 s
+of kernel CPU**. `examples/writebench.rs` recreates the extracted tree from memory:
+creating 11,050 empty files costs 3.3 s of kernel time on 10 threads; writing their
+661 MB adds nothing measurable. APFS serialises file creation:
+
+| Threads creating | Wall | Kernel CPU |
+|---|---:|---:|
+| 1 | 0.95 s | 0.90 s |
+| 2 | 0.63 s | 1.15 s |
+| 4 | 0.55 s | 1.72 s |
+| 10 | 0.50–0.53 s | 3.1 s |
+| 10, at most 4 inside `open` | 0.43 s | 2.15 s |
+
+Gating `close` does nothing; `openat` per directory does nothing. Changes:
+- **at most 4 threads create files at once** (`create_file`, used by the
+  extractor and the ZIP reader, and clones);
+- **duplicates under 64 KiB are written again** while the content is in hand
+  (1,002 duplicate files cost 0.87 s of kernel time as clones in a 0.14 s tail
+  phase); larger ones are still cloned (they share space);
+- **mode and times in one call** (`fsetattrlist` / `setattrlist`) instead of a
+  chmod and a utimes, for files and directories;
+- directories that files were written into are not `mkdir`ed again.
+
+Extracted trees are identical to before (14,505 items: contents, mode, mtime to
+the nanosecond, flags, xattrs). Busy Mac, three runs each:
+
+| Extraction | Before | After | Kernel CPU |
+|---|---:|---:|---:|
+| Fast | 0.97–1.02 s | **0.74–0.96 s** | 5.0 → 3.4 s |
+| Default | 2.72–2.80 s | **2.57–2.63 s** | 5.2 → 3.6 s |
+| Default + pixel codec | 2.98–3.04 s | 2.80–2.97 s | 4.8 → 3.6 s |
+| ZIP (`ditto-mixed.zip`) | 1.05–1.39 s | **0.91–0.99 s** | 3.6–4.0 → 3.0–3.3 s |
+
 ### Long-range pre-pass before LZMA (dead end on size)
 
 Goal: take the code lane's repetition (static libraries, 46:1) off LZMA fb 273,
@@ -728,5 +811,7 @@ with `lsregister -u`.
 ## Dead ends
 
 - Long-range pre-pass before LZMA (2x faster on code, 13% bigger): see Deep research.
+- Decoding image bands side by side on one core, and branchless top-bit decoding:
+  the pixel decoder is bound by instruction count (see Default).
 - LZRAVEN (needs macOS 27), Apple LZMA, QoS classes, narrowing preflate
   candidates, 32 MiB binary blocks: see their sections.
