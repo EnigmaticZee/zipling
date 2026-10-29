@@ -240,6 +240,40 @@ matches Lepton's size, or beats it with built-in tables. Next: build it and
 measure decoding speed. Mixing + block copy (an estimated ~69.3 MB) is the
 candidate for Max and Ultra.
 
+**Photos, round 3: the fixed-table coder, built** (`examples/jpegmodel`,
+`fast.rs`; `--fast`). Model G + block copy, static tables per image coded
+with the adaptive binary coder, two interleaved rANS states (12-bit
+frequencies, 16-bit words), raw bits in their own stream. Every one of the 397
+photos comes back byte for byte. Scan data 95.80 MB, one core:
+
+| Version | Size | Decode | Notes |
+|---|---:|---:|---|
+| First build: magnitude class, top bit and sign as separate symbols; "nonzeros left" as context | **70.61 MB (−26.3%)** | 11 MB/s | 4.5 symbols per byte |
+| One symbol per value (class + top bit), sign raw | 71.11 MB | 18 MB/s | 2.75 symbols per byte |
+| Block's nonzero count instead of "left" as context | 71.47 MB | 18 MB/s | contexts known before the block |
+| Branch-free value decoding, branchless raw-bit refill | 71.47 MB | 21 MB/s | |
+| Block contexts with NEON; empty blocks skip them | 71.47 MB | **27 MB/s** | |
+
+Extraction also re-writes JPEG's Huffman codes: 45 → **95 MB/s** after a
+32-bit flush with a fast 0xFF check and a nonzero bitmask walk. End to end
+that is about 21 MB/s per core, 2x Lepton's ~10 MB/s. Not yet the multiple.
+
+Where the time goes (instruction counters, one decode of the set): 30.7 G
+instructions in 11.1 G cycles, IPC 2.8, so **116 instructions per symbol**.
+It is instruction-bound, not memory-bound: tiny tables decode at the same
+speed. Next, in order:
+
+1. A dedicated decode loop with the states in registers (the generic walk
+   keeps them in memory).
+2. A per-context bucket table (slot >> 7 → first symbol) instead of the NEON
+   search.
+3. Zero runs as part of the symbol, cutting the symbols per byte.
+4. Tables for used contexts only (0.31 s of setup today).
+5. A Huffman writer at 300+ MB/s.
+
+Target: 60+ MB/s per core end to end, which puts the photo set at about
+0.15 s on 10 cores against zstd -3's 0.27 s.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64
