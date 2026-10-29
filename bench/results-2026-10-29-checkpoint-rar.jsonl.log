@@ -1,0 +1,119 @@
+13:14:03 jpeg: start (load 2.4), 6 tools x 2 rounds
+13:14:04 jpeg r1 arca-fast: 95095764 0.12s / 0.12s
+13:14:05 jpeg r1 rar-fastest: 92505522 1.09s / 0.33s
+13:14:09 jpeg r1 arca-balanced: 71096794 2.23s / 1.20s
+13:14:10 jpeg r1 rar-normal: 90929913 1.17s / 0.37s
+13:14:14 jpeg r1 arca-max-bsc: 71096198 2.19s / 1.17s
+13:14:17 jpeg r1 rar-best: 86214821 2.83s / 0.38s
+13:14:20 jpeg r2 rar-best: 86214821 2.98s / 0.38s
+13:14:24 jpeg r2 arca-max-bsc: 71096198 2.20s / 1.15s
+13:14:25 jpeg r2 rar-normal: 90929913 1.12s / 0.37s
+13:14:29 jpeg r2 arca-balanced: 71096794 2.19s / 1.22s
+13:14:30 jpeg r2 rar-fastest: 92505522 1.09s / 0.30s
+13:14:30 jpeg r2 arca-fast: 95095765 0.11s / 0.06s
+13:19:46 docs: start (load 2.4), 6 tools x 2 rounds
+13:19:46 docs r1 arca-fast: 41522894 0.10s / 0.10s
+13:19:48 docs r1 rar-fastest: 50041275 0.83s / 0.37s
+13:19:50 docs r1 arca-balanced: 22162652 1.79s / 0.27s
+13:19:51 docs r1 rar-normal: 49754912 1.01s / 0.33s
+13:20:03 docs r1 arca-max-bsc: 18197774 10.65s / 0.45s
+13:20:05 docs r1 rar-best: 38740312 1.66s / 0.28s
+13:20:07 docs r2 rar-best: 38740312 1.73s / 0.27s
+13:20:18 docs r2 arca-max-bsc: 18197774 10.73s / 0.44s
+13:20:19 docs r2 rar-normal: 49754912 1.01s / 0.34s
+13:20:21 docs r2 arca-balanced: 22162652 1.80s / 0.26s
+13:20:23 docs r2 rar-fastest: 50041275 0.82s / 0.37s
+13:20:23 docs r2 arca-fast: 41522896 0.10s / 0.08s
+13:30:23 still busy after 10 min (load 2.7); going on
+13:30:28 source: start (load 2.7), 6 tools x 2 rounds
+13:30:29 source r1 arca-fast: 13545424 0.26s / 0.44s
+13:30:34 source r1 rar-fastest: 21818593 1.75s / 1.43s
+13:30:37 source r1 arca-balanced: 11200897 1.99s / 0.42s
+13:30:42 source r1 rar-normal: 18154750 2.44s / 1.41s
+13:30:46 source r1 arca-max-bsc: 8094110 1.79s / 0.98s
+13:30:53 source r1 rar-best: 10151120 4.57s / 1.22s
+13:30:59 source r2 rar-best: 10151120 4.50s / 1.26s
+13:31:02 source r2 arca-max-bsc: 8094110 1.78s / 0.93s
+13:31:07 source r2 rar-normal: 18154750 2.40s / 1.41s
+13:31:09 source r2 arca-balanced: 11200897 2.01s / 0.40s
+13:31:13 source r2 rar-fastest: 21818593 1.75s / 1.42s
+13:31:14 source r2 arca-fast: 13545425 0.28s / 0.39s
+13:34:31 apps: start (load 2.2), 6 tools x 2 rounds
+13:34:32 apps r1 arca-fast: 72454742 0.27s / 0.17s
+13:34:34 apps r1 rar-fastest: 78678710 1.27s / 0.69s
+13:34:37 apps r1 arca-balanced: 62427122 2.10s / 0.26s
+13:34:40 apps r1 rar-normal: 64677405 2.44s / 0.74s
+13:34:54 apps r1 arca-max-bsc: 49152190 12.01s / 0.73s
+13:35:00 apps r1 rar-best: 58691254 5.11s / 0.69s
+13:35:06 apps r2 rar-best: 58691254 5.21s / 0.69s
+13:35:19 apps r2 arca-max-bsc: 49152184 12.01s / 0.71s
+13:35:22 apps r2 rar-normal: 64677405 2.44s / 0.75s
+13:35:25 apps r2 arca-balanced: 62427122 2.16s / 0.25s
+13:35:27 apps r2 rar-fastest: 78678710 1.20s / 0.68s
+13:35:27 apps r2 arca-fast: 72454742 0.29s / 0.17s
+13:41:13 silesia: start (load 2.4), 6 tools x 2 rounds
+13:41:13 silesia r1 arca-fast: 65671425 0.24s / 0.10s
+13:41:15 silesia r1 rar-fastest: 66682301 0.91s / 0.41s
+13:41:20 silesia r1 arca-balanced: 57317222 4.94s / 0.16s
+13:41:24 silesia r1 rar-normal: 54210490 3.68s / 0.45s
+13:41:38 silesia r1 arca-max-bsc: 45970550 13.45s / 0.90s
+13:41:45 silesia r1 rar-best: 53117766 6.38s / 0.45s
+13:41:52 silesia r2 rar-best: 53117766 6.21s / 0.46s
+13:42:06 silesia r2 arca-max-bsc: 45970550 13.21s / 0.93s
+13:42:10 silesia r2 rar-normal: 54210490 3.56s / 0.46s
+13:42:15 silesia r2 arca-balanced: 57317223 4.79s / 0.17s
+13:42:16 silesia r2 rar-fastest: 66682301 0.91s / 0.41s
+13:42:16 silesia r2 arca-fast: 65671422 0.24s / 0.08s
+13:43:55 saved: start (load 2.4), 6 tools x 2 rounds
+13:43:57 saved r1 arca-fast: 315901969 0.72s / 0.81s
+13:44:08 saved r1 rar-fastest: 339533588 5.44s / 3.28s
+13:44:21 saved r1 arca-balanced: 257395839 8.33s / 2.08s
+13:44:35 saved r1 rar-normal: 312263900 8.84s / 3.35s
+13:45:00 saved r1 arca-max-bsc: 221842597 18.31s / 3.26s
+13:45:25 saved r1 rar-best: 284981269 19.80s / 3.12s
+13:45:49 saved r2 rar-best: 284981269 19.72s / 3.18s
+13:46:12 saved r2 arca-max-bsc: 221842601 18.62s / 3.09s
+13:46:26 saved r2 rar-normal: 312263900 9.87s / 3.37s
+13:46:37 saved r2 arca-balanced: 257395839 8.39s / 2.08s
+13:46:47 saved r2 rar-fastest: 339533588 5.47s / 3.25s
+13:46:49 saved r2 arca-fast: 315901971 0.77s / 0.81s
+13:56:27 mixed: start (load 2.3), 6 tools x 2 rounds
+13:56:30 mixed r1 arca-fast: 288343622 0.73s / 0.79s
+13:56:41 mixed r1 rar-fastest: 309820904 5.62s / 3.20s
+13:56:53 mixed r1 arca-balanced: 223721950 8.53s / 1.81s
+13:57:09 mixed r1 rar-normal: 277819480 10.64s / 3.26s
+13:57:39 mixed r1 arca-max-bsc: 192213867 24.30s / 2.95s
+13:58:05 mixed r1 rar-best: 247358508 21.51s / 2.98s
+13:58:30 mixed r2 rar-best: 247358508 21.38s / 2.95s
+13:58:59 mixed r2 arca-max-bsc: 192213867 25.06s / 2.96s
+13:59:15 mixed r2 rar-normal: 277819480 11.62s / 3.30s
+13:59:26 mixed r2 arca-balanced: 223721953 8.60s / 1.85s
+13:59:35 mixed r2 rar-fastest: 309820904 5.66s / 3.17s
+13:59:37 mixed r2 arca-fast: 288343621 0.75s / 0.67s
+14:02:23 dmgs: start (load 2.5), 6 tools x 2 rounds
+14:02:24 dmgs r1 arca-fast: 619666196 0.69s / 0.21s
+14:02:29 dmgs r1 rar-fastest: 615201242 3.39s / 1.40s
+14:02:30 dmgs r1 arca-balanced: 619674449 0.74s / 0.22s
+14:02:50 dmgs r1 rar-normal: 612347011 18.36s / 1.49s
+14:03:42 dmgs r1 arca-max-bsc: 450555898 47.77s / 4.47s
+14:04:01 dmgs r1 rar-best: 612341025 17.10s / 1.49s
+14:04:20 dmgs r2 rar-best: 612341025 16.99s / 1.63s
+14:05:12 dmgs r2 arca-max-bsc: 450555897 47.70s / 4.53s
+14:05:32 dmgs r2 rar-normal: 612347011 18.28s / 1.58s
+14:05:33 dmgs r2 arca-balanced: 619674448 0.74s / 0.23s
+14:05:38 dmgs r2 rar-fastest: 615201242 3.31s / 1.40s
+14:05:39 dmgs r2 arca-fast: 619666195 0.69s / 0.22s
+14:11:10 thirdparty: start (load 2.5), 6 tools x 2 rounds
+14:11:14 thirdparty r1 arca-fast: 465868615 2.19s / 1.47s
+14:11:24 thirdparty r1 rar-fastest: 517173179 6.15s / 3.04s
+14:11:33 thirdparty r1 arca-balanced: 411699896 7.25s / 0.79s
+14:12:02 thirdparty r1 rar-normal: 418077183 24.92s / 3.93s
+14:12:53 thirdparty r1 arca-max-bsc: 339479606 48.10s / 1.96s
+14:13:43 thirdparty r1 rar-best: 399318095 46.37s / 3.82s
+14:14:34 thirdparty r2 rar-best: 399318095 46.51s / 3.83s
+14:15:25 thirdparty r2 arca-max-bsc: 339479617 48.52s / 2.08s
+14:15:54 thirdparty r2 rar-normal: 418077183 24.92s / 3.98s
+14:16:02 thirdparty r2 arca-balanced: 411699897 7.04s / 0.81s
+14:16:11 thirdparty r2 rar-fastest: 517173179 6.14s / 3.06s
+14:16:15 thirdparty r2 arca-fast: 465868613 2.22s / 1.50s
+14:16:15 done

@@ -51,7 +51,10 @@ Default both ways. Leads:
 WebP-style tools in the pixel codec for flat images, similarity ordering, bzip2
 (UDBZ) and LZMA (ULMO) DMG chunks.
 
-Next: the checkpoint benchmark (spec below; ask the user first).
+Checkpoint benchmark done (results below): smallest on every set, fastest to
+extract on every set, fastest to make on six of nine; one Arca setting beats
+96 of 144 rival results on all three measures at once. Next: the fixes listed
+there, starting with Fast's fixed cost on large incompressible files.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -69,6 +72,98 @@ downloading or installing anything (Keka, BetterZip, WinRAR).
 - Show clearly how the .zlg format performs against everything.
 - A separate section: what changed against the metrics published on the website
   (`site/benchmarks.html`, `site/data.js`).
+
+## Checkpoint results (2026-10-29)
+
+Every Arca level with and without bsc, against Finder, 7-Zip normal and Ultra,
+zstd -3 and -19, xz -6 and -9e, WinRAR (RAR 7.23: Fastest, Normal, Best) and
+Zipgeist (all six settings) on all nine sets; every round trip identical. Full
+tables, method and versions: `bench/results-2026-10-29-checkpoint.md`; raw runs
+in the four `bench/results-2026-10-29-*.jsonl` files.
+
+Zipgeist ran in its own session, through Finder, with Arca alongside: Arca was
+×1.30 slower to make and ×1.18 slower to extract there than in the main run
+(Finder and the screen were busy). Its times are divided by that factor, set by
+set, which errs in Zipgeist's favour. WinRAR's session matched the main run
+(×1.01).
+
+**Top of every chart.** Arca has the smallest archive on all nine sets and the
+fastest extraction on all nine. Fastest to make on six; the other three:
+
+| Set | Arca's fastest | Rival |
+|---|---|---|
+| silesia | Fast 0.24 s (65.7 MB) | zstd -3 0.15 s (66.3 MB) |
+| dmgs | Fast 0.69 s (619.7 MB) | Zipgeist tar.zst Fast 0.25 s (617.6 MB; 0.35 s measured), zstd -3 0.26 s |
+| thirdparty | Fast 2.19 s (465.9 MB) | Zipgeist tar.zst Fast 0.55 s (569.6 MB; 0.73 s measured), zstd -3 1.52 s |
+
+Peak memory: no Arca level comes near Finder's `ditto`, which streams in
+2-12 MB; zstd extracts in 7 MB and WinRAR in 29-76 MB. Arca uses 0.2-1.7 GB at
+Fast and up to 8 GB at Max on the DMGs (Zipgeist 1-9 GB, 7-Zip Ultra up to
+10.6 GB).
+
+**Every rival setting against one Arca setting.** Of 144 rival results (16
+rival settings × 9 sets), Arca has one setting that is at least as small,
+faster to make and faster to extract, all at once, for **96**. The saved
+folder and the website's mixed folder: all 16 beaten, Fast or Default suffices
+for every rival. The 48 misses, by cause:
+
+1. **DMGs, 16 of 16.** Without expansion Arca stores the images (619.7 MB),
+   0.5-1.7% bigger than rivals that squeeze them (zstd -3 616.1, 7-Zip 609.6);
+   with expansion it is 15-17% smaller than every rival at Default (517.1 MB)
+   but extraction rebuilds the images: 3.13 s against 0.43-2.7 s. Fast also
+   makes slower than storing rivals (0.69 s vs 0.25 s).
+2. **Photos, 9.** Nothing between storing (95.1 MB, 0.11 s / 0.06 s) and the
+   JPEG codec (71.1 MB, 2.2 s / 1.16 s). Rivals at 85-93 MB extract in
+   0.27-0.87 s (zstd, Finder, xz -6, WinRAR, Zipgeist tar.xz).
+3. **Silesia, 8.** Fast makes slower than zstd -3 (above). Max + bsc (46.0 MB,
+   12.9 s) extracts in 0.90 s against Zipgeist 7z's 0.71 and xz -6's 0.52,
+   and plain Max (0.69 s) makes in 23.5 s, slower than they do; zstd -19
+   extracts in 0.23 s. Default + bsc extracts in 0.55 s against WinRAR
+   Normal/Best's 0.46.
+4. **Apple apps, 5.** Default (62.4 MB) is bigger than xz -6 (59.0), Zipgeist
+   7z and tar.xz (58.7-59.6) and WinRAR Best (58.7); Max (49.2 MB) beats them
+   on size but takes 12.0 s against their 5.2-8.4 s.
+5. **PDFs and screenshots, 4.** Default is 43% smaller than Zipgeist 7z and
+   tar.xz and WinRAR Best (22.2 MB vs 38.7) but 5-16% slower to make (1.72 s vs
+   1.49-1.63 s).
+6. **Third-party apps, 4.** Fast against zstd -3 and Zipgeist tar.zst (above);
+   Max + bsc 2-5% slower to make than Zipgeist 7z Normal and WinRAR Best
+   (47.2 s vs 45.0-46.1 s, within the adjustment's error), and 11-15% smaller.
+7. **Source code, 2.** Max + bsc extracts 1-3% slower than Zipgeist 7z Best
+   and tar.xz Best (0.91 s vs 0.88-0.90 s): a tie, and 11-20% smaller.
+
+**Against the website** (site/data.js, 2026-10-25/26): every Arca level is
+faster now, most of all Max (mixed folder 51.6 → 41.0 s, extract 3.50 → 2.25 s;
+docs 29.3 → 9.7 s) and Fast (mixed 1.4 → 0.72 s). Sizes within 1% (Max +1% on
+the mixed folder, the fast Max preset), apps smaller (Max −1%, Ultra −3%). The
+docs set itself grew 3-5% since (system files changed), so every tool's docs
+size is up. Ultra without bsc still extracts slowly (PPMd: mixed 7.07 s). Rivals
+moved within noise, except xz -9e making 6-17% faster this session.
+
+**What to fix to top every chart** (a test must show each one faster and at
+least as small, as always):
+
+- bsc on by default at Max and Ultra: as small or smaller on every set and as
+  fast or faster to make (source code 22.0 → 1.8 s, Silesia 23.5 → 12.9 s,
+  mixed 41.0 → 24.5 s); Ultra + bsc also extracts 1.5-6x faster than Ultra. Its
+  cost is Max's extraction on text (mixed 2.25 → 2.95 s, source 0.52 → 0.91 s),
+  the next item.
+- Fast on big incompressible files: 1.61 CPU-s for 620 MB of DMGs against
+  zstd -3's 0.79; find the fixed cost (probing, hashing, reading) and make
+  storing as fast as zstd's skip. Then a light pass (zstd -1-class) over
+  stored data, to be smaller than zstd -3 on DMGs and photos at the same speed.
+- A fast photo setting: the JPEG codec decodes at ~10 MB/s per core. Either
+  a much faster decoder, or a light JPEG mode below Default (JPEG's own
+  arithmetic coding: 5-10% smaller in the literature, at near Huffman speed).
+- Default on app bundles: smaller than xz -6 and Zipgeist 7z Normal (62.4 MB
+  vs 59) in well under their 5-8 s. On source code and Silesia, Max + bsc is
+  already quick enough to beat them.
+- DMG extraction with expansion: rebuilding the deflate and LZFSE chunks is the
+  time (27.8 CPU-s); faster rebuild or more parallelism.
+- Max + bsc's extraction on text: Silesia 0.90 s and source code 0.91 s against
+  zstd -19's 0.23 s and Zipgeist 7z's 0.71 s and 0.90 s.
+- Memory: Max at 6-8 GB on the large sets is the first to cut; streaming
+  like `ditto` is out of reach for a multi-core compressor.
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
