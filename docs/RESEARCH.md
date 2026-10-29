@@ -8,29 +8,35 @@ everything below it is the record.
 
 ## State
 
-Where each level stands on the saved folder (CLI, busy Mac, so rough; rivals from
-the 2026-10-28 head-to-head). Updated 2026-10-28 late evening:
+Saved folder, CLI, busy Mac (load 9-12), 2026-10-28 late evening; rivals from the
+2026-10-28 head-to-head:
 
 | Level | Make | Size | Extract | Rival (make / size / extract) |
 |---|---:|---:|---:|---|
-| Fast | 0.7–1.2 s | 301.3 MiB (316 MB) | **0.74–0.88 s** | Zipgeist tar.zst 1.24 s / 341 MB / 1.6–1.9 s |
-| Default | 8.5–8.6 s | 245.48 MiB (257 MB) | **2.19–2.28 s** | Zipgeist 7z 17.2 s / 285 MB / 3.0 s |
-| Max | 31–33 s | 211.69 MiB (222 MB) | **2.92–3.02 s** | Zipgeist best 20.0 s / 284 MB / 3.7 s |
-| Ultra | 34 s | 210.36 MiB | 5.05 s (PPMd text) | as Max |
-| ZIP extract | **0.91–0.99 s** | | | Zipgeist 2.1 s (app via 7-Zip: 4.7 s) |
+| Fast | 0.7-1.2 s | 301.3 MiB (316 MB) | 0.74-0.88 s | Zipgeist tar.zst 1.24 s / 341 MB / 1.6-1.9 s |
+| Default (preset) | 9.4-9.7 s | 245.47 MiB (257 MB) | 2.2-2.3 s | Zipgeist 7z 17.2 s / 285 MB / 3.0 s |
+| Default, all options* | **6.8-7.4 s** | **233.66 MiB (245 MB)** | 2.7-2.9 s | |
+| Max (preset) | 32.8-33.6 s | 211.69 MiB (222 MB) | 3.0 s | Zipgeist best 20.0 s / 284 MB / 3.7 s |
+| Max + bsc** | **20.1-20.7 s** | **211.58 MiB** | 3.35 s | |
+| Ultra + bsc** | (mixed set: 32.0 s vs 40.9) | smaller | 2-3x faster than PPMd | |
+| ZIP extract | 0.91-0.99 s | | | Zipgeist 2.1 s |
 
-Done: log, test sets, profiles, the four known fixes, pixel codec (now 2x faster
-to decode), LZMA SDK codec, Max code lane, engine ZIP reader and writer, index v2,
-extraction writes (creation gate, write queue, one-call metadata), Lepton built
-without LLVM's memset idiom. Dead ends: long-range pre-pass, hint-guided LZMA,
-LZMA match finders, band-parallel pixel decoding, LZRAVEN.
+\* `ARCA_EXP_PIXELS=1 --lane text=bsc:1 --text-block-mib 32 --image-block-mib 32`
+\*\* `--lane text=bsc:1 --lane code=bsc:2e`
 
-Waiting on the user: Default with the pixel codec (smaller, faster to make,
-extraction ~0.05 s slower); downloads of libbsc + libsais (BWT text, parallel
-Ultra extraction) and a pinned zlib (replaying stock-zlib PNGs).
+The options are in the engine but not in the presets (user, 2026-10-28: decide
+at the final quiet-Mac benchmarks). Each trades a little extraction time on
+text-heavy or photo-heavy archives for much faster making and smaller archives.
 
-Next: app extraction overhead (measured in a temporary test); Max make time;
-Ultra extraction; final quiet-Mac benchmarks (ask the user first).
+Done today: pixel codec 2x faster to decode, extraction writes (creation gate,
+write queue, one-call metadata), Lepton without LLVM's memset idiom, engine-side
+quarantine, bsc (BWT) codec with threaded decoding, level-9 PNG skip at Default,
+image-lane block size. Dead ends: long-range pre-pass, hint-guided LZMA, LZMA
+match finders, parallel LZMA2 segments, band-parallel pixel decoding, multi-
+symbol Lepton size classes, ARM64 byte planes, GPU, LZRAVEN.
+
+Next: ZIP writer in the app; final quiet-Mac benchmarks of the presets against
+the options (ask the user first).
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
