@@ -25,6 +25,14 @@ pub enum DeflateKind {
     Png,
     Pdf,
     Gzip,
+    /// A disk image (UDIF `.dmg`) whose chunks are zlib streams; found by its
+    /// `koly` trailer, since its first bytes are the image's own.
+    Dmg,
+}
+
+/// Whether `tail` (a file's last 512 bytes) is a UDIF disk image's trailer.
+pub fn is_udif_trailer(tail: &[u8]) -> bool {
+    tail.len() == 512 && tail.starts_with(b"koly") && tail[4..8] == [0, 0, 0, 4]
 }
 
 /// Which block lane the stored stream of an object goes to.

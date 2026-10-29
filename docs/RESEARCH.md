@@ -36,8 +36,15 @@ match finders, parallel LZMA2 segments, band-parallel pixel decoding, multi-
 symbol Lepton size classes, ARM64 byte planes, GPU, LZRAVEN, Mach-O sections
 to bsc.
 
-Next: ZIP writer in the app; final quiet-Mac benchmarks of the presets against
-the options (ask the user first).
+2026-10-29: zlib replay for PNGs (Default −6.6% pack CPU), x86 filter for the
+x86_64 slices of universal binaries (third-party apps −0.7 to −0.8%), DMG disk
+images expanded and rebuilt (UDZO test image −21% at Default, −30% at Max). PGO
+measured (−1 to −4% CPU; for release builds). Leads: LZFSE replay for ULFO disk
+images and Assets.car (needs the open-source LZFSE, a download), WebP-style
+tools in the pixel codec for flat images, similarity ordering. The test sets
+miss third-party apps (x86_64 code) and DMGs: add both before the checkpoint.
+
+Next: the checkpoint benchmark (spec below; ask the user first).
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -1018,6 +1025,118 @@ prefixes (mangled Swift names, selector families) that LZ codes as well as a
 BWT. Splitting the strings out also costs LZMA 0.1 MB of cross-references
 (three streams: 14.626 MB). bsc's only gain is speed on the 13% of bytes that
 are strings: ~2 s of CPU in 30, at 7x the decode time.
+
+### x86_64 code in universal binaries (in the engine, 2026-10-29)
+
+Every Mach-O file in the test sets is one of Apple's apps, universal over arm64
+and arm64e only. Installed third-party apps are different: the main executables
+of the 32 apps in /Applications (1.93 GB, 80 universal files) hold 564 MB of
+x86_64 code next to 702 MB of arm64 code, and the arm64 filter left the x86_64
+slices alone. XZ's x86 BCJ filter (CALL/JMP rel32 made absolute) on 64 MB of that
+code: xz -9 20.51 → 19.86 MB (−3.2%), 7% less CPU. Ported to Rust
+(`arm64::filter_x86`, a bijection tested on random data) and applied to the
+instruction sections of x86_64 slices; the index stores those ranges under
+transform tag 4 (arm64-only files keep tag 1).
+
+Seven executables from /Applications (Blender, Telegram, Firefox's XUL,
+qBittorrent, Slack, Discord, Figma; 660 MB), round trips identical:
+
+| Level | arm64 filter only | + x86 filter | Make CPU |
+|---|---:|---:|---:|
+| Max | 210.386 MB | **208.677 MB (−0.81%)** | 264.9 → 260.2 s |
+| Default | 255.904 MB | **254.032 MB (−0.73%)** | 37.8 → 37.7 s |
+
+### Profile-guided optimisation (measured, for release builds)
+
+Homebrew's LLVM 23.1.4 matches rustc 1.99's LLVM 23.1.3, so `llvm-profdata` can
+merge Rust profiles. Instrumented build trained on the saved folder (Fast,
+Default, Max, Max + bsc, Default + pixels) and Silesia and source at Ultra; then
+`-Cprofile-use`. Saved folder, two alternating runs each (busy Mac), sizes
+identical:
+
+| Level | Make CPU | Extract CPU | Extract wall |
+|---|---|---|---|
+| Fast | 3.52 → 3.37-3.58 s | 1.02-1.06 → 1.02-1.03 s | same |
+| Default | 54.7-56.4 → 54.5-54.6 s (−2%) | 14.1 → 13.4-13.6 s (−4%) | same |
+| Max | 209.0-209.7 → 207.4-207.7 s (−1%) | 20.6-20.8 → 20.1 s (−3%) | 2.85-2.97 → 2.77-2.78 s |
+
+Only the Rust code is profiled; LZMA, zstd, bsc and zlib are C built by Apple
+clang, which can't share a profile runtime with rustc's. Worth a step in release
+builds (train, then build with the profile), not a lever.
+
+### Compressed data inside Apple containers: Assets.car (lead, 2026-10-29)
+
+Compiled asset catalogs keep most images LZFSE- or LZVN-compressed (`bvx2`/`bvxn`
+blocks ending in `bvx$`), which no archiver can compress further. The saved
+folder has 23 `Assets.car` files (38.2 MB): 12.08 MB of LZFSE streams that decode
+to 202 MB, 3.9 MB of zlib streams (7.7 MB), the rest raw renditions and JPEGs.
+Re-encoding each decoded stream with macOS's own LZFSE (libcompression) gives back
+the same bytes for 769 of 784 streams (10.45 of 12.08 MB): a replay is possible,
+as with zlib. On those streams (one thread):
+
+| Input | LZMA fb 32 | zstd -19 |
+|---|---:|---:|
+| LZFSE streams as stored, 10.45 MB | 8.398 MB, 1.3 s | |
+| decoded, 181 MB | **5.963 MB (−29%)**, 11.5 s | 7.663 MB |
+
+The installed apps on this Mac hold 239 `Assets.car` files (669 MB): 408 MB of
+LZFSE streams decoding to 4.58 GB, 362 MB of them replayable with libcompression.
+The catch is volume: decoded data is 11x larger, so LZMA on it costs ~9x the CPU
+and extraction must re-run LZFSE on 4.58 GB. Cheaper routes to test: code the
+LZFSE token stream (literals, lengths, distances) with an adaptive model and
+re-create the FSE coding from the tokens (no match search either way); or the
+pixel codec on decoded renditions (width, height and pixel format are in the
+rendition header). A pinned LZFSE encoder is needed (the open-source reference,
+BSD-3; whether it matches libcompression byte for byte is the first test, and
+the download needs the user's OK).
+
+### Disk images (DMG) expanded and rebuilt (in the engine, 2026-10-29)
+
+A UDIF disk image is a table of chunks (zlib, LZFSE, bzip2, LZMA, raw, zero) and
+a `koly` trailer; archivers store it as it is. `hdiutil create` of the apps set
+(169 MB): UDZO 102.3 MB, 178 zlib chunks (74.8 MB, 163.7 MB decoded), every one
+re-created by zlib level 1 (macOS's zlib, so the pinned 1.3.2 too); ULFO 97.1 MB,
+193 LZFSE chunks (84.5 MB → 179.5 MB), every one re-created by macOS's LZFSE.
+Packing the disk image the UDZO holds instead of the DMG, at Max: 86.8 → 55.8 MB.
+
+The Deflate transform now takes UDIF images (`DeflateKind::Dmg`, a `.dmg` name
+with a `koly` trailer): the trailer's XML lists the `mish` tables, each zlib
+chunk is a candidate stream, and zlib replay (or preflate) re-creates it; bytes
+outside zlib chunks stay literal. On the UDZO image, round trips identical:
+
+| Level | Before | Now | Make | Extract |
+|---|---:|---:|---:|---:|
+| Default | 93.96 MB | **74.62 MB (−21%)** | 2.8 s | 0.49 s |
+| Max | 86.80 MB | **60.68 MB (−30%)** | 12.0 s | 0.97 s |
+
+(Max stays above the 55.8 MB of the bare image: this image's data fork also
+holds 11.7 MB of raw app bytes that no chunk references.) Limits: a file's
+expanded data is capped at 512 MiB (`MAX_PLAIN_TOTAL`), so only the first 512 MiB
+of a big image is expanded; LZFSE (ULFO), LZMA (ULMO) and bzip2 (UDBZ) chunks
+stay as they are until pinned encoders for them are tested.
+
+### Literature survey 2 (background agent, 2026-10-29)
+
+Targeted at the bottlenecks above (report in the session scratchpad,
+`litsearch2.md`; encode.su was unreachable, its numbers unverified):
+
+- Machine code: no published method reaches LZMA's size 3x faster with fast
+  decoding. Context mixing with exe models is 25-50% smaller but symmetric and
+  ~100x slower (ooffice: 7z 2426 KB, zpaq m5 1756, paq8px 1205); fast-decoding LZ
+  codecs are 2-8% larger (zstd -22 +7.4%, brotli -11 +3.6%).
+- JPEG: Brunsli is the only coder faster than Lepton (one 1 MB image, Skylake:
+  encode 0.16 vs 0.5 s, decode 0.13 vs 0.23 s) for ~1% less saving; no cheaper
+  safe verification is published (Dropbox and Microsoft both decode everything).
+- Deflate re-creation: nothing new; zlib replay is the known shortcut.
+- Synthetic images: WebP lossless is 30-45% smaller than PNG on screenshots and
+  icons and 11-34% smaller than JPEG XL effort 3 there (qoir benchmarks); its
+  tools (palette, 2D LZ77 with a colour cache) are what the pixel codec lacks on
+  flat images, where it is weakest (1.75x xz above 30:1).
+- Photos (CLIC2021 against optimised PNG): QLIC2 −24.5% at ~137 MB/s both ways,
+  HALIC −24% (closed source); kanzi -8/-9 ~15% smaller than bsc on mixed data at
+  2.5-3.5 MB/s, an Ultra-only candidate.
+- Archive level: ordering files by similarity (compsort: −6 to −11.5% with xz on
+  firmware and initrds); delta of near-duplicate binaries (zstd --patch-from).
 
 ### Apple Silicon GPU (agenda item 4): no stage worth moving
 

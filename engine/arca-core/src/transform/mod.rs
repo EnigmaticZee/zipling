@@ -95,12 +95,14 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
             )
         }
         Class::MachO if opts.arm64 => {
+            let x86 = if std::env::var_os("ARCA_EXP_NO_X86").is_some() { Vec::new() } else { arm64::x86_code_ranges(data) };
             let ranges = arm64::code_ranges(data);
-            if ranges.is_empty() {
+            if ranges.is_empty() && x86.is_empty() {
                 None
             } else {
                 let mut out = data.to_vec();
-                arm64::filter(&mut out, &ranges, true).ok().map(|_| (Transform::Arm64 { ranges }, out, Lane::Binary))
+                (arm64::filter(&mut out, &ranges, true).is_ok() && arm64::filter_x86(&mut out, &x86, true).is_ok())
+                    .then(|| (Transform::Arm64 { ranges, x86 }, out, Lane::Binary))
             }
         }
         _ => None,
@@ -139,9 +141,10 @@ fn verify(out: &[u8], transform: &Transform, original: &[u8]) -> bool {
 pub fn inverse(stored: Vec<u8>, transform: &Transform, size: u64) -> anyhow::Result<Vec<u8>> {
     let out = match transform {
         Transform::None => stored,
-        Transform::Arm64 { ranges } => {
+        Transform::Arm64 { ranges, x86 } => {
             let mut v = stored;
             arm64::filter(&mut v, ranges, false)?;
+            arm64::filter_x86(&mut v, x86, false)?;
             v
         }
         Transform::Lepton => jpeg::decode(&stored, size)?,

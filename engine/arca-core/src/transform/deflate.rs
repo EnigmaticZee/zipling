@@ -268,6 +268,39 @@ impl Scanner<'_> {
         self.analyze(&Candidate { pieces: idat, skip: 2 }).into_iter().collect()
     }
 
+    /// A UDIF disk image: its `koly` trailer points at an XML property list whose
+    /// `blkx` entries are base64 `mish` tables, one row per chunk of the image.
+    /// zlib chunks (most images: `hdiutil`'s default, level 1) are expanded.
+    fn scan_dmg(&self) -> Vec<StreamRec> {
+        let d = self.data;
+        let be32 = |b: &[u8], o: usize| b.get(o..o + 4).map_or(0, |x| u32::from_be_bytes(x.try_into().unwrap())) as u64;
+        let be64 = |b: &[u8], o: usize| b.get(o..o + 8).map_or(0, |x| u64::from_be_bytes(x.try_into().unwrap()));
+        let Some(koly) = d.len().checked_sub(512).map(|t| &d[t..]) else { return Vec::new() };
+        let (fork, xml_at, xml_len) = (be64(koly, 24), be64(koly, 216) as usize, be64(koly, 224) as usize);
+        let Some(xml) = xml_at.checked_add(xml_len).and_then(|e| d.get(xml_at..e)) else { return Vec::new() };
+        let mut candidates = Vec::new();
+        let mut rest = xml;
+        while let Some(s) = memmem::find(rest, b"<data>") {
+            let body = &rest[s + 6..];
+            let Some(e) = memmem::find(body, b"</data>") else { break };
+            rest = &body[e..];
+            let Some(mish) = base64(&body[..e]).filter(|m| m.starts_with(b"mish")) else { continue };
+            let base = be64(&mish, 24);
+            let n = be32(&mish, 200).min((mish.len().saturating_sub(204) / 40) as u64) as usize;
+            for i in 0..n {
+                let c = 204 + 40 * i;
+                let (kind, off, len) = (be32(&mish, c), be64(&mish, c + 24), be64(&mish, c + 32));
+                let at = fork.checked_add(base).and_then(|v| v.checked_add(off));
+                let fits = at.and_then(|a| a.checked_add(len)).is_some_and(|e| e <= d.len() as u64);
+                if kind == 0x8000_0005 && fits && len as usize >= MIN_STREAM {
+                    candidates.push(Candidate { pieces: vec![(at.unwrap() as usize, len as usize)], skip: 2 });
+                }
+            }
+        }
+        candidates.sort_unstable_by_key(|c| c.pieces[0].0);
+        self.analyze_all(candidates)
+    }
+
     fn scan_pdf(&self) -> Vec<StreamRec> {
         let d = self.data;
         let end_finder = memmem::Finder::new(b"endstream");
@@ -367,6 +400,31 @@ fn zip_deflate_entries(d: &[u8]) -> Vec<(usize, usize)> {
     out
 }
 
+/// Decodes standard base64, skipping whitespace; `None` on anything else.
+fn base64(text: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len() * 3 / 4);
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for &c in text {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            b' ' | b'\t' | b'\r' | b'\n' => continue,
+            _ => return None,
+        };
+        acc = acc << 6 | u32::from(v);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
 /// The transformed form of a file.
 pub struct Encoded {
     pub stored: Vec<u8>,
@@ -425,6 +483,7 @@ pub fn encode(
         DeflateKind::Gzip => sc.scan_gzip(),
         DeflateKind::Png => sc.scan_png(),
         DeflateKind::Pdf => sc.scan_pdf(),
+        DeflateKind::Dmg => sc.scan_dmg(),
     };
     if streams.is_empty() {
         return None;
