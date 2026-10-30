@@ -174,6 +174,9 @@ const CDC_MIN_FILE: usize = 1 << 20;
 const CDC_MIN: u32 = 128 << 10;
 const CDC_AVG: u32 = 512 << 10;
 const CDC_MAX: u32 = 2 << 20;
+/// Bytes of a long stream one task cuts into chunks. 64 MiB leaves third-party
+/// apps' size unchanged; 32 MiB loses 0.2% of it to chunks split at the seams.
+const CDC_SPAN: usize = 64 << 20;
 /// How far (in input bytes) file tasks may run ahead of the packer.
 const LOOKAHEAD_BYTES: u64 = 512 << 20;
 const MMAP_THRESHOLD: u64 = 256 << 10;
@@ -955,19 +958,20 @@ fn process_file(
     };
     let lane = if lane == Lane::Code && !opts.code_lane { Lane::Binary } else { lane };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
-    let cuts = cuts
-        .into_iter()
-        .map(|(off, len, hash)| {
-            if store_from.is_some_and(|k| off >= k) {
-                return (off, len, hash, Lane::Store);
-            }
-            let incompressible = opts.probe && matches!(lane, Lane::Binary | Lane::Image) && {
-                let _p = prof::span("file.probe", len as u64);
-                classify::probably_incompressible(&stored[off..off + len])
-            };
-            (off, len, hash, if incompressible { Lane::Store } else { lane })
-        })
-        .collect::<Vec<_>>();
+    let route = |(off, len, hash): (usize, usize, [u8; 16])| {
+        if store_from.is_some_and(|k| off >= k) {
+            return (off, len, hash, Lane::Store);
+        }
+        let incompressible = opts.probe && matches!(lane, Lane::Binary | Lane::Image) && {
+            let _p = prof::span("file.probe", len as u64);
+            classify::probably_incompressible(&stored[off..off + len])
+        };
+        (off, len, hash, if incompressible { Lane::Store } else { lane })
+    };
+    let cuts: Vec<Cut> = {
+        use rayon::prelude::*;
+        if cuts.len() > 4 { cuts.into_par_iter().map(route).collect() } else { cuts.into_iter().map(route).collect() }
+    };
     let extra = owned.as_ref().map_or(0, |v| v.len() as u64);
     Ok(Hashed { hash, class, extra, prepared: Some((transform, owned, lane, cuts, data)) })
 }
@@ -991,8 +995,22 @@ fn content_key(cuts: &[(usize, usize, [u8; 16])], key: &hash::Key) -> [u8; 16] {
     }
 }
 
-/// Chunk boundaries with the hashes that deduplicate them.
+/// Chunk boundaries with the hashes that deduplicate them. A long stream is cut
+/// span by span on every core.
 fn cut_chunks(stored: &[u8], key: &hash::Key, dedup: bool) -> Vec<(usize, usize, [u8; 16])> {
+    use rayon::prelude::*;
+    if stored.len() <= 2 * CDC_SPAN {
+        return cut_span(stored, key, dedup);
+    }
+    let parts: Vec<_> = stored
+        .par_chunks(CDC_SPAN)
+        .enumerate()
+        .map(|(i, s)| cut_span(s, key, dedup).into_iter().map(|(o, l, h)| (o + i * CDC_SPAN, l, h)).collect::<Vec<_>>())
+        .collect();
+    parts.into_iter().flatten().collect()
+}
+
+fn cut_span(stored: &[u8], key: &hash::Key, dedup: bool) -> Vec<(usize, usize, [u8; 16])> {
     let hash = |s: &[u8]| key.hash(s);
     let mut cuts = Vec::new();
     if stored.is_empty() {

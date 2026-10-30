@@ -116,9 +116,97 @@ pub fn filter(data: &mut [u8], ranges: &[(u64, u64)], encode: bool) -> anyhow::R
         let end = off.checked_add(len).filter(|&e| e <= data.len() as u64);
         anyhow::ensure!(end.is_some() && off % 4 == 0, "invalid arm64 filter range");
         let region = &mut data[off as usize..(off + len) as usize];
-        filter_region(region, off as u32, encode);
+        filter_arm(region, off, encode);
     }
     Ok(())
+}
+
+/// Bytes of ARM64 code one task filters. The filter looks at one instruction at
+/// a time, so a region of any size splits anywhere; large binaries are most of
+/// a Mac app's bytes, and on one thread they hold up every block behind them.
+const ARM_SPAN: usize = 2 << 20;
+
+fn filter_arm(region: &mut [u8], off: u64, encode: bool) {
+    use rayon::prelude::*;
+    region.par_chunks_mut(ARM_SPAN).enumerate().for_each(|(i, part)| {
+        filter_region(part, off.wrapping_add((i * ARM_SPAN) as u64) as u32, encode);
+    });
+}
+
+/// One stretch of a file: `Some(true)` is ARM64 code, `Some(false)` x86 code,
+/// `None` neither. Sorted and covering the file, or `None` if the ranges overlap.
+fn stretches(len: u64, arm: &[(u64, u64)], x86: &[(u64, u64)]) -> Option<Vec<(u64, u64, Option<bool>)>> {
+    let mut code: Vec<_> = arm.iter().map(|&(o, l)| (o, l, true)).chain(x86.iter().map(|&(o, l)| (o, l, false))).collect();
+    code.sort_unstable();
+    let (mut out, mut at) = (Vec::with_capacity(2 * code.len() + 1), 0u64);
+    for (off, n, is_arm) in code {
+        let end = off.checked_add(n).filter(|&e| e <= len)?;
+        if off < at {
+            return None;
+        }
+        if off > at {
+            out.push((at, off - at, None));
+        }
+        out.push((off, n, Some(is_arm)));
+        at = end;
+    }
+    if at < len {
+        out.push((at, len - at, None));
+    }
+    Some(out)
+}
+
+/// Both filters at once, on every core: the ARM64 and x86 slices of a universal
+/// binary are apart, and each x86 region is independent of the others.
+pub fn filter_both(data: &mut [u8], arm: &[(u64, u64)], x86: &[(u64, u64)], encode: bool) -> anyhow::Result<()> {
+    use rayon::prelude::*;
+    let Some(parts) = stretches(data.len() as u64, arm, x86) else {
+        filter(data, arm, encode)?;
+        return filter_x86(data, x86, encode);
+    };
+    anyhow::ensure!(arm.iter().all(|&(off, _)| off % 4 == 0), "invalid arm64 filter range");
+    let mut rest = data;
+    let mut work = Vec::with_capacity(parts.len());
+    for &(off, n, kind) in &parts {
+        let (part, tail) = rest.split_at_mut(n as usize);
+        rest = tail;
+        if let Some(is_arm) = kind {
+            work.push((part, off, is_arm));
+        }
+    }
+    work.into_par_iter().for_each(|(part, off, is_arm)| {
+        if is_arm {
+            filter_arm(part, off, encode);
+        } else {
+            x86_region(part, off as u32, encode);
+        }
+    });
+    Ok(())
+}
+
+/// True when `out` is `original` with both filters applied: what round-tripping
+/// the whole file shows, without a second copy of it. Everything is compared.
+pub fn filtered_from(out: &[u8], original: &[u8], arm: &[(u64, u64)], x86: &[(u64, u64)]) -> bool {
+    use rayon::prelude::*;
+    let Some(parts) = stretches(out.len() as u64, arm, x86) else { return false };
+    out.len() == original.len()
+        && parts.par_iter().all(|&(off, n, kind)| {
+            let (o, a) = (off as usize, (off + n) as usize);
+            let (filtered, plain) = (&out[o..a], &original[o..a]);
+            match kind {
+                None => filtered.par_chunks(ARM_SPAN).zip(plain.par_chunks(ARM_SPAN)).all(|(x, y)| x == y),
+                Some(true) => filtered.par_chunks(ARM_SPAN).zip(plain.par_chunks(ARM_SPAN)).enumerate().all(|(i, (x, y))| {
+                    let mut back = x.to_vec();
+                    filter_region(&mut back, off.wrapping_add((i * ARM_SPAN) as u64) as u32, false);
+                    back == y
+                }),
+                Some(false) => {
+                    let mut back = filtered.to_vec();
+                    x86_region(&mut back, off as u32, false);
+                    back == plain
+                }
+            }
+        })
 }
 
 fn filter_region(buf: &mut [u8], start_pc: u32, encode: bool) {

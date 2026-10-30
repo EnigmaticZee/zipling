@@ -122,8 +122,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
                 None
             } else {
                 let mut out = data.to_vec();
-                (arm64::filter(&mut out, &ranges, true).is_ok() && arm64::filter_x86(&mut out, &x86, true).is_ok())
-                    .then(|| (Transform::Arm64 { ranges, x86 }, out, Lane::Binary))
+                arm64::filter_both(&mut out, &ranges, &x86, true).is_ok().then(|| (Transform::Arm64 { ranges, x86 }, out, Lane::Binary))
             }
         }
         _ => None,
@@ -157,6 +156,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
 fn verify(out: &[u8], transform: &Transform, original: &[u8]) -> bool {
     match transform {
         Transform::Deflate => deflate::decode(out, original.len() as u64).is_ok_and(|back| back == original),
+        Transform::Arm64 { ranges, x86 } => arm64::filtered_from(out, original, ranges, x86),
         _ => inverse(out.to_vec(), transform, original.len() as u64).is_ok_and(|back| back == original),
     }
 }
@@ -166,8 +166,7 @@ pub fn inverse(stored: Vec<u8>, transform: &Transform, size: u64) -> anyhow::Res
         Transform::None => stored,
         Transform::Arm64 { ranges, x86 } => {
             let mut v = stored;
-            arm64::filter(&mut v, ranges, false)?;
-            arm64::filter_x86(&mut v, x86, false)?;
+            arm64::filter_both(&mut v, ranges, x86, false)?;
             v
         }
         Transform::Lepton => jpeg::decode(&stored, size)?,
