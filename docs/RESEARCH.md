@@ -500,6 +500,27 @@ CPU-s more for the photos, which is about +0.25 s on these folders. Putting
 the prefix (headers, tables) in the store lane instead of the binary lane
 changed nothing measurable and cost 2.5 MB, so it stays in the binary lane.
 
+**Fast against the fast rivals, quieter Mac** (`bench/results-2026-10-29-fast-quiet.jsonl`,
+`bench/research/quiet_summary.py`). `bench/checkpoint.py` with Arca Fast (light
+JPEG), zstd -3, Finder, 7-Zip Normal, WinRAR Fastest and Normal, two rounds
+alternating. Load at each set's start was 2.2-3.6. Every round trip is
+identical. Zipgeist's figures are the checkpoint's, adjusted for its session
+(†). Size MB, make / extract s:
+
+| Set | Arca Fast | zstd -3 | WinRAR Fastest | Finder | Zipgeist tar.zst Fast † | Zipgeist ZIP Fast / Normal † |
+|---|---|---|---|---|---|---|
+| Photos | **78.3**, 0.27 / **0.22** | 91.8, **0.26** / 0.26 | 92.5, 1.02 / 0.30 | 93.3, 2.37 / 0.47 | 92.1, 0.19 / 0.40 | 98.5, 0.21 / 0.42 and 0.17 / 0.43 |
+| Saved folder | **298.8**, **0.80** / **1.00** | 329.7, 6.42 / 10.45 | 339.5, 5.50 / 3.25 | 355.6, 18.53 / 11.24 | 341.0, 0.97 / 1.24 | 393.1, 1.53 / 1.44 |
+| Website mixed | **271.1**, 0.87 / **0.93** | 296.1, 5.46 / 5.52 | 309.8, 5.68 / 3.14 | 324.2, 19.64 / 9.82 | 313.8, **0.84** / 1.27 | 379.9, 1.20 / 1.39 |
+
+Fast is the smallest and the fastest to extract of the fast-class tools on all
+three sets. It is fastest to make on the saved folder. On photos it is 0.01 s
+behind zstd -3 (a tie) and 0.06-0.10 s behind Zipgeist's three fast settings.
+On the website folder it is 0.03 s behind Zipgeist's tar.zst Fast. 7-Zip Normal
+is smaller on the two folders, but it is a normal-class tool that Default
+beats. What's left on photos is packing: the encoder costs ~1.6 CPU-s for the
+set, and beating 0.17 s needs about 1.0 (the JPEG read alone is 0.86).
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64
