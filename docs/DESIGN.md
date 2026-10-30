@@ -32,7 +32,7 @@ someone's only copy of their photos.
 ```
 scan ─► sniff (parallel; small files read whole) ─► order by group/type/name
    ─► per-file tasks, up to 512 MB ahead (file pool):
-        read + BLAKE3 ─► claim content (first hasher wins) ─► reversible transform
+        read + hash ─► claim content (first hasher wins) ─► reversible transform
         (verified) ─► FastCDC chunks + per-chunk lane probe
    ─► in-order packer: whole-file dedup ─► chunk dedup ─► lanes ─► solid blocks
    ─► block compression (separate pool, starts as each block fills) ─► writer
@@ -84,9 +84,10 @@ is accepted. A transform bug can therefore cost ratio, never data.
   instruction sections of arm64 slices**, leaving data and x86_64 slices untouched.
 
 ### 2.3 Dedup
-* Whole-file: BLAKE3-256 of content → one object, many entries.
+* Whole-file: a keyed POLYVAL hash of content (see the safety model) → one object,
+  many entries.
 * Sub-file: FastCDC (128 KiB / 512 KiB / 2 MiB) over each transformed stream ≥1 MiB;
-  identical chunks (by BLAKE3) are stored once across the whole archive, regardless
+  identical chunks (by the same hash) are stored once across the whole archive, regardless
   of distance.
 * On extraction, duplicate files are materialised with **APFS `clonefile`** —
   instant and zero extra disk space.
@@ -161,21 +162,24 @@ transfer is detected immediately. The footer-at-end layout means:
 * any single file is extractable by decoding only the blocks it touches.
 
 Index contents: entries (path, kind, mode, mtime ns, xattrs incl. resource forks
-and Finder info), objects (size, transform + params, chunk list, and BLAKE3-128 of
+and Finder info), objects (size, transform + params, chunk list, and a hash of
 the original content for transformed objects), chunks (block, offset, len;
-delta-coded), and blocks (offset, sizes, codec, BLAKE3-128 of compressed bytes,
-BLAKE3-128 of decoded bytes). The decoder validates every cross-reference before
-use.
+delta-coded), and blocks (offset, sizes, codec, hash of compressed bytes, hash of
+decoded bytes). Version 3 also holds the 128-bit key of those hashes. The decoder
+validates every cross-reference before use.
 
 Hash budget: 32 bytes per *block* plus 16 per *transformed* file. An earlier draft
-stored 48 bytes of hash per file, which was 4.5% of a source-code archive. Dedup at
-pack time uses full 256-bit BLAKE3 in memory, so a false dedup match isn't a
-practical risk.
+stored 48 bytes of hash per file, which was 4.5% of a source-code archive.
 
 ## 4. Safety model
 
-* **Integrity:** BLAKE3 on every block (compressed and decoded), on every
-  transformed object, and on the index itself; the `verify` command decodes
+* **Integrity:** POLYVAL (RFC 8452) under a random key drawn for each archive, on
+  every block (compressed and decoded) and every transformed object; BLAKE3-128 on
+  the index, which holds the key. Dedup uses the same hash. The key is drawn after
+  the files exist, so a false dedup match has a proven bound of (blocks + 2) / 2^128
+  per pair, however the files were made. Damage is caught with the same bound. An
+  attacker who edits an archive can make its block checks pass, as with any
+  unsigned archive; these checks are not a signature. The `verify` command decodes
   everything without writing.
 * **Atomic writes:** archives are written to `<name>.partial`, `fsync`ed, renamed.
 * **Hostile archives:** entry paths are validated (no absolute paths, `..`, NUL);

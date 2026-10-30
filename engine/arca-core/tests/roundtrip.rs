@@ -246,6 +246,7 @@ fn rejects_path_traversal() {
     use arca_core::format::{Entry, EntryKind, Index};
     // Hand-build an index whose entry tries to escape the destination.
     let idx = Index {
+        key: None,
         entries: vec![Entry { path: "../evil".into(), kind: EntryKind::Dir, mode: 0o755, mtime: (0, 0), xattrs: vec![] }],
         ..Default::default()
     };

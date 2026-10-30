@@ -10,6 +10,7 @@
 //! against the hash of its original content.
 
 use crate::codec;
+use crate::hash::Hasher;
 use crate::hooks::Hooks;
 use crate::format::{self, BlockInfo, Codec, Entry, EntryKind, Footer, Index, Object, Transform, FOOTER_LEN, HEADER_LEN};
 use crate::transform;
@@ -28,6 +29,7 @@ use std::time::Instant;
 pub struct Archive {
     file: File,
     pub index: Index,
+    hasher: Hasher,
     pub archive_bytes: u64,
 }
 
@@ -78,14 +80,19 @@ impl Archive {
                 "block outside archive body"
             );
         }
-        Ok(Archive { file, index, archive_bytes: len })
+        let hasher = index.hasher();
+        Ok(Archive { file, index, hasher, archive_bytes: len })
     }
 
     pub fn read_block(&self, id: u32) -> Result<Vec<u8>> {
         let b: &BlockInfo = &self.index.blocks[id as usize];
         let mut comp = vec![0u8; b.comp_len as usize];
         self.file.read_exact_at(&mut comp, b.file_offset)?;
-        ensure!(format::hash16(&comp) == b.checksum, "block {id} is damaged (checksum mismatch)");
+        ensure!(self.hasher.hash(&comp) == b.checksum, "block {id} is damaged (checksum mismatch)");
+        // A stored block's two hashes are of the same bytes.
+        if b.codec == Codec::Store && b.raw_hash == b.checksum && b.raw_len == b.comp_len {
+            return Ok(comp);
+        }
         let raw = {
             let _p = prof::span(
                 match b.codec {
@@ -100,7 +107,7 @@ impl Archive {
             );
             codec::decompress(&comp, b.codec, b.raw_len).with_context(|| format!("block {id}"))?
         };
-        ensure!(format::hash16(&raw) == b.raw_hash, "block {id} decoded to the wrong content");
+        ensure!(self.hasher.hash(&raw) == b.raw_hash, "block {id} decoded to the wrong content");
         Ok(raw)
     }
 
@@ -688,7 +695,7 @@ impl Extraction<'_> {
                     );
                     transform::inverse(stored, &obj.transform, obj.size)?
                 };
-                ensure!(Some(format::hash16(&content)) == obj.hash, "object {o} failed verification");
+                ensure!(Some(self.archive.hasher.hash(&content)) == obj.hash, "object {o} failed verification");
                 if self.dest {
                     let _p = prof::span("write.rebuilt", obj.size);
                     self.write_whole(o, &content)?;
