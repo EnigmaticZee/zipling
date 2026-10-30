@@ -302,7 +302,7 @@ struct OpenBlock {
 /// Inputs from this size on have blocks enough for every core.
 const SPLIT_BELOW: u64 = 512 << 20;
 /// Blocks at least this long may split in two.
-const SPLIT_MIN: usize = 48 << 20;
+const SPLIT_MIN: usize = 32 << 20;
 /// A split is made when the quick pass says it costs less than 1 part in this
 /// many: Silesia's blocks measure 0.11-0.46%, Apple's apps 0.72-1.04%, where LZMA
 /// loses more (1.7%), a source tree 1.1-8.7%, PDFs 2.5%.
@@ -441,7 +441,7 @@ impl BlockSink {
             // With cores to spare, a block takes two.
             let at_once = busy.fetch_add(1, Ordering::Relaxed) + 1;
             let cfg = CodecConfig { workers: if 2 * at_once <= cores { 2 } else { 1 }, ..cfg };
-            let finish = |id: u32, buf: Vec<u8>, hard: bool| {
+            let finish = Arc::new(move |id: u32, buf: Vec<u8>, hard: bool| {
                 let raw_len = buf.len() as u64;
                 let raw_hash = key.hash(&buf);
                 let res = if cfg.codec == Codec::Store {
@@ -463,7 +463,7 @@ impl BlockSink {
                     Done { id, comp, raw_len, raw_hash, checksum, codec }
                 });
                 let _ = done_tx.send(res);
-            };
+            });
             let OpenBlock { id, lane, mut buf, hard, starts } = block;
             let hard = hard * 2 > buf.len();
             match may_split.then(|| split_point(&buf, &starts)).flatten() {
@@ -471,7 +471,10 @@ impl BlockSink {
                     let tail = buf.split_off(at);
                     let second = new_block(&lanes, lane);
                     splits.lock().unwrap().push((id, second, at as u64));
-                    rayon::join(|| finish(id, buf, hard), || finish(second, tail, hard));
+                    // Its own task, or it would wait behind the first half.
+                    let finish2 = finish.clone();
+                    rayon::spawn_fifo(move || finish2(second, tail, hard));
+                    finish(id, buf, hard);
                 }
                 None => finish(id, buf, hard),
             }
@@ -667,9 +670,12 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let mut block_threads = (spare / per_encoder).clamp(1, opts.threads.max(1) as u64) as usize;
     // LZMA2 encoders run two threads each (the match finder has its own), so
     // about half as many of them keep the cores busy without starving the
-    // first blocks: six on 10 cores made Max 4-6% faster than ten.
+    // first blocks: six on 10 cores made Max 4-6% faster than ten. Small inputs
+    // have fewer blocks than cores, and all of them made Silesia 38% faster.
     if [opts.text_codec, opts.binary_codec, opts.image_codec, opts.code_codec].iter().any(|c| c.codec == Codec::Lzma2) {
-        block_threads = block_threads.min(opts.threads.max(1) / 2 + 1);
+        if stats.input_bytes >= SPLIT_BELOW {
+            block_threads = block_threads.min(opts.threads.max(1) / 2 + 1);
+        }
     }
     if let Some(cap) = std::env::var("ARCA_EXP_ENCODERS").ok().and_then(|v| v.parse::<usize>().ok()) {
         block_threads = block_threads.min(cap.max(1));
