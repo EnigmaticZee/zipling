@@ -460,7 +460,7 @@ impl BlockSink {
             // With cores to spare, a block takes two.
             let at_once = busy.fetch_add(1, Ordering::Relaxed) + 1;
             let cfg = CodecConfig { workers: if 2 * at_once <= cores { 2 } else { 1 }, ..cfg };
-            let finish = Arc::new(move |id: u32, buf: Vec<u8>, hard: bool| {
+            let finish = Arc::new(move |id: u32, buf: Vec<u8>, hard: bool, cfg: CodecConfig| {
                 let raw_len = buf.len() as u64;
                 let raw_hash = key.hash(&buf);
                 let res = if cfg.codec == Codec::Store {
@@ -501,13 +501,16 @@ impl BlockSink {
                     None => i += 1,
                 }
             }
+            // A block that split has no far repeats to speak of, so long matches
+            // buy little in it: Silesia 15% less CPU for 0.3%.
+            let cfg = if parts.len() > 1 { CodecConfig { extreme: false, level: 9, ..cfg } } else { cfg };
             // Each its own task, or the rest would wait behind the first.
             let (first, rest) = parts.split_first_mut().expect("one part at least");
             for (id, buf, _) in rest {
                 let (id, buf, finish) = (*id, std::mem::take(buf), finish.clone());
-                rayon::spawn_fifo(move || finish(id, buf, hard));
+                rayon::spawn_fifo(move || finish(id, buf, hard, cfg));
             }
-            finish(first.0, std::mem::take(&mut first.1), hard);
+            finish(first.0, std::mem::take(&mut first.1), hard, cfg);
             busy.fetch_sub(1, Ordering::Relaxed);
             let _ = slots_tx.send(());
         });
@@ -668,11 +671,15 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     if opts.large_input_block > 0 && stats.input_bytes >= SPLIT_BELOW {
         block_size = block_size.min(opts.large_input_block);
     }
-    // A bsc block decodes on one core's worth of memory bandwidth at a time, and
-    // source trees' text at Max ran out of cores: half the block, 33% less time
-    // to make and 15% less to extract, for 2.2%.
-    if opts.level == Level::Max && opts.text_codec.codec == Codec::Bsc {
-        text_block_size = text_block_size.min(32 << 20);
+    // A bsc block is slow to decode, so more of them use more cores. Source trees
+    // at Max: half the block, 33% less time to make and 15% less to extract, for
+    // 2.2%. Silesia at Default: 12 MiB, 0.47 to 0.43 s, for 0.25%.
+    if opts.text_codec.codec == Codec::Bsc {
+        match opts.level {
+            Level::Max => text_block_size = text_block_size.min(32 << 20),
+            Level::Balanced => text_block_size = text_block_size.min(12 << 20),
+            _ => {}
+        }
     }
     if stats.input_bytes < opts.adaptive_below {
         let per_core = (stats.input_bytes / opts.threads.max(1) as u64).max(1 << 20) as usize;
