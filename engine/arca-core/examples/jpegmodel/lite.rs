@@ -30,8 +30,14 @@ const BAND: [u8; 80] = {
 
 #[inline(always)]
 fn band(k: usize) -> usize {
-    unsafe { *BAND.get_unchecked(k) as usize }
+    if CLZ_BANDS {
+        // 1, 2-3, 4-7, 8-15, 16-31, 32-63 (and 64+ for ZRL overruns): one instruction
+        (63 - (k as u64 | 1).leading_zeros() as usize).min(7)
+    } else {
+        unsafe { *BAND.get_unchecked(k) as usize }
+    }
 }
+const CLZ_BANDS: bool = false;
 
 // ---------- JPEG side ----------
 
@@ -160,6 +166,27 @@ impl<'a> JReader<'a> {
         }
         None
     }
+    /// A symbol and its raw bits in one step: (symbol, raw value). `ac` takes the
+    /// size from the low 4 bits of the symbol, DC from the whole symbol.
+    #[inline(always)]
+    fn sym_raw(&mut self, t: &JTable, ac: bool) -> Option<(u8, u32)> {
+        if self.n < 32 { self.fill(); }
+        let e = unsafe { *t.fast.get_unchecked((self.acc >> 52) as usize) };
+        if e != 0 {
+            let l = (e >> 8) as u32;
+            let sym = e as u8;
+            let s = if ac { (sym & 15) as u32 } else { sym as u32 };
+            let v = self.acc << l;
+            let raw = (((v >> 1) >> (63 - s)) as u32) & ((1u32 << s) - 1);
+            self.acc = v << s;
+            self.n -= l + s;
+            return Some((sym, raw));
+        }
+        let sym = self.sym(t)?;
+        let s = if ac { (sym & 15) as u32 } else { sym as u32 };
+        if s > 16 { return None; }
+        Some((sym, self.bits(s)))
+    }
     /// Skips to just after the next RST marker (bits buffered are dropped).
     fn restart(&mut self) {
         self.acc = 0;
@@ -225,29 +252,32 @@ impl JWriter {
 
 // ---------- our side ----------
 
-/// LSB-first bit writer for the light stream.
+/// LSB-first bit writer for the light stream: stores 8 bytes every time and
+/// advances by the whole bytes filled (the buffer is sized up front).
 struct LWriter {
     out: Vec<u8>,
+    len: usize,
     acc: u64,
     n: u32,
 }
 impl LWriter {
+    fn with_capacity(c: usize) -> LWriter {
+        LWriter { out: vec![0; c + 16], len: 0, acc: 0, n: 0 }
+    }
     #[inline(always)]
     fn put(&mut self, v: u32, l: u32) {
         self.acc |= (v as u64) << self.n;
         self.n += l;
-        if self.n >= 32 {
-            self.out.extend_from_slice(&(self.acc as u32).to_le_bytes());
-            self.acc >>= 32;
-            self.n -= 32;
-        }
+        unsafe { std::ptr::write_unaligned(self.out.as_mut_ptr().add(self.len) as *mut u64, self.acc.to_le()) };
+        let bytes = self.n >> 3;
+        self.len += bytes as usize;
+        self.acc = if bytes == 8 { 0 } else { self.acc >> (8 * bytes) };
+        self.n &= 7;
     }
     fn finish(mut self) -> Vec<u8> {
-        while self.n > 0 {
-            self.out.push(self.acc as u8);
-            self.acc >>= 8;
-            self.n = self.n.saturating_sub(8);
-        }
+        unsafe { std::ptr::write_unaligned(self.out.as_mut_ptr().add(self.len) as *mut u64, self.acc.to_le()) };
+        self.len += ((self.n + 7) >> 3) as usize;
+        self.out.truncate(self.len);
         self.out.extend_from_slice(&[0; 16]);
         self.out
     }
@@ -345,6 +375,79 @@ struct Ev {
     rl: u8,
 }
 
+/// Blocks of a scan in order: (component, index in scan, block index, last of MCU, up, left).
+struct Blocks<'a> {
+    img: &'a Image,
+    sc: &'a Scan,
+    single: bool,
+    mcux: usize,
+    mcuy: usize,
+    cw: usize,
+    ch: usize,
+    mx: usize,
+    my: usize,
+    si: usize,
+    x: usize,
+    y: usize,
+    done: bool,
+}
+
+impl<'a> Blocks<'a> {
+    fn new(img: &'a Image, sc: &'a Scan) -> Blocks<'a> {
+        let single = sc.comps.len() == 1;
+        let c = &img.comps[sc.comps[0].0];
+        Blocks {
+            img, sc, single,
+            mcux: (img.width + 8 * img.hmax - 1) / (8 * img.hmax),
+            mcuy: (img.height + 8 * img.vmax - 1) / (8 * img.vmax),
+            cw: (img.width * c.h + 8 * img.hmax - 1) / (8 * img.hmax),
+            ch: (img.height * c.v + 8 * img.vmax - 1) / (8 * img.vmax),
+            mx: 0, my: 0, si: 0, x: 0, y: 0, done: false,
+        }
+    }
+}
+
+impl<'a> Iterator for Blocks<'a> {
+    type Item = (usize, usize, usize, bool, bool, bool);
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done { return None; }
+        if self.single {
+            let ci = self.sc.comps[0].0;
+            let c = &self.img.comps[ci];
+            let (bx, by) = (self.x, self.y);
+            let item = (ci, 0, by * c.bw + bx, true, by > 0, bx > 0);
+            self.x += 1;
+            if self.x == self.cw { self.x = 0; self.y += 1; if self.y == self.ch { self.done = true; } }
+            return Some(item);
+        }
+        let ci = self.sc.comps[self.si].0;
+        let c = &self.img.comps[ci];
+        let (bx, by) = (self.mx * c.h + self.x, self.my * c.v + self.y);
+        let last = self.si + 1 == self.sc.comps.len() && self.y + 1 == c.v && self.x + 1 == c.h;
+        let item = (ci, self.si, by * c.bw + bx, last, by > 0, bx > 0);
+        self.x += 1;
+        if self.x == c.h {
+            self.x = 0;
+            self.y += 1;
+            if self.y == c.v {
+                self.y = 0;
+                self.si += 1;
+                if self.si == self.sc.comps.len() {
+                    self.si = 0;
+                    self.mx += 1;
+                    if self.mx == self.mcux {
+                        self.mx = 0;
+                        self.my += 1;
+                        if self.my == self.mcuy { self.done = true; }
+                    }
+                }
+            }
+        }
+        Some(item)
+    }
+}
+
 /// Calls `f(component, index in scan, block index, last block of its MCU)` in scan
 /// order; stops early when `f` returns false.
 #[inline(always)]
@@ -392,11 +495,47 @@ fn nctx(cnt: &[u8], bw: usize, b: usize, up: bool, lf: bool) -> usize {
 
 /// Packs the scans of a baseline JPEG; `None` if a scan doesn't parse or re-create exactly.
 pub static T_PARSE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static T_TAB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static T_WRITE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub static T_READ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Reads every symbol and raw bits of the scans and nothing else (a floor for parsing).
+pub fn read_only(d: &[u8], img: &Image) -> u64 {
+    let t0 = std::time::Instant::now();
+    let mut sum = 0u64;
+    for sc in &img.scans {
+        let tabs: Vec<(JTable, JTable)> = sc.comps.iter().map(|&(_, td, ta)| {
+            let (dc, ac) = (&img.dc[&td], &img.ac[&ta]);
+            (JTable::new(&dc.0, &dc.1), JTable::new(&ac.0, &ac.1))
+        }).collect();
+        let mut r = JReader { d: &d[..sc.end], pos: sc.start, acc: 0, n: 0 };
+        let mut mcu = 0usize;
+        let mut first = true;
+        for_blocks(img, sc, |_ci, si, _b, end_mcu, _up, _lf| {
+            if img.dri > 0 && first && mcu > 0 && mcu % img.dri == 0 { r.restart(); }
+            first = false;
+            let Some((_s, raw)) = r.sym_raw(&tabs[si].0, false) else { return false };
+            sum += raw as u64;
+            let mut k = 1usize;
+            while k < 64 {
+                let Some((rs, raw)) = r.sym_raw(&tabs[si].1, true) else { return false };
+                sum += raw as u64;
+                if rs & 15 == 0 { if rs == 0xF0 { k += 16; continue; } break; }
+                k += (rs >> 4) as usize + 1;
+            }
+            if end_mcu { mcu += 1; first = true; }
+            true
+        });
+    }
+    T_READ.fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+    sum
+}
 
 pub fn pack(d: &[u8], img: &Image) -> Option<Vec<u8>> {
     let t0 = std::time::Instant::now();
-    let mut evs: Vec<Ev> = Vec::with_capacity(d.len());
+    let mut evs: Vec<u16> = Vec::with_capacity(2 * d.len());
+    let mut rw = LWriter::with_capacity(d.len() + 64);
     let mut cnt_ac = vec![[0u32; 256]; CTX_AC];
     let mut cnt_dc = vec![[0u32; 256]; CTX_DC];
     let mut counts: Vec<Vec<u8>> = img.comps.iter().map(|c| vec![0u8; c.bw * c.bh]).collect();
@@ -408,7 +547,7 @@ pub fn pack(d: &[u8], img: &Image) -> Option<Vec<u8>> {
         let mut r = JReader { d: &d[..sc.end], pos: sc.start, acc: 0, n: 0 };
         let mut mcu = 0usize;
         let mut first = true;
-        let ok = for_blocks(img, sc, |ci, si, b, end_mcu, up, lf| {
+        for (ci, si, b, end_mcu, up, lf) in Blocks::new(img, sc) {
             if img.dri > 0 && first && mcu > 0 && mcu % img.dri == 0 {
                 r.restart();
             }
@@ -417,24 +556,24 @@ pub fn pack(d: &[u8], img: &Image) -> Option<Vec<u8>> {
             let bw = img.comps[ci].bw;
             let nc = nctx(&counts[ci], bw, b, up, lf);
             // DC
-            let Some(s) = r.sym(&tabs[si].0) else { return false };
+            let Some((s, raw)) = r.sym_raw(&tabs[si].0, false) else { return None };
             let s = s as u32;
-            if s > 15 { return false; }
-            let raw = r.bits(s);
+            if s > 15 { return None; }
             let ctx = cc * NCTX + nc;
             unsafe { *cnt_dc.get_unchecked_mut(ctx).get_unchecked_mut(s as usize) += 1; }
-            evs.push(Ev { ctx: ctx as u16, sym: s as u8, raw: raw as u16, rl: s as u8 });
+            evs.push(((ctx as u16) << 8) | s as u16);
+            rw.put(raw, s);
             // AC
             let mut k = 1usize;
             let mut n = 0u32;
             while k < 64 {
-                let Some(rs) = r.sym(&tabs[si].1) else { return false };
+                let Some((rs, raw)) = r.sym_raw(&tabs[si].1, true) else { return None };
                 let rs = rs as u32;
                 let ctx = CTX_DC + (cc * 8 + band(k)) * NCTX + nc;
                 let (run, sz) = (rs >> 4, rs & 15);
-                let raw = r.bits(sz);
                 unsafe { *cnt_ac.get_unchecked_mut(ctx - CTX_DC).get_unchecked_mut(rs as usize) += 1; }
-                evs.push(Ev { ctx: ctx as u16, sym: rs as u8, raw: raw as u16, rl: sz as u8 });
+                evs.push(((ctx as u16) << 8) | rs as u16);
+                rw.put(raw, sz);
                 if sz == 0 {
                     if run == 15 { k += 16; continue; }
                     break; // EOB
@@ -442,18 +581,20 @@ pub fn pack(d: &[u8], img: &Image) -> Option<Vec<u8>> {
                 k += run as usize + 1;
                 n += 1;
             }
-            if k > 64 { return false; }
+            if k > 64 { return None; }
             counts[ci][b] = n.min(63) as u8;
             if end_mcu {
                 mcu += 1;
                 first = true;
             }
-            true
-        });
-        if !ok { return None; }
+        }
     }
     T_PARSE.fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
     let t1 = std::time::Instant::now();
+    finish_pack(&evs, &cnt_dc, &cnt_ac, rw.finish(), t1)
+}
+
+fn finish_pack(evs: &[u16], cnt_dc: &[[u32; 256]], cnt_ac: &[[u32; 256]], raw: Vec<u8>, t1: std::time::Instant) -> Option<Vec<u8>> {
     // tables
     let mut out = Vec::new();
     let mut codes: Vec<[(u16, u8); 256]> = Vec::with_capacity(CTX_DC + CTX_AC);
@@ -475,18 +616,21 @@ pub fn pack(d: &[u8], img: &Image) -> Option<Vec<u8>> {
         codes.push(canon_codes(&len));
     }
     let tlen = out.len();
-    let mut w = LWriter { out: Vec::with_capacity(d.len()), acc: 0, n: 0 };
-    for e in &evs {
-        let (c, l) = codes[e.ctx as usize][e.sym as usize];
+    T_TAB.fetch_add(t1.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+    // codes only: at most 11 bits per event
+    let mut w = LWriter::with_capacity(evs.len() * 2 + 64);
+    for &e in evs {
+        let (c, l) = unsafe { *codes.get_unchecked((e >> 8) as usize).get_unchecked((e & 0xFF) as usize) };
         w.put(c as u32, l as u32);
-        w.put(e.raw as u32, e.rl as u32);
     }
     let body = w.finish();
     T_WRITE.fetch_add(t1.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
-    let mut res = Vec::with_capacity(4 + tlen + body.len());
+    let mut res = Vec::with_capacity(8 + tlen + body.len() + raw.len());
     res.extend_from_slice(&(tlen as u32).to_le_bytes());
     res.extend_from_slice(&out);
+    res.extend_from_slice(&(body.len() as u32).to_le_bytes());
     res.extend_from_slice(&body);
+    res.extend_from_slice(&raw);
     Some(res)
 }
 
@@ -495,8 +639,7 @@ pub static SYMS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 static NOWRITE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
 pub fn unpack(data: &[u8], img: &Image) -> Vec<Vec<u8>> {
-    let nowrite = *NOWRITE.get_or_init(|| std::env::var_os("NOWRITE").is_some());
-    let mut syms = 0u64;
+
     let tlen = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
     let mut p = 4;
     let t = &data[..4 + tlen];
@@ -525,8 +668,11 @@ pub fn unpack(data: &[u8], img: &Image) -> Vec<Vec<u8>> {
         }
         luts.push(full);
     }
-    let body = &data[4 + tlen..];
+    let bl = u32::from_le_bytes(data[4 + tlen..8 + tlen].try_into().unwrap()) as usize;
+    let body = &data[8 + tlen..8 + tlen + bl];
+    let rawb = &data[8 + tlen + bl..];
     let (mut acc, mut n, mut bp) = (0u64, 0u32, 0usize);
+    let (mut racc, mut rn, mut rp) = (0u64, 0u32, 0usize);
     let mut counts: Vec<Vec<u8>> = img.comps.iter().map(|c| vec![0u8; c.bw * c.bh]).collect();
     let mut outs = Vec::new();
     for sc in &img.scans {
@@ -538,7 +684,7 @@ pub fn unpack(data: &[u8], img: &Image) -> Vec<Vec<u8>> {
         let mut mcu = 0usize;
         let mut rst = 0u8;
         let mut first = true;
-        for_blocks(img, sc, |ci, si, b, end_mcu, up, lf| {
+        for (ci, si, b, end_mcu, up, lf) in Blocks::new(img, sc) {
             if img.dri > 0 && first && mcu > 0 && mcu % img.dri == 0 {
                 w.pad();
                 w.out.push(0xFF);
@@ -565,9 +711,16 @@ pub fn unpack(data: &[u8], img: &Image) -> Vec<Vec<u8>> {
             let s = (e & 0xFF) as u32;
             acc >>= l;
             n -= l;
-            let raw = (acc & ((1u64 << s) - 1)) as u32;
-            acc >>= s;
-            n -= s;
+            {
+                let v = unsafe { std::ptr::read_unaligned(rawb.as_ptr().add(rp) as *const u64) };
+                racc |= u64::from_le(v) << rn;
+                let take = (63 - rn) >> 3;
+                rp += take as usize;
+                rn += take << 3;
+            }
+            let raw = (racc & ((1u64 << s) - 1)) as u32;
+            racc >>= s;
+            rn -= s;
             let (c, cl) = jdc[s as usize];
             w.put((c << s) | raw, cl + s);
             // AC
@@ -593,12 +746,18 @@ pub fn unpack(data: &[u8], img: &Image) -> Vec<Vec<u8>> {
                 acc >>= l;
                 n -= l;
                 let sz = rs & 15;
-                let raw = (acc & ((1u64 << sz) - 1)) as u32;
-                acc >>= sz;
-                n -= sz;
-                syms += 1;
+                if rn < 16 {
+                    let v = unsafe { std::ptr::read_unaligned(rawb.as_ptr().add(rp) as *const u64) };
+                    racc |= u64::from_le(v) << rn;
+                    let take = (63 - rn) >> 3;
+                    rp += take as usize;
+                    rn += take << 3;
+                }
+                let raw = (racc & ((1u64 << sz) - 1)) as u32;
+                racc >>= sz;
+                rn -= sz;
                 let (c, cl) = unsafe { *jac.get_unchecked(rs as usize) };
-                if nowrite { std::hint::black_box((c << sz) | raw); } else { w.put((c << sz) | raw, cl + sz); }
+                w.put((c << sz) | raw, cl + sz);
                 if sz == 0 {
                     if rs == 0xF0 { k += 16; continue; }
                     break;
@@ -611,11 +770,394 @@ pub fn unpack(data: &[u8], img: &Image) -> Vec<Vec<u8>> {
                 mcu += 1;
                 first = true;
             }
-            true
-        });
+        }
         w.pad();
         outs.push(w.out);
     }
-    SYMS.fetch_add(syms, std::sync::atomic::Ordering::Relaxed);
     outs
+}
+
+// ---------- tight unpack ----------
+
+/// Flushes `w` (32 bits) with byte stuffing; the rare path.
+#[cold]
+#[inline(never)]
+unsafe fn put_stuffed(w: u32, wp: &mut *mut u8) {
+    for b in w.to_be_bytes() {
+        **wp = b;
+        *wp = wp.add(1);
+        if b == 0xFF {
+            **wp = 0;
+            *wp = wp.add(1);
+        }
+    }
+}
+
+/// The same as `unpack`, written as one loop over locals.
+pub fn unpack_tight(data: &[u8], img: &Image) -> Vec<Vec<u8>> {
+    let tlen = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+    let t = &data[..4 + tlen];
+    let mut p = 4;
+    let mut luts: Vec<Vec<u16>> = Vec::with_capacity(CTX_DC + CTX_AC);
+    let mut hot: Vec<u16> = vec![0; (CTX_DC + CTX_AC) * 256];
+    for ci in 0..CTX_DC + CTX_AC {
+        let used = t[p];
+        p += 1;
+        if used == 0 {
+            luts.push(Vec::new());
+            continue;
+        }
+        let per = &t[p..p + MAXLEN as usize];
+        p += MAXLEN as usize;
+        let mut len = [0u8; 256];
+        for l in 1..=MAXLEN as usize {
+            for _ in 0..per[l - 1] {
+                len[t[p] as usize] = l as u8;
+                p += 1;
+            }
+        }
+        let full = canon(&len).1;
+        for i in 0..256 {
+            if (full[i] >> 8) <= 8 { hot[ci * 256 + i] = full[i]; }
+        }
+        luts.push(full);
+    }
+    let bl = u32::from_le_bytes(data[4 + tlen..8 + tlen].try_into().unwrap()) as usize;
+    let body = &data[8 + tlen..8 + tlen + bl];
+    let rawb = &data[8 + tlen + bl..];
+    let mut counts: Vec<Vec<u8>> = img.comps.iter().map(|c| vec![0u8; c.bw * c.bh]).collect();
+    let mut outs = Vec::new();
+    unsafe {
+        let (mut cacc, mut cn, mut cp) = (0u64, 0u32, body.as_ptr());
+        let (mut racc, mut rn, mut rp) = (0u64, 0u32, rawb.as_ptr());
+        let hotp = hot.as_ptr();
+        for sc in &img.scans {
+            let jt: Vec<([(u32, u32); 256], [(u32, u32); 256])> = sc.comps.iter().map(|&(_, td, ta)| {
+                let (dc, ac) = (&img.dc[&td], &img.ac[&ta]);
+                (jpeg_codes(&dc.0, &dc.1), jpeg_codes(&ac.0, &ac.1))
+            }).collect();
+            // output: the scan's size is known to the caller; leave room for growth
+            let cap = (sc.end - sc.start) * 2 + 4096;
+            let mut out: Vec<u8> = Vec::with_capacity(cap);
+            let base_out = out.as_mut_ptr();
+            let mut wp = base_out;
+            let (mut wacc, mut wn) = (0u64, 0u32);
+            macro_rules! put {
+                ($v:expr, $l:expr) => {{
+                    wacc = (wacc << $l) | $v as u64;
+                    wn += $l;
+                    if wn >= 32 {
+                        wn -= 32;
+                        let w = (wacc >> wn) as u32;
+                        let inv = !w;
+                        if (inv.wrapping_sub(0x0101_0101) & !inv & 0x8080_8080) == 0 {
+                            std::ptr::write_unaligned(wp as *mut u32, w.to_be());
+                            wp = wp.add(4);
+                        } else {
+                            put_stuffed(w, &mut wp);
+                        }
+                    }
+                }};
+            }
+            macro_rules! refill_c {
+                () => {{
+                    let v = std::ptr::read_unaligned(cp as *const u64);
+                    cacc |= u64::from_le(v) << cn;
+                    let take = (63 - cn) >> 3;
+                    cp = cp.add(take as usize);
+                    cn += take << 3;
+                }};
+            }
+            macro_rules! refill_r {
+                () => {{
+                    let v = std::ptr::read_unaligned(rp as *const u64);
+                    racc |= u64::from_le(v) << rn;
+                    let take = (63 - rn) >> 3;
+                    rp = rp.add(take as usize);
+                    rn += take << 3;
+                }};
+            }
+            let mut mcu = 0usize;
+            let mut rst = 0u8;
+            let mut first = true;
+            for (ci, si, b, end_mcu, up, lf) in Blocks::new(img, sc) {
+                if img.dri > 0 && first && mcu > 0 && mcu % img.dri == 0 {
+                    // pad with ones, then the marker
+                    while wn >= 8 {
+                        wn -= 8;
+                        let by = (wacc >> wn) as u8;
+                        *wp = by; wp = wp.add(1);
+                        if by == 0xFF { *wp = 0; wp = wp.add(1); }
+                    }
+                    if wn > 0 {
+                        let k = 8 - wn;
+                        let by = (((wacc << k) | ((1 << k) - 1)) & 0xFF) as u8;
+                        *wp = by; wp = wp.add(1);
+                        if by == 0xFF { *wp = 0; wp = wp.add(1); }
+                        wn = 0;
+                    }
+                    wacc = 0;
+                    *wp = 0xFF; wp = wp.add(1);
+                    *wp = 0xD0 + rst; wp = wp.add(1);
+                    rst = (rst + 1) & 7;
+                }
+                first = false;
+                let cc = ci.min(1);
+                let bw = img.comps[ci].bw;
+                let cnt = counts.get_unchecked_mut(ci);
+                let nc = nctx(cnt, bw, b, up, lf);
+                let (jdc, jac) = (&jt.get_unchecked(si).0, &jt.get_unchecked(si).1);
+                // DC
+                refill_c!();
+                let ctx = cc * NCTX + nc;
+                let mut e = *hotp.add(ctx * 256 + (cacc & 255) as usize);
+                if e == 0 { e = *luts.get_unchecked(ctx).get_unchecked((cacc & ((1 << MAXLEN) - 1)) as usize); }
+                let l = (e >> 8) as u32;
+                let s = (e & 0xFF) as u32;
+                cacc >>= l;
+                cn -= l;
+                refill_r!();
+                let raw = (racc & ((1u64 << s) - 1)) as u32;
+                racc >>= s;
+                rn -= s;
+                let (c, cl) = *jdc.get_unchecked(s as usize);
+                put!((c << s) | raw, cl + s);
+                // AC
+                let row = CTX_DC + cc * 8 * NCTX + nc;
+                let mut k = 1usize;
+                let mut nz = 0u32;
+                while k < 64 {
+                    refill_c!();
+                    let ctx = row + band(k) * NCTX;
+                    let mut e = *hotp.add(ctx * 256 + (cacc & 255) as usize);
+                    if e == 0 { e = *luts.get_unchecked(ctx).get_unchecked((cacc & ((1 << MAXLEN) - 1)) as usize); }
+                    let l = (e >> 8) as u32;
+                    let rs = (e & 0xFF) as u32;
+                    cacc >>= l;
+                    cn -= l;
+                    let sz = rs & 15;
+                    if rn < 16 { refill_r!(); }
+                    let raw = (racc & ((1u64 << sz) - 1)) as u32;
+                    racc >>= sz;
+                    rn -= sz;
+                    let (c, cl) = *jac.get_unchecked(rs as usize);
+                    put!((c << sz) | raw, cl + sz);
+                    if sz == 0 {
+                        if rs == 0xF0 { k += 16; continue; }
+                        break;
+                    }
+                    k += (rs >> 4) as usize + 1;
+                    nz += 1;
+                }
+                *cnt.get_unchecked_mut(b) = nz.min(63) as u8;
+                if end_mcu {
+                    mcu += 1;
+                    first = true;
+                }
+            }
+            // final pad
+            while wn >= 8 {
+                wn -= 8;
+                let by = (wacc >> wn) as u8;
+                *wp = by; wp = wp.add(1);
+                if by == 0xFF { *wp = 0; wp = wp.add(1); }
+            }
+            if wn > 0 {
+                let k = 8 - wn;
+                let by = (((wacc << k) | ((1 << k) - 1)) & 0xFF) as u8;
+                *wp = by; wp = wp.add(1);
+                if by == 0xFF { *wp = 0; wp = wp.add(1); }
+            }
+            let n = wp.offset_from(base_out) as usize;
+            assert!(n <= cap);
+            out.set_len(n);
+            outs.push(out);
+        }
+    }
+    outs
+}
+
+
+// ---------- tight pack ----------
+
+/// Slow path of the JPEG reader: a code longer than the 12-bit table, bit by bit.
+#[cold]
+#[inline(never)]
+fn slow_sym(t: &JTable, acc: &mut u64, n: &mut u32) -> Option<u8> {
+    let mut code = 0i32;
+    for l in 1..=16usize {
+        code = (code << 1) | (*acc >> 63) as i32;
+        *acc <<= 1;
+        *n -= 1;
+        if code <= t.maxcode[l] {
+            return t.vals.get((t.valptr[l] + code - t.mincode[l]) as usize).copied();
+        }
+    }
+    None
+}
+
+/// Refills the JPEG reader byte by byte (stuffing, markers); the rare path.
+#[cold]
+#[inline(never)]
+fn slow_fill(d: &[u8], pos: &mut usize, acc: &mut u64, n: &mut u32) {
+    while *n <= 56 {
+        let mut b = 0u8;
+        if *pos < d.len() {
+            b = d[*pos];
+            if b == 0xFF {
+                if d.get(*pos + 1) == Some(&0) { *pos += 2; } else { b = 0; }
+            } else {
+                *pos += 1;
+            }
+        }
+        *acc |= (b as u64) << (56 - *n);
+        *n += 8;
+    }
+}
+
+/// `pack` with the parse written as one loop over locals.
+pub fn pack_tight(d: &[u8], img: &Image) -> Option<Vec<u8>> {
+    let t0 = std::time::Instant::now();
+    let mut evs: Vec<u16> = Vec::with_capacity(2 * d.len() + 64);
+    let mut rawbuf: Vec<u8> = vec![0; d.len() + 64];
+    let mut cnt_ac = vec![[0u32; 256]; CTX_AC];
+    let mut cnt_dc = vec![[0u32; 256]; CTX_DC];
+    let mut counts: Vec<Vec<u8>> = img.comps.iter().map(|c| vec![0u8; c.bw * c.bh]).collect();
+    let (mut racc, mut rn, mut rlen) = (0u64, 0u32, 0usize);
+    let mut nev = 0usize;
+    unsafe {
+        let mut evp = evs.as_mut_ptr();
+        let rbp = rawbuf.as_mut_ptr();
+        for sc in &img.scans {
+            let tabs: Vec<(JTable, JTable)> = sc.comps.iter().map(|&(_, td, ta)| {
+                let (dc, ac) = (&img.dc[&td], &img.ac[&ta]);
+                (JTable::new(&dc.0, &dc.1), JTable::new(&ac.0, &ac.1))
+            }).collect();
+            let dd = &d[..sc.end];
+            let (mut acc, mut n, mut pos) = (0u64, 0u32, sc.start);
+            macro_rules! fill {
+                () => {{
+                    let mut done = false;
+                    if pos + 8 <= dd.len() {
+                        let w = u64::from_be_bytes(std::ptr::read_unaligned(dd.as_ptr().add(pos) as *const [u8; 8]));
+                        let inv = !w;
+                        if (inv.wrapping_sub(0x0101_0101_0101_0101) & !inv & 0x8080_8080_8080_8080) == 0 {
+                            let take = (64 - n) >> 3;
+                            let wm = if take == 8 { w } else { w & !(u64::MAX >> (8 * take)) };
+                            acc |= wm >> n;
+                            pos += take as usize;
+                            n += 8 * take;
+                            done = true;
+                        }
+                    }
+                    if !done { slow_fill(dd, &mut pos, &mut acc, &mut n); }
+                }};
+            }
+            macro_rules! sym_raw {
+                ($t:expr, $ac:expr) => {{
+                    if n < 32 { fill!(); }
+                    let e = *$t.fast.as_ptr().add((acc >> 52) as usize);
+                    if e != 0 {
+                        let l = (e >> 8) as u32;
+                        let sym = e as u8;
+                        let s = if $ac { (sym & 15) as u32 } else { sym as u32 };
+                        let v = acc << l;
+                        let raw = (((v >> 1) >> (63 - s)) as u32) & ((1u32 << s) - 1);
+                        acc = v << s;
+                        n -= l + s;
+                        Some((sym, raw))
+                    } else {
+                        match slow_sym($t, &mut acc, &mut n) {
+                            None => None,
+                            Some(sym) => {
+                                let s = if $ac { (sym & 15) as u32 } else { sym as u32 };
+                                if s > 16 { None } else {
+                                    if n < 32 { fill!(); }
+                                    let raw = if s == 0 { 0 } else { (acc >> (64 - s)) as u32 };
+                                    acc <<= s;
+                                    n -= s;
+                                    Some((sym, raw))
+                                }
+                            }
+                        }
+                    }
+                }};
+            }
+            macro_rules! rput {
+                ($v:expr, $l:expr) => {{
+                    racc |= ($v as u64) << rn;
+                    rn += $l;
+                    std::ptr::write_unaligned(rbp.add(rlen) as *mut u64, racc.to_le());
+                    let bytes = rn >> 3;
+                    rlen += bytes as usize;
+                    racc = if bytes == 8 { 0 } else { racc >> (8 * bytes) };
+                    rn &= 7;
+                }};
+            }
+            let mut mcu = 0usize;
+            let mut first = true;
+            for (ci, si, b, end_mcu, up, lf) in Blocks::new(img, sc) {
+                if img.dri > 0 && first && mcu > 0 && mcu % img.dri == 0 {
+                    acc = 0;
+                    n = 0;
+                    while pos + 1 < dd.len() {
+                        if dd[pos] == 0xFF && (0xD0..=0xD7).contains(&dd[pos + 1]) { pos += 2; break; }
+                        pos += 1;
+                    }
+                }
+                first = false;
+                // room for a whole block's events (at most 1 + 63 + a few ZRL)
+                if nev + 80 > evs.capacity() {
+                    evs.set_len(nev);
+                    evs.reserve(evs.capacity());
+                    evp = evs.as_mut_ptr();
+                }
+                let cc = ci.min(1);
+                let bw = img.comps[ci].bw;
+                let cnt = counts.get_unchecked_mut(ci);
+                let nc = nctx(cnt, bw, b, up, lf);
+                let (tdc, tac) = (&tabs.get_unchecked(si).0, &tabs.get_unchecked(si).1);
+                // DC
+                let (s, raw) = sym_raw!(tdc, false)?;
+                let s = s as u32;
+                if s > 15 { return None; }
+                let ctx = cc * NCTX + nc;
+                *cnt_dc.get_unchecked_mut(ctx).get_unchecked_mut(s as usize) += 1;
+                *evp.add(nev) = ((ctx as u16) << 8) | s as u16;
+                nev += 1;
+                rput!(raw, s);
+                // AC
+                let row = cc * 8 * NCTX + nc;
+                let mut k = 1usize;
+                let mut nz = 0u32;
+                while k < 64 {
+                    let (rs, raw) = sym_raw!(tac, true)?;
+                    let rs = rs as u32;
+                    let actx = row + band(k) * NCTX;
+                    let (run, sz) = (rs >> 4, rs & 15);
+                    *cnt_ac.get_unchecked_mut(actx).get_unchecked_mut(rs as usize) += 1;
+                    *evp.add(nev) = (((CTX_DC + actx) as u16) << 8) | rs as u16;
+                    nev += 1;
+                    rput!(raw, sz);
+                    if sz == 0 {
+                        if run == 15 { k += 16; continue; }
+                        break;
+                    }
+                    k += run as usize + 1;
+                    nz += 1;
+                }
+                if k > 64 { return None; }
+                *cnt.get_unchecked_mut(b) = nz.min(63) as u8;
+                if end_mcu { mcu += 1; first = true; }
+            }
+        }
+        std::ptr::write_unaligned(rbp.add(rlen) as *mut u64, racc.to_le());
+        rlen += ((rn + 7) >> 3) as usize;
+        evs.set_len(nev);
+    }
+    rawbuf.truncate(rlen);
+    rawbuf.extend_from_slice(&[0; 16]);
+    T_PARSE.fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+    let t1 = std::time::Instant::now();
+    finish_pack(&evs, &cnt_dc, &cnt_ac, rawbuf, t1)
 }

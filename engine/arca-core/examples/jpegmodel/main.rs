@@ -925,7 +925,7 @@ fn run_lite(files: &[std::path::PathBuf], threads: usize) {
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     if i >= jobs.len() { break; }
                     let (d, img) = &jobs[i];
-                    *results[i].lock().unwrap() = lite::pack(d, img);
+                    *results[i].lock().unwrap() = lite::pack_tight(d, img);
                 });
             }
         });
@@ -942,7 +942,7 @@ fn run_lite(files: &[std::path::PathBuf], threads: usize) {
                     if i >= jobs.len() { break; }
                     let (d, img) = &jobs[i];
                     let Some(p) = &packed[i] else { bad.fetch_add(1, Ordering::Relaxed); continue };
-                    let scans = lite::unpack(p, img);
+                    let scans = lite::unpack_tight(p, img);
                     let mut out = Vec::with_capacity(d.len());
                     let mut at = 0;
                     for (s, sd) in img.scans.iter().zip(&scans) {
@@ -970,8 +970,10 @@ fn run_lite(files: &[std::path::PathBuf], threads: usize) {
         let n = lite::SYMS.load(std::sync::atomic::Ordering::Relaxed);
         println!("unpack x8 one thread: {:.2} s; AC symbols counted {} ({:.2} ns each)", el, n, el * 1e9 / n as f64 * 9.0 / 8.0);
     }
-    println!("pack phases (all runs, all threads): parse {:.2} s, tables + write {:.2} s",
-        lite::T_PARSE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9, lite::T_WRITE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9);
+    println!("pack phases (all runs, all threads): parse {:.2} s, tables {:.2} s, tables + write {:.2} s",
+        lite::T_PARSE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9, lite::T_TAB.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9, lite::T_WRITE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9);
+    for (d, img) in &jobs { std::hint::black_box(lite::read_only(d, img)); }
+    println!("read only, one thread: {:.2} s", lite::T_READ.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e9);
     let size: u64 = packed.iter().map(|p| p.as_ref().map_or(0, |v| v.len() as u64)).sum();
     let scans: u64 = jobs.iter().map(|(_, img)| img.scans.iter().map(|s| (s.end - s.start) as u64).sum::<u64>()).sum();
     let mut hdr = Vec::new();
