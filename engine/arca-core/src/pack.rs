@@ -387,6 +387,36 @@ impl Drop for Timeline {
     }
 }
 
+/// A block, or part of one, waiting for an encoder. Ordered by `weight`, the time
+/// it will take as far as can be told.
+struct Part {
+    weight: usize,
+    id: u32,
+    buf: Vec<u8>,
+    hard: bool,
+    cfg: CodecConfig,
+}
+
+impl PartialEq for Part {
+    fn eq(&self, other: &Self) -> bool {
+        (self.weight, self.id) == (other.weight, other.id)
+    }
+}
+
+impl Eq for Part {}
+
+impl PartialOrd for Part {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Part {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.weight, self.id).cmp(&(other.weight, other.id))
+    }
+}
+
 /// Numbers a new block in `lane`.
 fn new_block(lanes: &Mutex<Vec<Lane>>, lane: Lane) -> u32 {
     let mut l = lanes.lock().unwrap();
@@ -408,6 +438,8 @@ struct BlockSink {
     splits: Arc<Mutex<Vec<(u32, u32, u64)>>>,
     /// Whether blocks may split, for levels whose decoders run one per block.
     split: bool,
+    /// Parts waiting for an encoder, longest first.
+    queue: Arc<Mutex<std::collections::BinaryHeap<Part>>>,
     /// Pack start, for the block timeline `ARCA_DEBUG_TIMING` prints.
     start: Option<Instant>,
     key: Arc<hash::Key>,
@@ -448,7 +480,7 @@ impl BlockSink {
         let (done_tx, slots_tx) = (self.done_tx.clone(), self.slots_tx.clone());
         let (start, key, busy, cores) = (self.start, self.key.clone(), self.busy.clone(), self.cores);
         let queued = start.map(|s| s.elapsed().as_secs_f64());
-        let (lanes, splits) = (self.lanes.clone(), self.splits.clone());
+        let (lanes, splits, queue) = (self.lanes.clone(), self.splits.clone(), self.queue.clone());
         let may_split = self.split && cfg.codec == Codec::Lzma2 && block.buf.len() >= SPLIT_MIN;
         self.pool.spawn(move || {
             let began = start.map(|s| s.elapsed().as_secs_f64());
@@ -466,7 +498,7 @@ impl BlockSink {
             // With cores to spare, a block takes two.
             let at_once = busy.fetch_add(1, Ordering::Relaxed) + 1;
             let cfg = CodecConfig { workers: if 2 * at_once <= cores { 2 } else { 1 }, ..cfg };
-            let finish = Arc::new(move |id: u32, buf: Vec<u8>, hard: bool, cfg: CodecConfig| {
+            let finish = Arc::new(move |Part { id, buf, hard, cfg, .. }: Part| {
                 let raw_len = buf.len() as u64;
                 let raw_hash = key.hash(&buf);
                 let res = if cfg.codec == Codec::Store {
@@ -510,13 +542,28 @@ impl BlockSink {
             // A block that split has no far repeats to speak of, so long matches
             // buy little in it: Silesia 15% less CPU for 0.3%.
             let cfg = if parts.len() > 1 && cfg.extreme { CodecConfig { extreme: false, level: 9, ..cfg } } else { cfg };
-            // Each its own task, or the rest would wait behind the first.
-            let (first, rest) = parts.split_first_mut().expect("one part at least");
-            for (id, buf, _) in rest {
-                let (id, buf, finish) = (*id, std::mem::take(buf), finish.clone());
-                rayon::spawn_fifo(move || finish(id, buf, hard, cfg));
+            // The longest first: with a fixed amount of work, what decides the time
+            // is whether a long part starts last. Silesia at Max took 10.5 or 13.3 s
+            // from one run to the next as the parts happened to fall.
+            let mut more = parts.len();
+            for (id, buf, _) in parts {
+                let weight = buf.len() * if cfg.level >= 9 { 2 } else { 1 };
+                queue.lock().unwrap().push(Part { weight, id, buf, hard, cfg });
             }
-            finish(first.0, std::mem::take(&mut first.1), hard, cfg);
+            while more > 1 {
+                more -= 1;
+                let (queue, finish) = (queue.clone(), finish.clone());
+                rayon::spawn_fifo(move || {
+                    let part = queue.lock().unwrap().pop();
+                    if let Some(part) = part {
+                        finish(part);
+                    }
+                });
+            }
+            let part = queue.lock().unwrap().pop();
+            if let Some(part) = part {
+                finish(part);
+            }
             busy.fetch_sub(1, Ordering::Relaxed);
             let _ = slots_tx.send(());
         });
@@ -794,6 +841,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         lanes: Arc::new(Mutex::new(Vec::new())),
         splits: Arc::new(Mutex::new(Vec::new())),
         split: opts.level == Level::Max && stats.input_bytes < SPLIT_BELOW,
+        queue: Arc::new(Mutex::new(std::collections::BinaryHeap::new())),
         start: timing.then_some(start),
         key: key.clone(),
         busy: busy.clone(),
