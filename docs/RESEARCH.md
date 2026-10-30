@@ -54,7 +54,9 @@ WebP-style tools in the pixel codec for flat images, similarity ordering, bzip2
 Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
-in "After the checkpoint", starting with our own JPEG coder.
+in "After the checkpoint". The light JPEG coder and Fast's overhead are done;
+next is a quiet benchmark of them, then the rANS coder in Default, DMGs, text
+decoding at Max and the Apple slice delta.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -694,6 +696,45 @@ cores packing and 2.4 unpacking, for three reasons:
   pieces and no longer copies the whole file; streams over 128 MiB are chunked in
   64 MiB spans. 32 MiB spans lost 0.2% to chunks split at the seams, 64 MiB nothing.
   1.32 → 1.03 s.
+
+**The light coder's parse, measured to the instruction.** The photo set is 157.3M
+symbols and 27.6 MB of raw bits in 94.7 MB (4.8 bits a symbol). Parsing took 0.90 s
+on one performance core, 18 cycles a symbol, of 1.3 s in all. `xctrace` samples
+mapped to the disassembly showed why, and what each try was worth:
+
+| Try | Parse, CPU-s on all cores | |
+|---|---:|---|
+| Start | 1.24 | |
+| Slow paths take the reader's state by value, buckets from a table | 1.11 | kept: references had kept the state in memory, and the bucket branch was a coin toss |
+| Stuffing removed in one pass, refills without a branch; block walk from a template | 1.09 | kept for clarity; refilling on every symbol also put a load on the path from symbol to symbol, so it refills on demand |
+| Each block's coding in its own function, all state in registers | 1.11 | no gain alone, but it showed the real cost |
+| Refill once per block | 1.05 | kept |
+| A copy of the AC loop per neighbour class, to teach the predictor | 1.10 | reverted |
+
+What remains is the branch "is this symbol the end of the block?": half of the
+AC loop's samples sit on it and just after it, because a block averages only about
+five symbols and its length is the image's content. A flat machine with no such
+branch is possible (decode symbols with the block state in conditional moves, then
+contexts in a second and third pass), but the estimate is 11% of the parse for a
+large rewrite: not built. The cheaper wins were beside the parse:
+
+- Code tables: a counting sort in place of walking 256 symbols per length for each
+  of 162 tables. 0.11 → 0.07 CPU-s, and decoding's tables gain too.
+- The code stream: four symbols to a write, 0.22 → 0.14 CPU-s.
+
+Against the commit before these, taking turns, seven rounds, Mac at load 27: photos
+pack 0.202 → 0.181 s (1.57 → 1.38 CPU-s) and unpack 0.212 → 0.201 s; in-engine time
+reached 0.16 s when the Mac calmed down. The format is unchanged. The fuzz run was
+repeated on the final parser: 120,000 mutants, the same 36,593 accepted, all
+identical. The 58 app tests pass on the final engine.
+
+Not a win, for the record: opening files relative to their folder (20 µs against
+18 µs), and `sample` (it merges addresses; `xctrace` export keeps them).
+
+Fast's standing on these busy-Mac numbers, to be confirmed quietly: photos 0.18 s
+against Zipgeist's 0.17-0.21 s and zstd -3's 0.26 s; website set 0.72 s against 0.84
+s; saved folder about 0.70 s against 0.97 s; third-party apps pack 1.1 s (was 2.3 s)
+and unpack 0.42 s (was 1.5 s).
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
