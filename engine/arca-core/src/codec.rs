@@ -16,7 +16,22 @@ pub struct CodecConfig {
     /// to LZMA2 fb 273 when bsc gets under 16:1 (see `compress_auto`).
     pub level: i32,
     pub extreme: bool,
+    /// zstd: search the whole block for long repeats (long-distance matching).
+    /// Off, the lane gets bigger tables instead (`FAST_TABLES`), which is smaller
+    /// and faster on all but text and blocks full of far repeats, which try again
+    /// with the search on (`LONG_RETRY_RATIO`).
+    pub long: bool,
 }
+
+/// zstd's hash and chain table sizes (log2) at level 3 without long-distance
+/// matching: 2x zstd's own. Against long-distance matching with zstd's tables,
+/// 0.5-0.75% smaller and 9-23% less CPU on binaries, photos' leftovers and Silesia.
+const FAST_TABLES: (u32, u32) = (18, 17);
+
+/// A block that shrinks by more than this without long-distance matching is
+/// compressed again with it. Static libraries are the case: at 22:1 the search
+/// finds object files repeated across libraries, 10% of the lane's output.
+const LONG_RETRY_RATIO: usize = 8;
 
 /// Below this ratio, data in a bsc lane with the LZMA2 fallback is mostly machine
 /// code without long repeats, where LZMA2's literal and match model wins (an x86
@@ -27,7 +42,7 @@ const BSC_FALLBACK_RATIO: usize = 16;
 /// As `compress`, also saying which codec the output is in: a bsc lane with the
 /// fallback may hand a block to LZMA2.
 pub fn compress_auto(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
-    let lzma = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true };
+    let lzma = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true, long: false };
     if cfg.codec == Codec::Bsc && cfg.extreme {
         // A sample decides up front for large blocks, so LZMA2's blocks don't pay
         // for a whole bsc pass first (the sample takes ~0.1 s).
@@ -70,13 +85,27 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
         }
         Codec::Store => Ok(raw.to_vec()),
         Codec::Zstd => {
-            let mut c = zstd::bulk::Compressor::new(cfg.level)?;
-            // Window spans the whole block so long-range repeats inside it are found.
-            let wlog = (usize::BITS - raw.len().max(1 << 20).leading_zeros()).clamp(20, 30);
-            c.set_parameter(CParameter::WindowLog(wlog))?;
-            c.set_parameter(CParameter::EnableLongDistanceMatching(true))?;
-            c.set_parameter(CParameter::ChecksumFlag(true))?;
-            Ok(c.compress(raw)?)
+            let zstd = |long: bool| -> Result<Vec<u8>> {
+                let mut c = zstd::bulk::Compressor::new(cfg.level)?;
+                // Window spans the whole block so long-range repeats inside it are found.
+                let wlog = (usize::BITS - raw.len().max(1 << 20).leading_zeros()).clamp(20, 30);
+                c.set_parameter(CParameter::WindowLog(wlog))?;
+                c.set_parameter(CParameter::EnableLongDistanceMatching(long))?;
+                if !cfg.long && cfg.level <= 3 {
+                    let (hash, chain) = FAST_TABLES;
+                    c.set_parameter(CParameter::HashLog(hash.min(wlog)))?;
+                    c.set_parameter(CParameter::ChainLog(chain.min(wlog)))?;
+                }
+                Ok(c.compress(raw)?)
+            };
+            let first = zstd(cfg.long)?;
+            if !cfg.long && first.len() * LONG_RETRY_RATIO < raw.len() {
+                let second = zstd(true)?;
+                if second.len() < first.len() {
+                    return Ok(second);
+                }
+            }
+            Ok(first)
         }
         Codec::Xz => {
             let preset = cfg.level.clamp(0, 9) as u32 | if cfg.extreme { liblzma::stream::PRESET_EXTREME } else { 0 };

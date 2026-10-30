@@ -332,6 +332,26 @@ impl JTable {
     }
 }
 
+/// True when the table is a prefix code with one code per symbol: then a parsed
+/// symbol names the bits it was read from, and nothing else does.
+fn one_code_each(t: &Dht) -> bool {
+    let mut seen = [false; 256];
+    let (mut code, mut k) = (0u32, 0);
+    for l in 1..=16u32 {
+        for _ in 0..t.0[l as usize - 1] {
+            let Some(&s) = t.1.get(k) else { return false };
+            if code >= 1 << l || seen[s as usize] {
+                return false;
+            }
+            seen[s as usize] = true;
+            code += 1;
+            k += 1;
+        }
+        code <<= 1;
+    }
+    true
+}
+
 /// Canonical JPEG codes: (code, length) per symbol.
 fn jpeg_codes(t: &Dht) -> [(u32, u32); 256] {
     let mut c = [(0u32, 0u32); 256];
@@ -362,19 +382,23 @@ fn slow_sym(t: &JTable, acc: &mut u64, n: &mut u32) -> Option<u8> {
     None
 }
 
-/// Refills the JPEG reader byte by byte (stuffing; zeros at a marker).
+/// Refills the JPEG reader byte by byte: stuffing, and zeros at a marker or the
+/// end, which `made_up` counts in bits.
 #[cold]
 #[inline(never)]
-fn slow_fill(d: &[u8], pos: &mut usize, acc: &mut u64, n: &mut u32) {
+fn slow_fill(d: &[u8], pos: &mut usize, acc: &mut u64, n: &mut u32, made_up: &mut u32) {
     while *n <= 56 {
         let mut b = 0u8;
-        if *pos < d.len() {
-            b = d[*pos];
-            if b == 0xFF {
-                if d.get(*pos + 1) == Some(&0) { *pos += 2; } else { b = 0; }
-            } else {
+        match d.get(*pos) {
+            Some(&0xFF) if d.get(*pos + 1) == Some(&0) => {
+                b = 0xFF;
+                *pos += 2;
+            }
+            Some(&x) if x != 0xFF => {
+                b = x;
                 *pos += 1;
             }
+            _ => *made_up += 8,
         }
         *acc |= (b as u64) << (56 - *n);
         *n += 8;
@@ -532,7 +556,6 @@ impl LWriter {
 /// Every scan is also re-written from the parsed symbols and raw bits while
 /// parsing and compared with the original, so a photo the coder can't represent
 /// exactly is left as it is.
-#[allow(unused_assignments)] // the last pad's resets
 pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
     let l = Layout::parse(d)?;
     let mut evs: Vec<u16> = Vec::with_capacity(2 * d.len() + 128);
@@ -550,65 +573,26 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
         let mut evp = evs.as_mut_ptr();
         let rbp = rawbuf.as_mut_ptr();
         for sc in &l.scans {
-            let tabs: Vec<(JTable, JTable)> = sc.comps.iter().map(|(_, dc, ac)| (JTable::new(dc), JTable::new(ac))).collect();
-            let jt: Vec<([(u32, u32); 256], [(u32, u32); 256])> = sc.comps.iter().map(|(_, dc, ac)| (jpeg_codes(dc), jpeg_codes(ac))).collect();
-            let dd = &d[..sc.end];
-            let (mut acc, mut n, mut pos) = (0u64, 0u32, sc.start);
-            // The check: the scan re-written from the parsed symbols and raw bits
-            // with the photo's own codes, restarts and padding, compared at the end.
-            let mut chk: Vec<u8> = Vec::with_capacity(sc.end - sc.start + 1024);
-            let ccap = chk.capacity();
-            let cbase = chk.as_mut_ptr();
-            let mut wp = cbase;
-            let (mut wacc, mut wn) = (0u64, 0u32);
-            macro_rules! put {
-                ($v:expr, $l:expr) => {{
-                    wacc = (wacc << $l) | $v as u64;
-                    wn += $l;
-                    if wn >= 32 {
-                        wn -= 32;
-                        let w = (wacc >> wn) as u32;
-                        let inv = !w;
-                        if (inv.wrapping_sub(0x0101_0101) & !inv & 0x8080_8080) == 0 {
-                            std::ptr::write_unaligned(wp as *mut u32, w.to_be());
-                            wp = wp.add(4);
-                        } else {
-                            for b in w.to_be_bytes() {
-                                *wp = b;
-                                wp = wp.add(1);
-                                if b == 0xFF {
-                                    *wp = 0;
-                                    wp = wp.add(1);
-                                }
-                            }
-                        }
-                    }
-                }};
+            if !sc.comps.iter().all(|(_, dc, ac)| one_code_each(dc) && one_code_each(ac)) {
+                return None;
             }
-            macro_rules! pad {
-                () => {{
-                    while wn >= 8 {
-                        wn -= 8;
-                        let b = (wacc >> wn) as u8;
-                        *wp = b;
-                        wp = wp.add(1);
-                        if b == 0xFF {
-                            *wp = 0;
-                            wp = wp.add(1);
-                        }
+            let tabs: Vec<(JTable, JTable)> = sc.comps.iter().map(|(_, dc, ac)| (JTable::new(dc), JTable::new(ac))).collect();
+            let dd = &d[..sc.end];
+            let (mut acc, mut n, mut pos, mut made_up) = (0u64, 0u32, sc.start, 0u32);
+            // Together with `one_code_each`, what `ended!` checks is what makes
+            // the coding reversible: every bit of the scan was either a symbol's
+            // code or its raw bits, stuffing was the plain FF 00, and all that is
+            // left of each stretch is padding of ones, right before its marker.
+            // A re-written scan could differ in no other way.
+            macro_rules! ended {
+                ($next:expr) => {{
+                    let left = n.checked_sub(made_up)?;
+                    if left > 7 || (left > 0 && (acc >> (64 - left)) != (1u64 << left) - 1) {
+                        return None;
                     }
-                    if wn > 0 {
-                        let k = 8 - wn;
-                        let b = (((wacc << k) | ((1 << k) - 1)) & 0xFF) as u8;
-                        *wp = b;
-                        wp = wp.add(1);
-                        if b == 0xFF {
-                            *wp = 0;
-                            wp = wp.add(1);
-                        }
+                    if !$next {
+                        return None;
                     }
-                    wn = 0;
-                    wacc = 0;
                 }};
             }
             let mut rst = 0u8;
@@ -628,7 +612,7 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
                         }
                     }
                     if !done {
-                        slow_fill(dd, &mut pos, &mut acc, &mut n);
+                        slow_fill(dd, &mut pos, &mut acc, &mut n, &mut made_up);
                     }
                 }};
             }
@@ -677,28 +661,13 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
             }
             let (mut mcu, mut first) = (0usize, true);
             for (ci, si, b, end_mcu, up, lf) in Blocks::new(&l, sc) {
-                if (wp.offset_from(cbase) as usize) + 600 > ccap {
-                    return None;
-                }
                 if l.dri > 0 && first && mcu > 0 && mcu % l.dri == 0 {
-                    pad!();
-                    *wp = 0xFF;
-                    *wp.add(1) = 0xD0 + rst;
-                    wp = wp.add(2);
+                    ended!(dd.get(pos) == Some(&0xFF) && dd.get(pos + 1) == Some(&(0xD0 + rst)));
                     rst = (rst + 1) & 7;
-                    // skip to just after the restart marker
+                    pos += 2;
                     acc = 0;
                     n = 0;
-                    loop {
-                        if pos + 1 >= dd.len() {
-                            return None;
-                        }
-                        if dd[pos] == 0xFF && (0xD0..=0xD7).contains(&dd[pos + 1]) {
-                            pos += 2;
-                            break;
-                        }
-                        pos += 1;
-                    }
+                    made_up = 0;
                 }
                 first = false;
                 // room for a whole block's events (1 + 63 + a few ZRL)
@@ -715,13 +684,10 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
                 let cnt = counts.get_unchecked_mut(ci);
                 let nc = nctx(cnt, l.comps.get_unchecked(ci).bw, b, up, lf);
                 let (tdc, tac) = (&tabs.get_unchecked(si).0, &tabs.get_unchecked(si).1);
-                let (jdc, jac) = (&jt.get_unchecked(si).0, &jt.get_unchecked(si).1);
                 let (s, r, sz) = sym_raw!(tdc, false);
                 if s > 15 {
                     return None;
                 }
-                let (c, jl) = *jdc.get_unchecked(s as usize);
-                put!((c << sz) | r, jl + sz);
                 let ctx = cc * NCTX + nc;
                 *cnt_dc.get_unchecked_mut(ctx).get_unchecked_mut(s as usize) += 1;
                 *evp.add(nev) = ((ctx as u16) << 8) | s as u16;
@@ -731,8 +697,6 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
                 let (mut k, mut nz) = (1usize, 0u32);
                 while k < 64 {
                     let (rs, r, sz) = sym_raw!(tac, true);
-                    let (c, jl) = *jac.get_unchecked(rs as usize);
-                    put!((c << sz) | r, jl + sz);
                     let actx = row + band(k) * NCTX;
                     *cnt_ac.get_unchecked_mut(actx).get_unchecked_mut(rs as usize) += 1;
                     *evp.add(nev) = (((CTX_DC + actx) as u16) << 8) | rs as u16;
@@ -760,15 +724,7 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
                     first = true;
                 }
             }
-            pad!();
-            let cn = wp.offset_from(cbase) as usize;
-            if cn > ccap {
-                return None;
-            }
-            chk.set_len(cn);
-            if chk[..] != d[sc.start..sc.end] {
-                return None;
-            }
+            ended!(pos == sc.end);
         }
         std::ptr::write_unaligned(rbp.add(rlen) as *mut u64, racc.to_le());
         rlen += ((rn + 7) >> 3) as usize;
@@ -1224,6 +1180,112 @@ mod tests {
                 n -= l;
             }
         }
+    }
+
+    /// One random change: anywhere, in the headers and tables, or near the end,
+    /// where padding and stray bytes live.
+    fn mutate(d: &mut Vec<u8>, s: &mut u64) {
+        let mut r = |n: usize| {
+            *s = s.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(0x1234_5);
+            ((*s >> 33) as usize) % n.max(1)
+        };
+        let n = d.len();
+        match r(7) {
+            0 => {
+                let i = r(n);
+                d[i] ^= 1 << r(8);
+            }
+            1 => {
+                let i = r(n);
+                d[i] = 0xFF;
+            }
+            2 => {
+                let (i, m) = (r(n), [0x00, 0xD0, 0xD3, 0xFF, 0xD9][r(5)]);
+                d.splice(i..i, [0xFF, m]);
+            }
+            3 => {
+                d.remove(r(n));
+            }
+            4 => {
+                let i = r(n.min(1024));
+                d[i] ^= 1 << r(8);
+            }
+            5 => {
+                let i = n - 1 - r(n.min(12));
+                d[i] ^= 1 << r(8);
+            }
+            _ => {
+                let i = n - 1 - r(n.min(12));
+                d.insert(i, r(256) as u8);
+            }
+        }
+    }
+
+    /// Whatever `encode` accepts must come back byte for byte, however the photo
+    /// was damaged. Returns how many were accepted.
+    fn fuzz(photo: &[u8], rounds: usize, seed: u64) -> usize {
+        let (mut s, mut accepted) = (seed, 0);
+        for _ in 0..rounds {
+            let mut d = photo.to_vec();
+            for _ in 0..1 + (s >> 60) as usize % 3 {
+                mutate(&mut d, &mut s);
+            }
+            if let Some((out, _)) = encode(&d) {
+                accepted += 1;
+                let back = decode(&out, d.len() as u64).expect("an accepted photo decodes");
+                assert!(back == d, "an accepted photo came back different");
+            }
+        }
+        accepted
+    }
+
+    #[test]
+    fn damaged_photos_come_back_or_are_refused() {
+        let dir = std::env::temp_dir().join(format!("arca-jpeglite-fuzz-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (src, dst) = (dir.join("a.bmp"), dir.join("a.jpg"));
+        std::fs::write(&src, bmp(333, 211, 5)).unwrap();
+        let ok = Command::new("sips")
+            .args(["-s", "format", "jpeg", "-s", "formatOptions", "85"])
+            .arg(&src)
+            .arg("--out")
+            .arg(&dst)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if ok {
+            let photo = std::fs::read(&dst).unwrap();
+            assert!(fuzz(&photo, 3000, 1) > 0);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Long run over real photos: `ARCA_FUZZ_DIR=<folder> ARCA_FUZZ_ROUNDS=<n per
+    /// photo> cargo test --release fuzz_folder -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn fuzz_folder() {
+        let dir = std::env::var("ARCA_FUZZ_DIR").unwrap();
+        let rounds: usize = std::env::var("ARCA_FUZZ_ROUNDS").ok().and_then(|v| v.parse().ok()).unwrap_or(200);
+        let paths: Vec<_> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).collect();
+        let total: usize = std::thread::scope(|sc| {
+            let mut hs = Vec::new();
+            for part in paths.chunks(paths.len().div_ceil(10)) {
+                hs.push(sc.spawn(move || {
+                    let mut t = 0;
+                    for (i, p) in part.iter().enumerate() {
+                        if let Ok(d) = std::fs::read(p) {
+                            if d.len() > 16 && encode(&d).is_some() {
+                                t += fuzz(&d, rounds, i as u64 * 2 + 1);
+                            }
+                        }
+                    }
+                    t
+                }));
+            }
+            hs.into_iter().map(|h| h.join().unwrap()).sum()
+        });
+        eprintln!("{} photos, {rounds} mutants each: {total} accepted, all identical", paths.len());
     }
 
     #[test]
