@@ -174,12 +174,15 @@ const CDC_MIN_FILE: usize = 1 << 20;
 const CDC_MIN: u32 = 128 << 10;
 const CDC_AVG: u32 = 512 << 10;
 const CDC_MAX: u32 = 2 << 20;
-/// Bytes of a long stream one task cuts into chunks, at Fast. 64 MiB leaves
-/// third-party apps' size unchanged there; 32 MiB loses 0.2% to chunks split at
-/// the seams. Levels that expand archives keep one pass over the stream: Firefox's
-/// two expanded `omni.ja` dedupe against each other, and the seams cost 0.25% at
-/// Default for a saving that hardly shows in seven seconds of work.
-const CDC_SPAN: usize = 64 << 20;
+/// Bytes of a stream one task cuts into chunks. Nothing can be compressed until a
+/// file is cut, so a 50 MB file on one thread held every core idle for 30% of
+/// Silesia's time at Fast.
+const CDC_SPAN: usize = 8 << 20;
+/// A seam between spans lands where the content says, within this many bytes of
+/// its place. Seams at fixed offsets split chunks differently in two copies of
+/// the same data, which cost 0.25% at Default, where Firefox's expanded `omni.ja`
+/// files dedupe against each other.
+const SEAM_REACH: usize = 4 << 20;
 /// How far (in input bytes) file tasks may run ahead of the packer.
 const LOOKAHEAD_BYTES: u64 = 512 << 20;
 const MMAP_THRESHOLD: u64 = 256 << 10;
@@ -922,14 +925,13 @@ fn process_file(
     // (the index keeps that hash to check the rebuilt file). Every other file is
     // only hashed once, chunk by chunk, and its identity comes from those hashes.
     let transformable = transform::applies(class, &opts.transforms);
-    let spans = opts.level == Level::Fast;
     let (hash, plain_cuts) = if transformable || data.is_empty() {
         let _h = prof::span("file.hash", job.size);
         (key.hash(&data), None)
     } else {
         let cuts = {
             let _p = prof::span("file.chunk", data.len() as u64);
-            cut_chunks(&data, key, opts.dedup, spans)
+            cut_chunks(&data, key, opts.dedup)
         };
         (content_key(&cuts, key), Some(cuts))
     };
@@ -962,13 +964,13 @@ fn process_file(
                     // Chunk the compressible head and the coded tail separately,
                     // so each chunk belongs to one lane.
                     Some(k) => {
-                        let mut c = cut_chunks(&stored[..k], key, opts.dedup, spans);
+                        let mut c = cut_chunks(&stored[..k], key, opts.dedup);
                         // The coded tail of a photo shares nothing with another's
                         // short of being the same file, so fixed cuts will do.
-                        c.extend(cut_chunks(&stored[k..], key, false, spans).into_iter().map(|(o, l, h)| (o + k, l, h)));
+                        c.extend(cut_chunks(&stored[k..], key, false).into_iter().map(|(o, l, h)| (o + k, l, h)));
                         c
                     }
-                    None => cut_chunks(stored, key, opts.dedup, spans),
+                    None => cut_chunks(stored, key, opts.dedup),
                 }
             };
             (p.transform, owned, p.lane, p.store_from, cuts)
@@ -1013,17 +1015,40 @@ fn content_key(cuts: &[(usize, usize, [u8; 16])], key: &hash::Key) -> [u8; 16] {
     }
 }
 
-/// Chunk boundaries with the hashes that deduplicate them. With `spans`, a long
-/// stream is cut span by span on every core.
-fn cut_chunks(stored: &[u8], key: &hash::Key, dedup: bool, spans: bool) -> Vec<(usize, usize, [u8; 16])> {
+/// The first position at or past `from` where FastCDC itself would cut, or
+/// `from + SEAM_REACH` if there is none. A span's first chunk then starts where
+/// the same data elsewhere gets a chunk of its own. FastCDC's two-byte loop is
+/// the plain gear hash below, tested at every byte; its harder mask covers the
+/// easier one's bits, so this holds on either side of its average chunk size.
+fn seam_after(stored: &[u8], from: usize) -> usize {
+    static GEAR: OnceLock<Box<[u64; 256]>> = OnceLock::new();
+    let gear = GEAR.get_or_init(|| fastcdc::v2020::get_gear_with_seed(0).0);
+    let mask = fastcdc::v2020::MASKS[CDC_AVG.trailing_zeros() as usize + 1];
+    let end = (from + SEAM_REACH).min(stored.len());
+    let mut h = 0u64;
+    for (i, &b) in stored[from..end].iter().enumerate() {
+        h = (h << 1).wrapping_add(gear[b as usize]);
+        if i >= 64 && h & mask == 0 {
+            return from + i;
+        }
+    }
+    end
+}
+
+/// Chunk boundaries with the hashes that deduplicate them. A long stream is cut
+/// span by span on every core.
+fn cut_chunks(stored: &[u8], key: &hash::Key, dedup: bool) -> Vec<(usize, usize, [u8; 16])> {
     use rayon::prelude::*;
-    if !spans || stored.len() <= 2 * CDC_SPAN {
+    if !dedup || stored.len() <= 2 * CDC_SPAN {
         return cut_span(stored, key, dedup);
     }
-    let parts: Vec<_> = stored
-        .par_chunks(CDC_SPAN)
-        .enumerate()
-        .map(|(i, s)| cut_span(s, key, dedup).into_iter().map(|(o, l, h)| (o + i * CDC_SPAN, l, h)).collect::<Vec<_>>())
+    let mut seams: Vec<usize> = (1..stored.len() / CDC_SPAN).into_par_iter().map(|k| seam_after(stored, k * CDC_SPAN)).collect();
+    seams.insert(0, 0);
+    seams.push(stored.len());
+    let spans: Vec<(usize, usize)> = seams.windows(2).filter(|w| w[1] > w[0]).map(|w| (w[0], w[1])).collect();
+    let parts: Vec<_> = spans
+        .par_iter()
+        .map(|&(a, b)| cut_span(&stored[a..b], key, dedup).into_iter().map(|(o, l, h)| (o + a, l, h)).collect::<Vec<_>>())
         .collect();
     parts.into_iter().flatten().collect()
 }
