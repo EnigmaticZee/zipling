@@ -46,6 +46,8 @@ pub struct PackOptions {
     /// Inputs smaller than this get blocks shrunk to one per core, so small jobs
     /// still use every core. 0 disables shrinking.
     pub adaptive_below: u64,
+    /// Block size cap for inputs of `SPLIT_BELOW` or more; 0 for none.
+    pub large_input_block: usize,
     pub transforms: TransformOpts,
     pub dedup: bool,
     /// Probe binary chunks, so a block of mostly incompressible-looking ones can
@@ -103,6 +105,10 @@ impl PackOptions {
             block_size: block,
             text_block_size: text_block,
             adaptive_below,
+            // At Max, 32 MiB blocks: LZMA spends less on each byte and six encoders
+            // get through more. Third-party apps 51 → 43 s, saved folder 31 → 25 s,
+            // for 0.9-3% in size (see RESEARCH.md).
+            large_input_block: if level == Level::Max { 32 << 20 } else { 0 },
             transforms: TransformOpts {
                 jpeg: heavy,
                 jpeg_lite: level == Level::Fast && std::env::var_os("ARCA_EXP_NO_JPEGLITE").is_none(),
@@ -648,6 +654,9 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     phase("sorted");
 
     let (mut block_size, mut text_block_size) = (opts.block_size, opts.text_block_size);
+    if opts.large_input_block > 0 && stats.input_bytes >= SPLIT_BELOW {
+        block_size = block_size.min(opts.large_input_block);
+    }
     // A bsc block decodes on one core's worth of memory bandwidth at a time, and
     // source trees' text at Max ran out of cores: half the block, 33% less time
     // to make and 15% less to extract, for 2.2%.

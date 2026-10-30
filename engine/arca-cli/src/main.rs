@@ -177,6 +177,7 @@ fn main() -> Result<()> {
                 o.text_codec.level = l;
             }
             if let Some(b) = block_mib {
+                o.large_input_block = 0;
                 o.block_size = b << 20;
                 o.text_block_size = b << 20;
                 o.adaptive_below = 0;
