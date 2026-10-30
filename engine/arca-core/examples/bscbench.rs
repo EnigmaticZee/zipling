@@ -52,7 +52,7 @@ fn main() {
             use arca_core::codec::{compress, decompress, CodecConfig};
             use arca_core::format::Codec;
             let t = cpu();
-            let pc = compress(&d, CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false, long: false }).unwrap();
+            let pc = compress(&d, CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false, long: false, workers: 1 }).unwrap();
             let tp = cpu() - t;
             let t = cpu();
             let _ = decompress(&pc, Codec::Ppmd, d.len() as u64).unwrap();

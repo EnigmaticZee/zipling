@@ -21,7 +21,16 @@ pub struct CodecConfig {
     /// and faster on all but text and blocks full of far repeats, which try again
     /// with the search on (`LONG_RETRY_RATIO`).
     pub long: bool,
+    /// zstd: threads for one block, when the block is at least two `ZSTD_JOB`s.
+    pub workers: u32,
 }
+
+/// Bytes one zstd worker takes at a time, each seeing the whole window before it.
+/// With blocks this size a machine can hold only a few at once, so at Default one
+/// 64 MiB block on one core was what the rest waited for: PDFs and screenshots
+/// spent 1.2 of 1.8 s so. Two workers: 21% and 38% less time on PDFs and Apple's
+/// apps, for 0.05% and 0.3% in size.
+const ZSTD_JOB: usize = 32 << 20;
 
 /// zstd's hash and chain table sizes (log2) at level 3 without long-distance
 /// matching: 2x zstd's own. Against long-distance matching with zstd's tables,
@@ -33,6 +42,10 @@ const FAST_TABLES: (u32, u32) = (18, 17);
 /// finds object files repeated across libraries, 10% of the lane's output.
 const LONG_RETRY_RATIO: usize = 8;
 
+/// The same after two workers, higher because their block took the slow route.
+/// PDFs at 9:1 give nothing back for doing it over; static libraries at 22:1 do.
+const SPLIT_RETRY_RATIO: usize = 20;
+
 /// Below this ratio, data in a bsc lane with the LZMA2 fallback is mostly machine
 /// code without long repeats, where LZMA2's literal and match model wins (an x86
 /// tar: bsc +19%); above it, BWT wins (static libraries at 46:1: bsc -1%, 54x
@@ -42,7 +55,7 @@ const BSC_FALLBACK_RATIO: usize = 16;
 /// As `compress`, also saying which codec the output is in: a bsc lane with the
 /// fallback may hand a block to LZMA2.
 pub fn compress_auto(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
-    let lzma = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true, long: false };
+    let lzma = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true, long: false, workers: 1 };
     if cfg.codec == Codec::Bsc && cfg.extreme {
         // A sample decides up front for large blocks, so LZMA2's blocks don't pay
         // for a whole bsc pass first (the sample takes ~0.1 s).
@@ -74,7 +87,7 @@ const HARD_RATIO: f64 = 0.95;
 /// incompressible doesn't sit through a slow level: DMGs at level 12 took 6x as long.
 pub fn compress_hard(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
     if cfg.codec == Codec::Zstd && cfg.level > 3 {
-        let quick = compress(raw, CodecConfig { codec: Codec::Zstd, level: 3, extreme: false, long: false })?;
+        let quick = compress(raw, CodecConfig { codec: Codec::Zstd, level: 3, extreme: false, long: false, workers: 1 })?;
         if quick.len() as f64 > raw.len() as f64 * HARD_RATIO {
             return Ok((quick, Codec::Zstd));
         }
@@ -103,12 +116,18 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
         }
         Codec::Store => Ok(raw.to_vec()),
         Codec::Zstd => {
-            let zstd = |long: bool| -> Result<Vec<u8>> {
+            let split = cfg.workers > 1 && raw.len() >= 2 * ZSTD_JOB;
+            let zstd = |long: bool, split: bool| -> Result<Vec<u8>> {
                 let mut c = zstd::bulk::Compressor::new(cfg.level)?;
                 // Window spans the whole block so long-range repeats inside it are found.
                 let wlog = (usize::BITS - raw.len().max(1 << 20).leading_zeros()).clamp(20, 30);
                 c.set_parameter(CParameter::WindowLog(wlog))?;
                 c.set_parameter(CParameter::EnableLongDistanceMatching(long))?;
+                if split {
+                    c.set_parameter(CParameter::NbWorkers(cfg.workers))?;
+                    c.set_parameter(CParameter::JobSize(ZSTD_JOB as u32))?;
+                    c.set_parameter(CParameter::OverlapSizeLog(9))?;
+                }
                 if !cfg.long && cfg.level <= 3 {
                     let (hash, chain) = FAST_TABLES;
                     c.set_parameter(CParameter::HashLog(hash.min(wlog)))?;
@@ -116,9 +135,13 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
                 }
                 Ok(c.compress(raw)?)
             };
-            let first = zstd(cfg.long)?;
-            if !cfg.long && first.len() * LONG_RETRY_RATIO < raw.len() {
-                let second = zstd(true)?;
+            let first = zstd(cfg.long, split)?;
+            // Far repeats are what make such a block: worth a second look, and quick
+            // to compress. Without long-distance matching some went unseen, and
+            // workers can't see each other's.
+            let retry = if split { SPLIT_RETRY_RATIO } else if !cfg.long { LONG_RETRY_RATIO } else { usize::MAX };
+            if first.len().saturating_mul(retry) < raw.len() {
+                let second = zstd(true, false)?;
                 if second.len() < first.len() {
                     return Ok(second);
                 }
