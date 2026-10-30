@@ -1,0 +1,21 @@
+15:55:19 silesia: start (load 7.8), 2 tools x 2 rounds
+15:55:30 silesia r1 arca-max: 49408688 10.74s / 0.39s
+15:55:40 silesia r1 arca-max-bsc: 46324774 9.31s / 0.59s
+15:55:50 silesia r2 arca-max-bsc: 46324781 9.64s / 0.57s
+15:56:04 silesia r2 arca-max: 49408686 12.83s / 0.39s
+15:56:07 source: start (load 9.0), 2 tools x 2 rounds
+15:56:31 source r1 arca-max: 8232191 22.85s / 0.48s
+15:56:35 source r1 arca-max-bsc: 8308522 1.39s / 0.71s
+15:56:38 source r2 arca-max-bsc: 8308510 1.58s / 0.71s
+15:57:02 source r2 arca-max: 8232189 22.89s / 0.49s
+15:57:03 apps: start (load 7.8), 2 tools x 2 rounds
+15:57:21 apps r1 arca-max: 49158636 17.08s / 0.68s
+15:57:36 apps r1 arca-max-bsc: 49152240 13.53s / 0.66s
+15:57:50 apps r2 arca-max-bsc: 49152236 13.30s / 0.66s
+15:58:04 apps r2 arca-max: 49158637 13.38s / 0.65s
+15:58:05 docs: start (load 7.1), 2 tools x 2 rounds
+15:58:16 docs r1 arca-max: 18197771 10.90s / 0.42s
+15:58:28 docs r1 arca-max-bsc: 18197773 10.90s / 0.42s
+15:58:39 docs r2 arca-max-bsc: 18197777 10.88s / 0.40s
+15:58:50 docs r2 arca-max: 18197780 10.88s / 0.43s
+15:58:50 done

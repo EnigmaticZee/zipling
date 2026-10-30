@@ -1,0 +1,41 @@
+15:34:10 silesia: start (load 5.6), 2 tools x 2 rounds
+15:34:21 silesia r1 arca-max: 49408689 10.34s / 0.38s
+15:34:35 silesia r1 arca-max-bsc: 46012674 13.62s / 0.80s
+15:34:50 silesia r2 arca-max-bsc: 46012672 13.55s / 0.76s
+15:35:00 silesia r2 arca-max: 49408688 10.39s / 0.39s
+15:35:01 docs: start (load 10.5), 2 tools x 2 rounds
+15:35:11 docs r1 arca-max: 18197781 10.12s / 0.40s
+15:35:22 docs r1 arca-max-bsc: 18197776 10.10s / 0.42s
+15:35:33 docs r2 arca-max-bsc: 18197775 10.20s / 0.43s
+15:35:43 docs r2 arca-max: 18197780 10.19s / 0.42s
+15:35:44 apps: start (load 9.1), 2 tools x 2 rounds
+15:35:58 apps r1 arca-max: 49158630 12.50s / 0.67s
+15:36:11 apps r1 arca-max-bsc: 49152227 12.40s / 0.64s
+15:36:25 apps r2 arca-max-bsc: 49152227 12.77s / 0.63s
+15:36:38 apps r2 arca-max: 49158650 12.52s / 0.64s
+15:36:42 source: start (load 5.6), 2 tools x 2 rounds
+15:37:05 source r1 arca-max: 8232183 22.12s / 0.49s
+15:37:08 source r1 arca-max-bsc: 8273606 1.17s / 0.73s
+15:37:11 source r2 arca-max-bsc: 8273620 1.17s / 0.73s
+15:37:34 source r2 arca-max: 8232196 22.14s / 0.48s
+15:37:41 saved: start (load 5.9), 2 tools x 2 rounds
+15:38:08 saved r1 arca-max: 223641888 23.10s / 2.70s
+15:38:30 saved r1 arca-max-bsc: 223655455 16.10s / 3.00s
+15:38:51 saved r2 arca-max-bsc: 223655335 17.29s / 3.04s
+15:39:20 saved r2 arca-max: 223641870 25.06s / 2.86s
+15:39:26 mixed: start (load 21.9), 2 tools x 2 rounds
+15:40:04 mixed r1 arca-max: 197169983 34.51s / 2.28s
+15:40:31 mixed r1 arca-max-bsc: 194496863 21.33s / 3.04s
+15:40:56 mixed r2 arca-max-bsc: 194496859 20.88s / 2.89s
+15:41:32 mixed r2 arca-max: 197170003 33.63s / 2.37s
+15:41:34 thirdparty: start (load 14.2), 2 tools x 2 rounds
+15:42:21 thirdparty r1 arca-max: 350228866 44.23s / 1.79s
+15:43:07 thirdparty r1 arca-max-bsc: 350247996 43.27s / 1.77s
+15:43:52 thirdparty r2 arca-max-bsc: 350248031 43.57s / 1.74s
+15:44:37 thirdparty r2 arca-max: 350228878 42.86s / 1.69s
+15:44:37 dmgs: start (load 17.1), 2 tools x 2 rounds
+15:45:25 dmgs r1 arca-max: 454961159 43.60s / 4.29s
+15:46:12 dmgs r1 arca-max-bsc: 454961163 42.67s / 4.26s
+15:46:59 dmgs r2 arca-max-bsc: 454961159 42.56s / 4.42s
+15:47:46 dmgs r2 arca-max: 454961156 42.44s / 4.27s
+15:47:46 done

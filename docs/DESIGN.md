@@ -83,10 +83,21 @@ is accepted. A transform bug can therefore cost ratio, never data.
   universal) and converts `BL`/`ADRP` immediates to absolute targets **only in
   instruction sections of arm64 slices**, leaving data and x86_64 slices untouched.
 
+### Blocks, per level
+
+Lanes and block sizes follow what each level is for. Fast sends filtered binaries,
+ZIP, gzip and asset catalogs to a zstd -1 lane, and everything else stays at level
+3. Default sends disk images to a zstd -5 lane, and a block takes two zstd workers
+when cores are idle. Max on inputs under 512 MiB splits a full block in two, then
+again, when a quick zstd pass says the split costs under 0.5%, so data with far
+repeats stays whole; larger inputs take 32 MiB blocks. Encoders take the longest
+part first.
+
 ### 2.3 Dedup
 * Whole-file: a keyed POLYVAL hash of content (see the safety model) → one object,
   many entries.
-* Sub-file: FastCDC (128 KiB / 512 KiB / 2 MiB) over each transformed stream ≥1 MiB;
+* Sub-file: FastCDC (128 KiB / 512 KiB / 2 MiB) over each transformed stream ≥1 MiB,
+  in 8 MiB spans across cores, with seams where FastCDC itself would cut;
   identical chunks (by the same hash) are stored once across the whole archive, regardless
   of distance.
 * On extraction, duplicate files are materialised with **APFS `clonefile`** —

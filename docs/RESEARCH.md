@@ -55,7 +55,7 @@ Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
-and the board stands at 137 of 144. Next: the last seven rows, then the rANS
+and the board stands at 141 of 144. Next: the last three rows, then the rANS
 coder in Default and the Apple slice delta.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
@@ -872,6 +872,58 @@ morning's run, are the checkpoint's. The seven left:
 | Silesia | zstd -19 --long | Max's extract ×1.65 | needs zstd's decode speed at LZMA's size |
 | DMGs | zstd -19 --long | Default's extract ×2.1 | as above |
 | Third-party apps | Zipgeist tar.zst Fast | Fast's make ×1.85 | Fast is 20% smaller and 3.8x faster to extract |
+
+**The last rows (2026-10-30, afternoon).** What moved the board from 137 to 141:
+
+- *x86 filtering across cores.* The x86 half of a universal binary was filtered on
+  one thread. The filter carries state within a range, so ranges are cut into 2 MiB
+  spans in the index, and encoder and decoder split alike. Third-party apps at Fast
+  1.05 → 0.91 s, size unchanged.
+- *A quick lane at Fast.* zstd -1 for filtered binaries, ZIP, gzip and asset
+  catalogs; other data stays at level 3, which Silesia needs. Level 1 had looked no
+  faster than level 3 because level 3's 2^18 tables were being used for it: most of
+  its time was cache misses. 2^15 is right. Round-tripping each binary is off at
+  Fast: the filters are bijections, and a 400-round stress test holds them to it.
+  Third-party apps 0.52 s (Zipgeist 0.55 s), 504.4 MB (zstd -3 515.6 MB).
+- *DMGs at Default in zstd -5.* 5.4 → 2.6 s for 1.8%, past WinRAR Fastest.
+- *Max, split parts.* Text and code parts take match length 64: a block that split
+  has no far repeats to speak of. Parts take a queue, longest first, because the
+  time depended on whether a long part happened to start last: 10.5 or 13.3 s from
+  one run to the next, now 10.9 s. Bsc blocks split on the same measure.
+- *Bsc text at Default in 12 MiB blocks.* Silesia 0.47 → 0.44 s, for 0.25%.
+
+Tried and dropped: reusing the light coder's buffers (no gain, so page faults
+weren't the limit); tiny DMGs expanded at Fast (0.06 s, four rows lost to win one);
+compressible DMG chunks in their own lane (worse); a measured split on large inputs
+(no faster); zstd levels picked per block from a sample (0.09 MB).
+
+| Fast, checkpoint → now | Size MB | Make s | Extract s |
+|---|---:|---:|---:|
+| Photos | 95.10 → 78.26 | 0.11 → 0.18 | 0.06 → 0.21 |
+| PDFs and screenshots | 41.52 → 41.06 | 0.09 → 0.06 | 0.08 → 0.08 |
+| Source | 13.55 → 13.55 | 0.24 → 0.24 | 0.39 → 0.38 |
+| Apple apps | 72.45 → 72.23 | 0.29 → 0.12 | 0.18 → 0.16 |
+| Silesia | 65.67 → 65.18 | 0.24 → 0.16 | 0.08 → 0.07 |
+| Saved folder | 315.90 → 300.31 | 0.73 → 0.62 | 0.80 → 0.89 |
+| Website mixed | 288.34 → 270.22 | 0.72 → 0.63 | 0.67 → 0.77 |
+| DMGs | 619.67 → 615.46 | 0.69 → 0.18 | 0.20 → 0.17 |
+| Third-party apps | 465.87 → 504.37 (+8.3%) | 2.19 → 0.52 | 1.48 → 0.39 |
+
+Sizes that grew against the checkpoint, all on purpose: third-party apps at Fast
+(above), and at Max: Silesia +1.6%, saved folder +0.8%, website mixed +1.2%,
+third-party apps +3.2%, DMGs +1.0%. Fast's extraction on the saved and website folders
+is slower because it now re-codes their photos. Default's on DMGs is 0.22 → 0.94 s
+because it expands them: 619.67 → 560.51 MB.
+
+**141 of 144**, every round trip identical across the final runs, 58 app tests
+passing. Busy Mac; Ultra's rows and the rivals not re-run are the checkpoint's. The
+three left:
+
+| Set | Rival | Gap | Why |
+|---|---|---|---|
+| Photos | Zipgeist ZIP Normal | 0.18 s to 0.17 s | Half a parse is the end-of-block branch; a flat parser might give 11% |
+| Silesia | zstd -19 --long | extract 0.39 s to 0.23 s | No LZMA or bsc setting decodes that fast. zstd itself at level 19 reaches 52.98 MB in 22 s against 52.60 MB; 52.61 MB takes 128 MiB blocks and 33 s, past its 29 s |
+| DMGs | zstd -19 --long | extract 0.94 s to 0.45 s | 7.7 CPU-s of rebuild. Under 0.45 s allows about 3, and a smaller Default would lose 7-Zip, xz and WinRAR |
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
