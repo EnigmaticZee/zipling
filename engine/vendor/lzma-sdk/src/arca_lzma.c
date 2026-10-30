@@ -6,6 +6,11 @@
 #include "Lzma2Dec.h"
 #include "Lzma2Enc.h"
 
+/* Research tap (see ARCA-NOTES.md): set, it is called for every parse decision
+   when the SDK is built with ARCA_TOKEN_HOOK; otherwise it is never read. */
+void (*arca_lzma_token_hook)(UInt32 pos, UInt32 len, UInt32 dist, const UInt32 *reps, unsigned state) = NULL;
+void arca_lzma_set_token_hook(void (*hook)(UInt32, UInt32, UInt32, const UInt32 *, unsigned)) { arca_lzma_token_hook = hook; }
+
 /* Encodes src as one solid LZMA2 stream into dst (capacity *dst_len; on return
    the bytes written) and returns its dictionary property byte in *prop.
    threads: 1, or 2 for a match finder running in its own thread (same output). */

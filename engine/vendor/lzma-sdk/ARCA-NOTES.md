@@ -14,3 +14,8 @@ Pavlov's "Public domain" notice; none of 7-Zip's LGPL code is included.
 
 To update: copy the same files from a newer release and re-run `cargo test`
 here (round trip, identical output with one or two threads, damaged input).
+
+One change to the SDK's files: `LzmaEnc.c` carries a research tap under
+`#ifdef ARCA_TOKEN_HOOK` (set by the `token-hook` feature) that reports every
+parse decision to a hook before it is range-coded. Release builds don't define it,
+and compile the file as released.

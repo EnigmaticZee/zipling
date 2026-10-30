@@ -113,3 +113,21 @@ mod tests {
         assert!(decode(&c, prop, data.len()).is_err());
     }
 }
+
+/// A parse decision of the encoder, as `set_token_hook`'s hook receives it:
+/// `dist` is `u32::MAX` for a literal, 0-3 for a repeat (0 with `len` 1 is a
+/// short repeat), else the match distance plus 4; `reps` are the four repeat
+/// distances before this token, as the encoder keeps them.
+pub type TokenHook = unsafe extern "C" fn(pos: u32, len: u32, dist: u32, reps: *const u32, state: u32);
+
+#[cfg(feature = "token-hook")]
+extern "C" {
+    fn arca_lzma_set_token_hook(hook: Option<TokenHook>);
+}
+
+/// Research: have the encoder report every parse decision (feature `token-hook`).
+#[cfg(feature = "token-hook")]
+pub fn set_token_hook(hook: Option<TokenHook>) {
+    // SAFETY: a plain pointer store the encoder reads on its own thread.
+    unsafe { arca_lzma_set_token_hook(hook) }
+}
