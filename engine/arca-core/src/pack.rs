@@ -509,7 +509,7 @@ impl BlockSink {
             }
             // A block that split has no far repeats to speak of, so long matches
             // buy little in it: Silesia 15% less CPU for 0.3%.
-            let cfg = if parts.len() > 1 { CodecConfig { extreme: false, level: 9, ..cfg } } else { cfg };
+            let cfg = if parts.len() > 1 && cfg.extreme { CodecConfig { extreme: false, level: 9, ..cfg } } else { cfg };
             // Each its own task, or the rest would wait behind the first.
             let (first, rest) = parts.split_first_mut().expect("one part at least");
             for (id, buf, _) in rest {
