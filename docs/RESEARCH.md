@@ -772,6 +772,35 @@ The comparison caught a regression: 64 MiB chunking spans had cost third-party a
 other. Spans are now Fast's alone; Default is back to 411.70 MB (the results file
 still shows 412.75 MB from the run before the fix).
 
+**Two costs the benchmark exposed (built).**
+
+*`F_FULLFSYNC`.* On DMGs Fast finished at 0.13 s and then waited 0.17 s in
+`sync_all`, which on macOS flushes the drive's own cache. Fast on DMGs, five rounds:
+full 0.311 s, `fsync` 0.143 s, `F_BARRIERFSYNC` 0.143 s, no sync at all 0.142 s. No
+rival flushes. The barrier keeps what the step is for, the data on its way before
+the rename, so a half archive can't appear under its name. What it gives up is the
+guarantee against losing the drive's cache in a power cut. It falls back to a full
+flush on volumes without barriers.
+
+*The incompressibility probe.* Chunks whose samples looked random went straight to
+the store lane, which also hid them from everything else in their block. Off, with
+the same CPU give or take 3%:
+
+| | Fast before | Fast after | Default before | Default after |
+|---|---:|---:|---:|---:|
+| Apple apps | 71.70 | 67.05 (−6.5%) | 62.43 | 56.27 (−9.9%) |
+| Third-party apps | 462.37 | 455.94 (−1.4%) | 411.70 | 402.43 (−2.3%) |
+| Website mixed | 270.40 | 265.76 (−1.7%) | 223.72 | 217.88 (−2.6%) |
+| PDFs and screenshots | 41.56 | 41.06 (−1.2%) | 22.16 | 22.13 |
+| DMGs | 619.69 | 615.46 (−0.7%) | 619.67 | 615.01 (−0.8%) |
+
+The apps' chunks repeat earlier data that a sample of one chunk can't see. The one
+loss was DMGs at Default, where level 12 on data that really is incompressible went
+from 0.29 to 1.76 s. So the probe no longer routes anything: a block made mostly of
+such chunks runs zstd -3 first and keeps that result when it saves under 5%. Fast
+is level 3 already and doesn't probe. Docs is now smaller than before today, so
+every set meets the size rule.
+
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
 The goal is a breakthrough, not tuning: beat every archiver (7-Zip, Zipgeist,

@@ -64,6 +64,24 @@ pub fn compress_auto(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
     Ok((compress(raw, cfg)?, cfg.codec))
 }
 
+/// A block that zstd -3 can't shrink by more than this stays as zstd -3 left it.
+const HARD_RATIO: f64 = 0.95;
+
+/// `compress_auto` for a block made mostly of chunks that look incompressible.
+/// Looks can deceive: such a chunk can repeat earlier data, which a sample of it
+/// alone can't show (Apple's apps come out 10% smaller at Default once compressed
+/// with everything else). So a quick pass decides, and data that really is
+/// incompressible doesn't sit through a slow level: DMGs at level 12 took 6x as long.
+pub fn compress_hard(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
+    if cfg.codec == Codec::Zstd && cfg.level > 3 {
+        let quick = compress(raw, CodecConfig { codec: Codec::Zstd, level: 3, extreme: false, long: false })?;
+        if quick.len() as f64 > raw.len() as f64 * HARD_RATIO {
+            return Ok((quick, Codec::Zstd));
+        }
+    }
+    compress_auto(raw, cfg)
+}
+
 /// Bytes of a block bsc tries first when the block may go to LZMA2 instead.
 const BSC_SAMPLE: usize = 4 << 20;
 
