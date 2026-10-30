@@ -925,6 +925,50 @@ three left:
 | Silesia | zstd -19 --long | extract 0.39 s to 0.23 s | No LZMA or bsc setting decodes that fast. zstd itself at level 19 reaches 52.98 MB in 22 s against 52.60 MB; 52.61 MB takes 128 MiB blocks and 33 s, past its 29 s |
 | DMGs | zstd -19 --long | extract 0.94 s to 0.45 s | 7.7 CPU-s of rebuild. Under 0.45 s allows about 3, and a smaller Default would lose 7-Zip, xz and WinRAR |
 
+**The last three rows, measured (2026-10-30, late afternoon).**
+
+*Photos, Zipgeist ZIP Normal, 0.17 s.* The parse was taken apart to the cycle:
+
+| Try | Parse CPU-s | |
+|---|---:|---|
+| Start | 1.11 | 20 cycles a symbol; the chain through the bit reader is about 8 |
+| Every store removed | 1.00 | so the stores are 10%, and the chain and per-block work the rest |
+| Branch-free block loop (a step table, the end as position 64) | 1.14 | no change: the branch was never the cost |
+| Two symbols a pass, the second masked | 1.19 | the masks sit on the chain |
+| One call per run of blocks, state in registers across them | 1.08 | kept |
+
+Fast packs the set in 0.164 s on a calm Mac against Zipgeist's 0.17 (adjusted), so
+the row is a quiet measurement away. What would move the parse further is running
+two restart intervals of one photo interleaved on one thread, so two chains
+overlap; 244 of the 400 photos have them. A third off the parse for those, for a
+rewrite of the coder's event layout. Not done.
+
+*Silesia, tar + zstd -19 --long: 52.60 MB, 29.3 s, 0.23 s.* Max has 3.2 MB to spend:
+
+| Max with | Size MB | Make s | Extract s |
+|---|---:|---:|---:|
+| LZMA everywhere (now) | 49.41 | 14.2 | 0.376 |
+| binary lane zstd -19 | 51.18 | 16.8 | 0.349 |
+| binary and text zstd -19 | 51.02 | 22.2 | 0.350 |
+| every lane zstd -22 | 52.57 | 41.2 | 0.125 |
+
+Any LZMA block left is the long pole at 0.35 s: LZMA decodes at 120 MB/s a core
+here, and 202 MB over ten cores can't get under 0.3 s however the blocks are cut
+(8 MiB blocks: 0.32 s). All-zstd meets the size and the extraction and loses on
+make. A per-block choice would never pick zstd: LZMA is 8-13% smaller on every lane
+of this set. Default at zstd -19 with 128 MiB blocks reaches 52.55 MB in about 15 s
+and extracts in 0.155 s, which beats the row, but as Default it would be 3-5x
+slower to make on everything. So this row needs a codec with LZMA's ratio and
+zstd's decoding speed. Nothing open has one. The known route is LZHAM's and
+Oodle's: an LZMA-class optimal parse whose tokens are entropy-coded with a fast
+multi-symbol coder (rANS, as in the pixel codec) instead of LZMA's bit-by-bit range
+coder, decoded with a zstd-class copy loop. The LZMA SDK's parse could be tapped
+for the tokens. That is a new codec and a format change: the research estimate
+(parse tokens, model them, count bits against LZMA's) comes first.
+
+*DMGs, tar + zstd -19 --long: 0.45 s to extract against Default's 0.94.* Rebuild
+bound, see the per-image profile below.
+
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
 The goal is a breakthrough, not tuning: beat every archiver (7-Zip, Zipgeist,
