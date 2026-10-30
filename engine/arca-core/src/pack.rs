@@ -302,8 +302,8 @@ struct OpenBlock {
 /// Inputs from this size on have blocks enough for every core.
 const SPLIT_BELOW: u64 = 512 << 20;
 /// Inputs below this size can't fill enough full blocks to run short of memory.
-const ALL_CORES_BELOW: u64 = 256 << 20;
-/// Blocks at least this long may split in two.
+const FEW_BLOCKS_BELOW: u64 = 256 << 20;
+/// Blocks at least this long may split in two, and the halves likewise.
 const SPLIT_MIN: usize = 32 << 20;
 /// A split is made when the quick pass says it costs less than 1 part in this
 /// many: Silesia's blocks measure 0.11-0.46%, Apple's apps 0.72-1.04%, where LZMA
@@ -466,20 +466,31 @@ impl BlockSink {
                 });
                 let _ = done_tx.send(res);
             });
-            let OpenBlock { id, lane, mut buf, hard, starts } = block;
+            let OpenBlock { id, lane, buf, hard, starts } = block;
             let hard = hard * 2 > buf.len();
-            match may_split.then(|| split_point(&buf, &starts)).flatten() {
-                Some(at) => {
-                    let tail = buf.split_off(at);
-                    let second = new_block(&lanes, lane);
-                    splits.lock().unwrap().push((id, second, at as u64));
-                    // Its own task, or it would wait behind the first half.
-                    let finish2 = finish.clone();
-                    rayon::spawn_fifo(move || finish2(second, tail, hard));
-                    finish(id, buf, hard);
+            let mut parts = vec![(id, buf, starts)];
+            let mut i = 0;
+            while i < parts.len() {
+                let (id, buf, starts) = &mut parts[i];
+                match (may_split && buf.len() >= SPLIT_MIN).then(|| split_point(buf, starts)).flatten() {
+                    Some(at) => {
+                        let tail = buf.split_off(at);
+                        let from = starts.partition_point(|&s| (s as usize) < at);
+                        let tail_starts = starts.split_off(from).iter().map(|&s| s - at as u32).collect();
+                        let second = new_block(&lanes, lane);
+                        splits.lock().unwrap().push((*id, second, at as u64));
+                        parts.push((second, tail, tail_starts));
+                    }
+                    None => i += 1,
                 }
-                None => finish(id, buf, hard),
             }
+            // Each its own task, or the rest would wait behind the first.
+            let (first, rest) = parts.split_first_mut().expect("one part at least");
+            for (id, buf, _) in rest {
+                let (id, buf, finish) = (*id, std::mem::take(buf), finish.clone());
+                rayon::spawn_fifo(move || finish(id, buf, hard));
+            }
+            finish(first.0, std::mem::take(&mut first.1), hard);
             busy.fetch_sub(1, Ordering::Relaxed);
             let _ = slots_tx.send(());
         });
@@ -637,6 +648,12 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     phase("sorted");
 
     let (mut block_size, mut text_block_size) = (opts.block_size, opts.text_block_size);
+    // A bsc block decodes on one core's worth of memory bandwidth at a time, and
+    // source trees' text at Max ran out of cores: half the block, 33% less time
+    // to make and 15% less to extract, for 2.2%.
+    if opts.level == Level::Max && opts.text_codec.codec == Codec::Bsc {
+        text_block_size = text_block_size.min(32 << 20);
+    }
     if stats.input_bytes < opts.adaptive_below {
         let per_core = (stats.input_bytes / opts.threads.max(1) as u64).max(1 << 20) as usize;
         block_size = block_size.min(per_core);
@@ -673,12 +690,13 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     // LZMA2 encoders run two threads each (the match finder has its own), so
     // about half as many of them keep the cores busy without starving the
     // first blocks: six on 10 cores made Max 4-6% faster than ten. A small input
-    // has only a few full blocks, so its memory stays bounded and it uses every
-    // core: Silesia 38% faster.
+    // has only a few full blocks, so its memory stays bounded, and it runs eight:
+    // Silesia 11% and a source tree 11% faster than six, and ten is no better.
     if [opts.text_codec, opts.binary_codec, opts.image_codec, opts.code_codec].iter().any(|c| c.codec == Codec::Lzma2) {
-        if stats.input_bytes >= ALL_CORES_BELOW {
-            block_threads = block_threads.min(opts.threads.max(1) / 2 + 1);
-        }
+        block_threads = block_threads.min(match stats.input_bytes {
+            n if n < FEW_BLOCKS_BELOW => (opts.threads * 4 / 5).max(1),
+            _ => opts.threads.max(1) / 2 + 1,
+        });
     }
     if let Some(cap) = std::env::var("ARCA_EXP_ENCODERS").ok().and_then(|v| v.parse::<usize>().ok()) {
         block_threads = block_threads.min(cap.max(1));
@@ -905,9 +923,9 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let (mut out, infos) = writer.join().map_err(|_| anyhow::anyhow!("writer thread panicked"))??;
     phase("all blocks compressed and written");
     let lanes = std::mem::take(&mut *lanes.lock().unwrap());
-    let splits: HashMap<u32, (u32, u64)> = splits.lock().unwrap().iter().map(|&(id, second, at)| (id, (second, at))).collect();
-    for c in &mut chunks {
-        if let Some(&(second, at)) = splits.get(&c.block).filter(|&&(_, at)| c.offset >= at) {
+    // In the order they were made: a block's first half can split again.
+    for &(id, second, at) in splits.lock().unwrap().iter() {
+        for c in chunks.iter_mut().filter(|c| c.block == id && c.offset >= at) {
             c.block = second;
             c.offset -= at;
         }
