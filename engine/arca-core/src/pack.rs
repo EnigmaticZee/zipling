@@ -62,8 +62,8 @@ pub struct PackOptions {
     pub code_codec: CodecConfig,
     /// Block size for the code lane.
     pub code_block_size: usize,
-    /// Send filtered binaries and ZIP or gzip files to the code lane without
-    /// `code_lane`. Fast's lane there is zstd -1: they are most of a big app's
+    /// Send filtered binaries and ZIP, gzip or asset catalog files to the code lane
+    /// without `code_lane`. Fast's lane there is zstd -1: they are most of a big app's
     /// bytes and hold the least for level 3 to find. Third-party apps 1.05 → 0.57 s,
     /// for 10% in size, which still leaves them under zstd -3's.
     pub quick_binaries: bool,
@@ -1102,7 +1102,8 @@ fn process_file(
         }
     };
     let lane = if lane == Lane::Code && !opts.code_lane { Lane::Binary } else { lane };
-    let packed = matches!(class, Class::DeflateContainer(classify::DeflateKind::Zip | classify::DeflateKind::Gzip));
+    use classify::DeflateKind as Kind;
+    let packed = matches!(class, Class::DeflateContainer(Kind::Zip | Kind::Gzip | Kind::AssetCatalog));
     let lane = if opts.quick_binaries && (matches!(transform, Transform::Arm64 { .. }) || packed) { Lane::Code } else { lane };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
     let route = |(off, len, hash): (usize, usize, [u8; 16])| {
