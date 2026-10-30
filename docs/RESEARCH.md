@@ -614,6 +614,71 @@ Round trips identical (Fast on photos and website mixed, Default on photos); ver
 2 archives still open and extract; bytes flipped at a quarter, half and three
 quarters of two archives were all caught. Busy-Mac numbers: to be confirmed quietly.
 
+**Fast's other overhead (built).** After the hash, a two-thread sample of the
+website set showed the light coder, zstd's matchers, long-distance matching (16%
+of active time) and `open` (7%).
+
+*`open` doesn't scale.* Timing it on the 10,279 files of the website set, CPU per
+call / wall time for all of them:
+
+| Threads | 1 | 2 | 3 | 4 | 6 | 8 | 10 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `open` | 18 µs / 188 ms | 24 / 122 | 25 / 87 | 34 / 88 | 80 / 137 | 140 / 184 | 120 / 168 |
+| `close` | 0.6 µs / 6 ms | 0.8 / 4 | 0.9 / 3 | 1.4 / 4 | 3.4 / 6 | 5.5 / 7 | 4.0 / 7 |
+| `lstat` | 2.5 µs / 26 ms | 2.8 / 14 | 2.9 / 10 | 3.3 / 9 | 5.6 / 10 | 6.0 / 8 | 7.6 / 9 |
+| `listxattr` | 3.1 µs / 32 ms | 3.8 / 21 | 4.4 / 16 | 5.0 / 13 | 9.9 / 18 | 11.9 / 17 | 13.1 / 17 |
+
+Ten threads opening at once spin: 7x the CPU and twice the wall time of three.
+Opening relative to the parent folder doesn't help (20 µs against 18 µs), and
+`lstat` shows the path walk is cheap. So `open_file` lets three opens run at a
+time. On the website and saved folders that alone is about −1 CPU-s of 6.5.
+
+*Long-distance matching.* Off, it costs 0.5-0.8% in size and saves 11-24% of the
+CPU. zstd's hash and chain tables at twice their size win the size back for less:
+
+| Fast binary lanes (three rounds, CPU vs LDM on) | Website | Saved | Silesia | Apps | Docs | Third-party | Source |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Tables 18/17, LDM off: size | +0.02% | −0.02% | −0.49% | −0.49% | +0.13% | −0.75% | +4.95% |
+| CPU | −10% | −8% | −9% | −3% | −23% | −11% | −8% |
+
+Source is the exception, in two parts: its text needs the far repeats (5% of it),
+so the text lane keeps the search; and its 99 MB of `.a` static libraries compress
+22:1 with object files repeated across libraries. A retry handles those without a
+per-format rule: a block that shrinks more than 8:1 is compressed again with the
+search on. Source is then byte-for-byte the old size. Also dropped: zstd's own
+XXH64 per frame (the block hash covers it) and FastCDC on a photo's coded tail
+(nothing to find short of the same file, which file dedup catches).
+
+*The light coder's check.* Re-writing every scan to compare cost 0.3 CPU-s of 1.6.
+It can only differ from the original if one of a few things went wrong, and those
+can be checked directly: each table is a prefix code with one code per symbol;
+stuffing was FF 00; and each stretch ends with nothing but padding of ones, right
+before the next expected marker, with no made-up bits consumed. Every other bit was
+a symbol's code or its raw bits. This is stricter on one point, too: nothing was
+checking the old code's restart search for skipped bytes until the comparison. The
+fuzz test covers what neither check does, the decoder: 120,000 mutants of the 400
+real photos (244 with restart markers), one to three random changes each, 36,593
+accepted, every one back byte for byte, no crash.
+
+Old binary against new, taking turns, five rounds, best wall time, Mac at load 13-20
+(not quiet, so ratios matter more than seconds):
+
+| Set | Size MB | Pack s | Pack CPU-s | Unpack s | Unpack CPU-s |
+|---|---:|---:|---:|---:|---:|
+| Photos | 78.26 → 78.26 | 0.270 → 0.207 (−23%) | 2.11 → 1.56 | 0.232 → 0.217 (−7%) | 1.93 → 1.76 |
+| Website mixed | 271.11 → 270.40 | 0.943 → 0.787 (−17%) | 7.37 → 5.77 | 0.969 → 0.912 (−6%) | 5.49 → 4.87 |
+| Saved folder | 298.83 → 298.11 | 0.873 → 0.706 (−19%) | 6.83 → 5.23 | 1.010 → 0.905 (−10%) | 5.80 → 5.36 |
+| Silesia | 65.67 → 65.24 | 0.234 → 0.181 (−23%) | 1.47 → 1.16 | 0.073 → 0.061 (−16%) | 0.43 → 0.30 |
+| Source | 13.55 → 13.55 | 0.263 → 0.272 (+3%) | 1.90 → 1.58 | 0.374 → 0.390 (+4%) | 2.07 → 2.01 |
+| Docs | 41.52 → 41.56 | 0.089 → 0.064 (−28%) | 0.43 → 0.28 | 0.084 → 0.072 (−14%) | 0.30 → 0.24 |
+| Apps | 72.05 → 71.70 | 0.284 → 0.205 (−28%) | 1.49 → 1.12 | 0.158 → 0.145 (−8%) | 0.99 → 0.84 |
+| Third-party apps | 465.87 → 462.37 | 2.256 → 1.493 (−34%) | 9.52 → 6.93 | 1.502 → 0.891 (−41%) | 3.59 → 2.16 |
+
+Docs is 0.04 MB larger (0.1%), the one set that isn't at least as small; tables
+18/18 would fix it at +5-10% CPU on Silesia and third-party apps, so it stays.
+Source's wall time rose 3-4% with its CPU down 17%: noise from the load or the
+retry; to be read on a quiet Mac.
+
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
 The goal is a breakthrough, not tuning: beat every archiver (7-Zip, Zipgeist,

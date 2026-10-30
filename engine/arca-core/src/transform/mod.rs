@@ -140,7 +140,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
             data.len() as u64,
         );
         // Lepton verifies its own round trip internally; the light JPEG coder
-        // re-writes every scan from what it parsed and compares while encoding.
+        // accounts for every bit of every scan while encoding (`jpeglite::encode`).
         let ok = !opts.verify
             || transform == Transform::Lepton
             || transform == Transform::JpegLite

@@ -23,8 +23,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,13 +76,15 @@ pub struct PackOptions {
 impl PackOptions {
     pub fn preset(level: Level) -> Self {
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
-        let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false };
-        let lzma2 = |level, extreme| CodecConfig { codec: Codec::Lzma2, level, extreme };
+        let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false, long: true };
+        let lzma2 = |level, extreme| CodecConfig { codec: Codec::Lzma2, level, extreme, long: false };
         // Per lane: text needs the expensive match finders (zstd's binary tree, xz's
         // extreme mode) to reach full ratio; binaries lose <0.4% with the cheaper
         // ones and gain it back from bigger blocks, at 3-4x the speed.
         let (text, binary, text_block, block, adaptive_below) = match level {
-            Level::Fast => (zstd(3), zstd(3), 8 << 20, 8 << 20, u64::MAX),
+            // Long-distance matching stays on for text, where far repeats are 5% of
+            // a source tree; on binaries bigger tables are smaller and faster.
+            Level::Fast => (zstd(3), CodecConfig { long: false, ..zstd(3) }, 8 << 20, 8 << 20, u64::MAX),
             Level::Balanced => (zstd(15), zstd(12), 16 << 20, 64 << 20, 64 << 20),
             // Max is the fast high-ratio level: LZMA2 with 32-byte matches (half the
             // CPU of 273-byte ones for 1-6% more output) for binaries and pixels,
@@ -93,7 +94,7 @@ impl PackOptions {
             // Ultra is the smallest: context modelling for text (it beats LZ on
             // prose and source code, at the cost of decode speed) and the longest
             // LZMA2 matches.
-            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false }, lzma2(9, true), 64 << 20, 64 << 20, 0),
+            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false, long: false }, lzma2(9, true), 64 << 20, 64 << 20, 0),
         };
         let heavy = level != Level::Fast;
         PackOptions {
@@ -176,6 +177,7 @@ const CDC_MAX: u32 = 2 << 20;
 /// How far (in input bytes) file tasks may run ahead of the packer.
 const LOOKAHEAD_BYTES: u64 = 512 << 20;
 const MMAP_THRESHOLD: u64 = 256 << 10;
+const OPENS_AT_ONCE: usize = 3;
 
 enum FileData {
     Mem(Vec<u8>),
@@ -192,8 +194,28 @@ impl std::ops::Deref for FileData {
     }
 }
 
+/// Opens a file with at most `OPENS_AT_ONCE` opens running. `open` takes a lock
+/// in the kernel that doesn't scale: on an M1 Pro one open costs 18 us of CPU
+/// alone, 25 us on three threads and 120-140 us on eight to ten, where threads
+/// spin, and three or four threads also finish a folder soonest. The rest of a
+/// file's read scales, so only this call waits.
+fn open_file(path: &Path) -> std::io::Result<File> {
+    static GATE: OnceLock<(Sender<()>, Receiver<()>)> = OnceLock::new();
+    let (tx, rx) = GATE.get_or_init(|| {
+        let (tx, rx) = bounded(OPENS_AT_ONCE);
+        for _ in 0..OPENS_AT_ONCE {
+            tx.send(()).unwrap();
+        }
+        (tx, rx)
+    });
+    rx.recv().expect("gate holds its own sender");
+    let f = File::open(path);
+    tx.send(()).expect("gate holds its own receiver");
+    f
+}
+
 fn read_file(path: &Path, size: u64) -> Result<FileData> {
-    let mut f = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let mut f = open_file(path).with_context(|| format!("opening {}", path.display()))?;
     if size >= MMAP_THRESHOLD {
         // SAFETY: the archive records the hash of what was read; a file modified
         // while mapped yields a consistent archive of whatever bytes we saw.
@@ -220,7 +242,7 @@ struct Job {
 /// Classifies a file from its first bytes.
 fn sniff(path: &Path) -> Class {
     let _p = prof::span("pack.sniff", 0);
-    let Ok(mut f) = File::open(path) else { return Class::Binary };
+    let Ok(mut f) = open_file(path) else { return Class::Binary };
     let mut head = [0u8; SNIFF_LEN];
     let mut n = 0;
     while n < head.len() {
@@ -612,7 +634,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         Ok((out, infos))
     });
 
-    let store = CodecConfig { codec: Codec::Store, level: 0, extreme: false };
+    let store = CodecConfig { codec: Codec::Store, level: 0, extreme: false, long: false };
     // Drawn after the files exist: see `hash` for why that is what matters.
     let key = Arc::new(hash::Key::random());
     let mut sink = BlockSink {
@@ -920,7 +942,9 @@ fn process_file(
                     // so each chunk belongs to one lane.
                     Some(k) => {
                         let mut c = cut_chunks(&stored[..k], key, opts.dedup);
-                        c.extend(cut_chunks(&stored[k..], key, opts.dedup).into_iter().map(|(o, l, h)| (o + k, l, h)));
+                        // The coded tail of a photo shares nothing with another's
+                        // short of being the same file, so fixed cuts will do.
+                        c.extend(cut_chunks(&stored[k..], key, false).into_iter().map(|(o, l, h)| (o + k, l, h)));
                         c
                     }
                     None => cut_chunks(stored, key, opts.dedup),
