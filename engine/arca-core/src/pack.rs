@@ -48,8 +48,8 @@ pub struct PackOptions {
     pub adaptive_below: u64,
     pub transforms: TransformOpts,
     pub dedup: bool,
-    /// Probe binary chunks and store incompressible ones raw (saves CPU, may
-    /// cost a little ratio on data with long-range redundancy).
+    /// Probe binary chunks, so a block of mostly incompressible-looking ones can
+    /// try a quick level before its slow one. Levels already quick don't need it.
     pub probe: bool,
     pub text_codec: CodecConfig,
     pub binary_codec: CodecConfig,
@@ -127,7 +127,7 @@ impl PackOptions {
                 disk_images: matches!(level, Level::Max | Level::Ultra),
             },
             dedup: true,
-            probe: matches!(level, Level::Fast | Level::Balanced),
+            probe: level == Level::Balanced,
             text_codec: text,
             binary_codec: binary,
             image_codec: binary,
@@ -290,6 +290,8 @@ struct OpenBlock {
     id: u32,
     lane: Lane,
     buf: Vec<u8>,
+    /// Bytes from chunks that look incompressible.
+    hard: usize,
 }
 
 struct Done {
@@ -343,17 +345,18 @@ struct BlockSink {
 }
 
 impl BlockSink {
-    fn append(&mut self, lane: Lane, bytes: &[u8]) -> (u32, u64) {
+    fn append(&mut self, lane: Lane, bytes: &[u8], hard: bool) -> (u32, u64) {
         let limit = self.block_sizes[lane as usize];
         let slot = &mut self.open[lane as usize];
         if slot.is_none() {
-            *slot = Some(OpenBlock { id: self.next_id, lane, buf: Vec::with_capacity(limit + CDC_MAX as usize) });
+            *slot = Some(OpenBlock { id: self.next_id, lane, buf: Vec::with_capacity(limit + CDC_MAX as usize), hard: 0 });
             self.lanes.push(lane);
             self.next_id += 1;
         }
         let b = slot.as_mut().unwrap();
         let at = (b.id, b.buf.len() as u64);
         b.buf.extend_from_slice(bytes);
+        b.hard += if hard { bytes.len() } else { 0 };
         if b.buf.len() >= limit {
             let full = slot.take().unwrap();
             self.close(full);
@@ -390,6 +393,8 @@ impl BlockSink {
             let raw_hash = key.hash(&block.buf);
             let res = if cfg.codec == Codec::Store {
                 Ok((Vec::new(), Codec::Store))
+            } else if block.hard * 2 > block.buf.len() {
+                codec::compress_hard(&block.buf, cfg)
             } else {
                 codec::compress_auto(&block.buf, cfg)
             }
@@ -766,7 +771,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                         t.stored += stored.len() as u64;
 
                         let mut ids = Vec::with_capacity(cuts.len());
-                        for (off, len, hash, lane) in cuts {
+                        for (off, len, hash, lane, hard) in cuts {
                             if opts.dedup {
                                 if let Some(&c) = by_chunk.get(&hash) {
                                     if chunks[c as usize].len == len as u64 {
@@ -776,7 +781,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                                     }
                                 }
                             }
-                            let (block, offset) = sink.append(lane, &stored[off..off + len]);
+                            let (block, offset) = sink.append(lane, &stored[off..off + len], hard);
                             let c = chunks.len() as u32;
                             chunks.push(Chunk { block, offset, len: len as u64 });
                             by_chunk.insert(hash, c);
@@ -852,7 +857,15 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     out.write_all(&footer.to_bytes())?;
     {
         let _p = prof::span("pack.sync", 0);
-        out.sync_all()?;
+        // The data before the rename, in order, which is what keeps a half archive
+        // from appearing under its name. A full flush of the drive's cache
+        // (`sync_all`, F_FULLFSYNC) adds no such guarantee and took 0.17 s of 0.31 s
+        // on a 620 MB archive, so it is only the fallback for volumes without barriers.
+        use std::os::fd::AsRawFd;
+        // SAFETY: a valid descriptor and a command that takes no argument.
+        if unsafe { libc::fcntl(out.as_raw_fd(), libc::F_BARRIERFSYNC) } == -1 {
+            out.sync_all()?;
+        }
     }
     drop(out);
     std::fs::rename(tmp_path, output)?;
@@ -868,7 +881,8 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     Ok(stats)
 }
 
-type Cut = (usize, usize, [u8; 16], Lane);
+/// (offset, length, hash, lane, looks incompressible)
+type Cut = (usize, usize, [u8; 16], Lane, bool);
 /// (transform, transformed bytes if any, lane, chunks, original bytes)
 type Prepared = (Transform, Option<Vec<u8>>, Lane, Vec<Cut>, FileData);
 
@@ -964,13 +978,13 @@ fn process_file(
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
     let route = |(off, len, hash): (usize, usize, [u8; 16])| {
         if store_from.is_some_and(|k| off >= k) {
-            return (off, len, hash, Lane::Store);
+            return (off, len, hash, Lane::Store, false);
         }
-        let incompressible = opts.probe && matches!(lane, Lane::Binary | Lane::Image) && {
+        let hard = opts.probe && matches!(lane, Lane::Binary | Lane::Image) && {
             let _p = prof::span("file.probe", len as u64);
             classify::probably_incompressible(&stored[off..off + len])
         };
-        (off, len, hash, if incompressible { Lane::Store } else { lane })
+        (off, len, hash, lane, hard)
     };
     let cuts: Vec<Cut> = {
         use rayon::prelude::*;

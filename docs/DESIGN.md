@@ -181,7 +181,8 @@ stored 48 bytes of hash per file, which was 4.5% of a source-code archive.
   attacker who edits an archive can make its block checks pass, as with any
   unsigned archive; these checks are not a signature. The `verify` command decodes
   everything without writing.
-* **Atomic writes:** archives are written to `<name>.partial`, `fsync`ed, renamed.
+* **Atomic writes:** archives are written to `<name>.partial`, `fsync`ed with a write
+  barrier (`F_BARRIERFSYNC`, or a full flush where a volume has no barriers), renamed.
 * **Hostile archives:** entry paths are validated (no absolute paths, `..`, NUL);
   files are opened with `O_NOFOLLOW`; nothing is written beneath a symlink the
   archive creates; symlinks are materialised last; existing files are never
