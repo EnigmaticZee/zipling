@@ -23,17 +23,21 @@
 //! * chunks are deduplicated globally and packed into **blocks**, each compressed
 //!   with its own codec.
 //!
-//! Integrity: every block carries BLAKE3-128 of its compressed and of its decoded
-//! bytes; transformed objects also carry BLAKE3-128 of their original content.
+//! Integrity: every block carries a keyed POLYVAL hash (see `hash`) of its
+//! compressed and of its decoded bytes; transformed objects also carry one of
+//! their original content. The index, which holds the key, is under BLAKE3-128.
 
+use crate::hash::{Hasher, Key};
 use crate::wire::{Reader, Writer};
 use anyhow::{bail, ensure, Result};
 
 pub const MAGIC: &[u8; 8] = b"ARCA\x00\r\n\x1a";
 pub const FOOTER_MAGIC: &[u8; 8] = b"ARCAEND\x00";
 /// Version 2 stores the index's entries column by column (front-coded paths,
-/// delta-coded times and objects). Version 1 archives still open.
-pub const VERSION: u16 = 2;
+/// delta-coded times and objects). Version 3 adds a random key to the index, and
+/// hashes under it with POLYVAL where earlier versions used BLAKE3. Versions 1
+/// and 2 still open.
+pub const VERSION: u16 = 3;
 pub const HEADER_LEN: usize = 32;
 pub const FOOTER_LEN: usize = 64;
 
@@ -157,15 +161,17 @@ pub struct BlockInfo {
     pub comp_len: u64,
     pub raw_len: u64,
     pub codec: Codec,
-    /// BLAKE3-128 of the compressed bytes (checked before decoding).
+    /// Hash of the compressed bytes (checked before decoding).
     pub checksum: [u8; 16],
-    /// BLAKE3-128 of the decoded bytes (checked after decoding).
+    /// Hash of the decoded bytes (checked after decoding).
     pub raw_hash: [u8; 16],
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Index {
     pub created: i64,
+    /// The key of the archive's hashes; none in versions 1 and 2, which use BLAKE3.
+    pub key: Option<[u8; 16]>,
     pub entries: Vec<Entry>,
     pub objects: Vec<Object>,
     pub chunks: Vec<Chunk>,
@@ -183,7 +189,7 @@ pub fn header_bytes(flags: u16) -> [u8; HEADER_LEN] {
 pub fn check_header(h: &[u8]) -> Result<u16> {
     ensure!(h.len() >= HEADER_LEN && &h[..8] == MAGIC, "not an Arca archive");
     let version = u16::from_le_bytes([h[8], h[9]]);
-    ensure!(version == 1 || version == VERSION, "unsupported archive version {version}");
+    ensure!((1..=VERSION).contains(&version), "unsupported archive version {version}");
     Ok(u16::from_le_bytes([h[10], h[11]]))
 }
 
@@ -218,15 +224,22 @@ impl Footer {
     }
 }
 
+/// BLAKE3-128: the index's own check, and every hash in versions 1 and 2.
 pub fn hash16(data: &[u8]) -> [u8; 16] {
     blake3::hash(data).as_bytes()[..16].try_into().unwrap()
 }
 
 impl Index {
+    /// How this archive's blocks and objects were hashed.
+    pub fn hasher(&self) -> Hasher {
+        self.key.map_or(Hasher::Blake3, |k| Hasher::Polyval(Key::new(k)))
+    }
+
     pub fn encode(&self) -> Vec<u8> {
         let mut w = Writer::new();
         w.uv(VERSION as u64);
         w.iv(self.created);
+        w.raw(&self.key.unwrap_or_default());
 
         // Entries column by column, so zstd sees like next to like: paths
         // front-coded against the previous one (a folder walk shares long
@@ -424,8 +437,9 @@ impl Index {
     pub fn decode(data: &[u8]) -> Result<Self> {
         let mut r = Reader::new(data);
         let version = r.uv()?;
-        ensure!(version == 1 || version == VERSION as u64, "unsupported index version {version}");
+        ensure!((1..=VERSION as u64).contains(&version), "unsupported index version {version}");
         let created = r.iv()?;
+        let key = if version >= 3 { Some(r.array::<16>()?) } else { None };
         let entries = if version == 1 { Self::entries_v1(&mut r)? } else { Self::entries_v2(&mut r)? };
 
         let n = r.len()?;
@@ -490,7 +504,7 @@ impl Index {
             });
         }
 
-        let idx = Index { created, entries, objects, chunks, blocks };
+        let idx = Index { created, key, entries, objects, chunks, blocks };
         idx.validate()?;
         Ok(idx)
     }
@@ -691,6 +705,7 @@ mod tests {
         let both = Transform::Arm64 { ranges: vec![(16, 4096), (8192, 64)], x86: vec![(20_000, 3001)] };
         let arm_only = Transform::Arm64 { ranges: vec![(0, 400)], x86: vec![] };
         let idx = Index {
+            key: None,
             created: 0,
             entries: vec![file("Universal", 0, 30_000), file("Arm", 1, 400)],
             objects: vec![hashed(both.clone(), vec![0], 30_000), hashed(arm_only.clone(), vec![1], 400)],
@@ -709,6 +724,7 @@ mod tests {
     fn mixed_blocks_are_split_by_how_each_kind_compresses() {
         let arm64 = || Transform::Arm64 { ranges: vec![], x86: vec![] };
         let idx = Index {
+            key: None,
             created: 0,
             entries: vec![file("Tool", 0, 1000), file("a.png", 1, 1000), file("Tool2", 2, 500), file("b.png", 3, 500)],
             objects: vec![
@@ -732,6 +748,7 @@ mod tests {
     #[test]
     fn a_kind_without_its_own_block_gets_what_is_left() {
         let idx = Index {
+            key: None,
             created: 0,
             entries: vec![file("big.png", 0, 2000), file("Assets.car", 1, 400)],
             objects: vec![object(Transform::Deflate, vec![0, 1], 2000), object(Transform::None, vec![2], 400)],
@@ -749,6 +766,7 @@ mod tests {
     #[test]
     fn a_few_bytes_beside_a_big_file_do_not_take_its_noise() {
         let idx = Index {
+            key: None,
             created: 0,
             entries: vec![file("Word list.txt", 0, 2000), file("Read me.md", 1, 10)],
             objects: vec![object(Transform::None, vec![0, 1], 2000), object(Transform::None, vec![2], 10)],
@@ -768,6 +786,7 @@ mod tests {
         let mut pdf = object(Transform::Deflate, vec![0], 800);
         pdf.size = 300;
         let idx = Index {
+            key: None,
             created: 0,
             entries: vec![file("notes.pdf", 0, 300), file("Assets.car", 1, 400)],
             objects: vec![pdf, object(Transform::None, vec![1], 400)],

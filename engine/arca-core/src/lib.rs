@@ -9,6 +9,7 @@
 pub mod classify;
 pub mod codec;
 pub mod format;
+pub mod hash;
 pub mod hooks;
 pub mod pack;
 pub mod prof;

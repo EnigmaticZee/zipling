@@ -574,6 +574,46 @@ deduplication at a fraction of BLAKE3's cost.
    rivals, about 11).
 5. Faster text decoding at Max (Silesia and source code, about 8).
 
+**Hashing: POLYVAL in place of BLAKE3 (built, format version 3).** Every byte went
+through BLAKE3 about four times: file, chunks, block, compressed block (twice the
+same bytes for a stored block), and twice more on unpack. Measured on one core,
+256 MiB warm, Mac at load 7:
+
+| Hash | MB/s | Notes |
+|---|---:|---|
+| BLAKE3 (NEON) | 1,800 | |
+| POLYVAL, 8 blocks at a time, through general registers | 8,900 | moving 64-bit halves out of vector registers cost a third |
+| POLYVAL, 8 blocks, vector registers only | 11,300 | |
+| POLYVAL, 16 blocks | 14,600 | 8.1x BLAKE3; shipped |
+
+The proposal above was a fast hash plus a byte comparison. The comparison needs the
+first copy's bytes, which may be compressed and gone by then, so this does better:
+POLYVAL is a universal hash, so with a key drawn after the files exist, two
+different inputs collide with probability at most (blocks + 2) / 2^128, by proof
+and for any input, crafted or not. 2^32 chunks of 2 MiB (8 PB) leave 2^-48. The
+key sits in the index, which stays under BLAKE3. What is given up: with the key, a
+tamperer can make different bytes hash alike, so the index hash no longer commits
+to the block contents. Archives aren't signed, so an editor could always rewrite
+the hashes beside the bytes; it would matter only to someone who recorded the index
+hash elsewhere and trusted it, rather than hashing the file.
+
+Also: stored blocks are hashed once and no longer copied on either side, and the
+compressed-block hash moved off the single writer thread. Multi-chunk file
+identities stay BLAKE3 over the hash list (short input, keeps the domains apart).
+
+Same files, old and new binaries taking turns, seven rounds, best wall time, Mac at
+load 7:
+
+| Set | Size | Pack s | Pack CPU-s | Unpack s | Unpack CPU-s |
+|---|---:|---:|---:|---:|---:|
+| Photos | 78.26 MB (same) | 0.274 → 0.244 (−11%) | 2.17 → 1.96 | 0.236 → 0.221 (−6%) | 1.95 → 1.80 |
+| Website mixed | 271.11 MB (same) | 0.934 → 0.797 (−15%) | 7.57 → 6.57 | 0.955 → 0.850 (−11%) | 5.63 → 5.09 |
+| Saved folder | 298.83 MB (same) | 0.861 → 0.739 (−14%) | 7.40 → 6.12 | 0.981 → 0.913 (−7%) | 6.09 → 5.38 |
+
+Round trips identical (Fast on photos and website mixed, Default on photos); version
+2 archives still open and extract; bytes flipped at a quarter, half and three
+quarters of two archives were all caught. Busy-Mac numbers: to be confirmed quietly.
+
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
 The goal is a breakthrough, not tuning: beat every archiver (7-Zip, Zipgeist,

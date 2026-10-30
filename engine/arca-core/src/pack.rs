@@ -11,6 +11,7 @@
 use crate::classify::{self, Class, Lane, SNIFF_LEN};
 use crate::codec::{self, CodecConfig};
 use crate::format::{self, BlockInfo, Chunk, Codec, Entry, EntryKind, Footer, Index, Object, Transform};
+use crate::hash;
 use crate::hooks::Hooks;
 use crate::prof;
 use crate::scan;
@@ -268,6 +269,7 @@ struct Done {
     comp: Vec<u8>,
     raw_len: u64,
     raw_hash: [u8; 16],
+    checksum: [u8; 16],
     codec: Codec,
 }
 
@@ -309,6 +311,7 @@ struct BlockSink {
     lanes: Vec<Lane>,
     /// Pack start, for the block timeline `ARCA_DEBUG_TIMING` prints.
     start: Option<Instant>,
+    key: Arc<hash::Key>,
 }
 
 impl BlockSink {
@@ -340,7 +343,7 @@ impl BlockSink {
         self.slots_rx.recv().expect("slot channel");
         let cfg = self.codecs[block.lane as usize];
         let (done_tx, slots_tx) = (self.done_tx.clone(), self.slots_tx.clone());
-        let start = self.start;
+        let (start, key) = (self.start, self.key.clone());
         let queued = start.map(|s| s.elapsed().as_secs_f64());
         self.pool.spawn(move || {
             let began = start.map(|s| s.elapsed().as_secs_f64());
@@ -355,11 +358,23 @@ impl BlockSink {
                 },
                 block.buf.len() as u64,
             );
-            let res = codec::compress_auto(&block.buf, cfg).map(|(comp, codec)| {
+            let raw_len = block.buf.len() as u64;
+            let raw_hash = key.hash(&block.buf);
+            let res = if cfg.codec == Codec::Store {
+                Ok((Vec::new(), Codec::Store))
+            } else {
+                codec::compress_auto(&block.buf, cfg)
+            }
+            .map(|(comp, codec)| {
                 // Never let a codec expand data: fall back to storing the block.
-                let (comp, codec) =
-                    if comp.len() >= block.buf.len() { (block.buf.clone(), Codec::Store) } else { (comp, codec) };
-                Done { id: block.id, comp, raw_len: block.buf.len() as u64, raw_hash: format::hash16(&block.buf), codec }
+                let stored = codec == Codec::Store || comp.len() >= block.buf.len();
+                let (comp, codec, checksum) = if stored {
+                    (block.buf, Codec::Store, raw_hash)
+                } else {
+                    let checksum = key.hash(&comp);
+                    (comp, codec, checksum)
+                };
+                Done { id: block.id, comp, raw_len, raw_hash, checksum, codec }
             });
             let _ = done_tx.send(res);
             let _ = slots_tx.send(());
@@ -588,7 +603,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                     comp_len: d.comp.len() as u64,
                     raw_len: d.raw_len,
                     codec: d.codec,
-                    checksum: format::hash16(&d.comp),
+                    checksum: d.checksum,
                     raw_hash: d.raw_hash,
                 },
             ));
@@ -598,6 +613,8 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     });
 
     let store = CodecConfig { codec: Codec::Store, level: 0, extreme: false };
+    // Drawn after the files exist: see `hash` for why that is what matters.
+    let key = Arc::new(hash::Key::random());
     let mut sink = BlockSink {
         // Its own pool: blocks must not queue behind file tasks, or compression
         // trails at the end instead of overlapping with the transforms.
@@ -617,12 +634,13 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec, opts.code_codec],
         lanes: Vec::new(),
         start: timing.then_some(start),
+        key: key.clone(),
     };
 
     let mut objects: Vec<Object> = Vec::new();
     let mut chunks: Vec<Chunk> = Vec::new();
-    let mut by_hash: HashMap<[u8; 32], u32> = HashMap::new();
-    let mut by_chunk: HashMap<[u8; 32], u32> = HashMap::new();
+    let mut by_hash: HashMap<[u8; 16], u32> = HashMap::new();
+    let mut by_chunk: HashMap<[u8; 16], u32> = HashMap::new();
     let mut tstats: HashMap<&'static str, TransformStat> = HashMap::new();
     let debug = std::env::var_os("ARCA_DEBUG_ROUTING").is_some();
 
@@ -637,7 +655,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     // in order, taking the claimer's result when it reaches the first occurrence.
     let n = jobs.len();
     let slots: Vec<Mutex<Option<Result<Hashed>>>> = (0..n).map(|_| Mutex::new(None)).collect();
-    let claims: Mutex<HashMap<[u8; 32], usize>> = Mutex::new(HashMap::new());
+    let claims: Mutex<HashMap<[u8; 16], usize>> = Mutex::new(HashMap::new());
     let cancel = AtomicBool::new(false);
     // Bytes that finished tasks hold beyond their input size (an expanded PNG can
     // be 15x its file), so the lookahead bounds memory, not just input bytes.
@@ -669,12 +687,12 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                     let i = spawned;
                     inflight += jobs[i].size;
                     spawned += 1;
-                    let (slots, claims, cancel, grown, tx) = (&slots, &claims, &cancel, &grown, ready_tx.clone());
+                    let (slots, claims, cancel, grown, key, tx) = (&slots, &claims, &cancel, &grown, &key, ready_tx.clone());
                     scope.spawn(move |_| {
                         let r = if cancel.load(Ordering::Relaxed) {
                             Err(anyhow::anyhow!("cancelled"))
                         } else {
-                            process_file(&jobs[i], i, claims, opts)
+                            process_file(&jobs[i], i, claims, key, opts)
                         };
                         if let Ok(h) = &r {
                             grown.fetch_add(h.extra, Ordering::Relaxed);
@@ -736,7 +754,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                             by_chunk.insert(hash, c);
                             ids.push(c);
                         }
-                        let hash = (transform != Transform::None).then(|| mine.hash[..16].try_into().unwrap());
+                        let hash = (transform != Transform::None).then_some(mine.hash);
                         objects.push(Object { hash, size: job.size, transform, stored_len: stored.len() as u64, chunks: ids });
                         by_hash.insert(mine.hash, o);
                         o
@@ -786,7 +804,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     stats.blocks = blocks.len() as u64;
 
     let created = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
-    let index = Index { created, entries, objects, chunks, blocks };
+    let index = Index { created, key: Some(key.bytes()), entries, objects, chunks, blocks };
     let raw = index.encode();
     if let Some(p) = std::env::var_os("ARCA_DUMP_INDEX") {
         let _ = std::fs::write(p, &raw);
@@ -822,12 +840,12 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     Ok(stats)
 }
 
-type Cut = (usize, usize, [u8; 32], Lane);
+type Cut = (usize, usize, [u8; 16], Lane);
 /// (transform, transformed bytes if any, lane, chunks, original bytes)
 type Prepared = (Transform, Option<Vec<u8>>, Lane, Vec<Cut>, FileData);
 
 struct Hashed {
-    hash: [u8; 32],
+    hash: [u8; 16],
     class: Class,
     /// Transformed bytes held beyond the input (for the lookahead's accounting).
     extra: u64,
@@ -837,7 +855,13 @@ struct Hashed {
 
 /// Reads, hashes and, unless another task already claimed the same content,
 /// transforms and chunks one file.
-fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>>, opts: &PackOptions) -> Result<Hashed> {
+fn process_file(
+    job: &Job,
+    index: usize,
+    claims: &Mutex<HashMap<[u8; 16], usize>>,
+    key: &hash::Key,
+    opts: &PackOptions,
+) -> Result<Hashed> {
     let data = {
         let _p = prof::span("file.read", job.size);
         read_file(&job.source, job.size)?
@@ -858,13 +882,13 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
     let transformable = transform::applies(class, &opts.transforms);
     let (hash, plain_cuts) = if transformable || data.is_empty() {
         let _h = prof::span("file.hash", job.size);
-        (*blake3::hash(&data).as_bytes(), None)
+        (key.hash(&data), None)
     } else {
         let cuts = {
             let _p = prof::span("file.chunk", data.len() as u64);
-            cut_chunks(&data, opts.dedup)
+            cut_chunks(&data, key, opts.dedup)
         };
-        (content_key(&cuts), Some(cuts))
+        (content_key(&cuts, key), Some(cuts))
     };
     let claimed = {
         let mut c = claims.lock().unwrap();
@@ -895,11 +919,11 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
                     // Chunk the compressible head and the coded tail separately,
                     // so each chunk belongs to one lane.
                     Some(k) => {
-                        let mut c = cut_chunks(&stored[..k], opts.dedup);
-                        c.extend(cut_chunks(&stored[k..], opts.dedup).into_iter().map(|(o, l, h)| (o + k, l, h)));
+                        let mut c = cut_chunks(&stored[..k], key, opts.dedup);
+                        c.extend(cut_chunks(&stored[k..], key, opts.dedup).into_iter().map(|(o, l, h)| (o + k, l, h)));
                         c
                     }
-                    None => cut_chunks(stored, opts.dedup),
+                    None => cut_chunks(stored, key, opts.dedup),
                 }
             };
             (p.transform, owned, p.lane, p.store_from, cuts)
@@ -925,12 +949,12 @@ fn process_file(job: &Job, index: usize, claims: &Mutex<HashMap<[u8; 32], usize>
 }
 
 /// Identity of untransformed content from its chunk hashes. One chunk is the
-/// content's own BLAKE3, the same as for a transformed file; several chunks are
-/// hashed as a list in a separate key domain, so no file's bytes can pose as
-/// another file's chunk list.
-fn content_key(cuts: &[(usize, usize, [u8; 32])]) -> [u8; 32] {
+/// content's own hash, the same as for a transformed file; several chunks are
+/// hashed as a list with BLAKE3, so no file's bytes can pose as another file's
+/// chunk list.
+fn content_key(cuts: &[(usize, usize, [u8; 16])], key: &hash::Key) -> [u8; 16] {
     match cuts {
-        [] => *blake3::hash(&[]).as_bytes(),
+        [] => key.hash(&[]),
         [(_, _, h)] => *h,
         _ => {
             let mut k = blake3::Hasher::new_derive_key("Arca 2026-10 content key from chunk hashes");
@@ -938,14 +962,14 @@ fn content_key(cuts: &[(usize, usize, [u8; 32])]) -> [u8; 32] {
                 k.update(&(*len as u64).to_le_bytes());
                 k.update(h);
             }
-            *k.finalize().as_bytes()
+            k.finalize().as_bytes()[..16].try_into().unwrap()
         }
     }
 }
 
-/// Chunk boundaries with full 256-bit hashes (the dedup key; the index keeps 128 bits).
-fn cut_chunks(stored: &[u8], dedup: bool) -> Vec<(usize, usize, [u8; 32])> {
-    let hash = |s: &[u8]| *blake3::hash(s).as_bytes();
+/// Chunk boundaries with the hashes that deduplicate them.
+fn cut_chunks(stored: &[u8], key: &hash::Key, dedup: bool) -> Vec<(usize, usize, [u8; 16])> {
+    let hash = |s: &[u8]| key.hash(s);
     let mut cuts = Vec::new();
     if stored.is_empty() {
         return cuts;
