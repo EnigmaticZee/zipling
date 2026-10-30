@@ -55,8 +55,9 @@ Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
-and the board stands at 141 of 144. Next: the last three rows, then the rANS
-coder in Default and the Apple slice delta.
+and the board stands at 141 of 144. The estimate for a codec with LZMA's ratio at
+a symbol coder's speed is in (3.9% behind LZMA, 4.6% ahead of zstd -19 on Silesia);
+next is building it. Then the rANS JPEG coder in Default and the Apple slice delta.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -968,6 +969,60 @@ for the tokens. That is a new codec and a format change: the research estimate
 
 *DMGs, tar + zstd -19 --long: 0.45 s to extract against Default's 0.94.* Rebuild
 bound, see the per-image profile below.
+
+**A codec with LZMA's ratio at a symbol coder's speed: the estimate (2026-10-30,
+evening).** The question for the Silesia row, and for Max's extraction everywhere:
+how much of LZMA's advantage over zstd is its parse, and how much its bit-by-bit
+adaptive modelling, which is what makes it slow to decode? The SDK's encoder now has
+a research tap (`lzma-sdk` feature `token-hook`) that reports every parse decision,
+and `examples/lztok` verifies the tokens against the data and counts the bits four
+decodable coders would spend on them. Semi-static tables are counted per 256 KiB of
+input with a table cost; adaptive counts start uniform, add 24 and halve at 2^15.
+
+- *S*, zstd's way: literals order-0; literal-run, match-length and distance codes
+  with raw extra bits; the token kind. All semi-static.
+- *C*: S with LZMA's contexts. Literals by the previous byte's top 3 bits; the first
+  literal after a match as (byte ^ the byte at rep0); kind by previous kind; length
+  codes by kind; distance codes by length.
+- *A*: C's contexts with adaptive counts.
+- *A+*: A plus what LZMA also models: the low 4 bits of far distances (alignment),
+  and the position's low 2 bits as context for kinds, lengths and literals; the
+  literal after a match by the match byte's top bits too.
+
+| Silesia file | MB | LZMA | zstd -19 | S | C | A | A+ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| dickens | 10.19 | 2.831 | 2.849 | 2.904 | 2.881 | 2.870 | 2.858 |
+| x-ray | 8.47 | 4.480 | 5.130 | 4.986 | 4.753 | 4.773 | 4.552 |
+| samba | 21.61 | 3.731 | 3.879 | 3.998 | 3.932 | 3.902 | 3.912 |
+| mozilla | 51.22 | 13.313 | 14.974 | 15.598 | 15.322 | 14.963 | 14.062 |
+| webster | 41.46 | 8.371 | 8.593 | 8.640 | 8.597 | 8.561 | 8.519 |
+| nci | 33.55 | 1.449 | 1.617 | 1.675 | 1.659 | 1.638 | 1.629 |
+| osdb | 10.09 | 2.846 | 3.100 | 3.128 | 3.041 | 3.001 | 2.891 |
+| mr | 9.97 | 2.748 | 3.100 | 3.222 | 3.016 | 2.957 | 2.849 |
+| ooffice | 6.15 | 2.425 | 2.595 | 2.621 | 2.579 | 2.541 | 2.505 |
+| sao | 7.25 | 4.414 | 5.001 | 4.949 | 4.912 | 4.893 | 4.636 |
+| xml | 5.35 | 0.435 | 0.453 | 0.474 | 0.466 | 0.463 | 0.467 |
+| reymont | 6.63 | 1.316 | 1.349 | 1.405 | 1.372 | 1.366 | 1.352 |
+| **all** | 211.9 | **48.36** | **52.64** | 53.60 | 52.53 | 52.03 | **50.23** |
+
+(LZMA here is fb 273 with one block per file; the estimator's zstd matches the
+measured rival, 52.60, within rounding.)
+
+What it says. LZMA's parse with zstd's coding (S) is *worse than zstd -19* on the
+binaries: the parse is tuned to LZMA's costs and buys nothing without them. The
+advantage is the modelling, and most of it is recoverable with symbol-sized adaptive
+contexts: A+ is 3.9% behind LZMA over Silesia and 4.6% ahead of zstd -19, 2.4 MB
+under the row. Alignment bits alone took mozilla from +12.4% to +5.6%. What is left
+of the gap is in the binaries' literals and repeat flags (samba +4.9%, mozilla
++5.6%); a parse priced for the new coder would recover some of it. The row's other
+condition is extraction under 0.23 s: 202 MB over ten cores in 16-32 MiB blocks
+needs about 300 MB/s a core, 2.5x LZMA's 120, which is the speed LZNA-class coders
+reach with 16-symbol adaptive models decoded with SIMD. That is the build's risk,
+and it is a build: a new codec and a format addition. Design, as the estimate has
+it: the SDK's optimal parse (first with LZMA's prices, later with the coder's own),
+tokens coded with interleaved rANS over adaptive nibble models under A+'s contexts,
+decoded with a zstd-class copy loop. If it reaches A+'s size at 2.5x LZMA's speed,
+Max extracts 2-3x faster on everything and the Silesia row falls.
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
