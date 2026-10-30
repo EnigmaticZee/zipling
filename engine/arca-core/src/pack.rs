@@ -295,6 +295,36 @@ struct OpenBlock {
     buf: Vec<u8>,
     /// Bytes from chunks that look incompressible.
     hard: usize,
+    /// Where each chunk starts, for splitting between chunks.
+    starts: Vec<u32>,
+}
+
+/// Inputs from this size on have blocks enough for every core.
+const SPLIT_BELOW: u64 = 512 << 20;
+/// Blocks at least this long may split in two.
+const SPLIT_MIN: usize = 48 << 20;
+/// A split is made when the quick pass says it costs less than 1 part in this
+/// many: Silesia's blocks measure 0.11-0.46%, Apple's apps 0.72-1.04%, where LZMA
+/// loses more (1.7%), a source tree 1.1-8.7%, PDFs 2.5%.
+const SPLIT_COST: usize = 200;
+
+/// The chunk boundary nearest the middle of a block, if splitting there loses
+/// little. A quick pass measures that directly, the whole block against its two
+/// halves, because nothing cheaper tells: Silesia at Max loses 0.5% in two for
+/// half the time, and a source tree 5%, its repeats spanning the lane.
+fn split_point(buf: &[u8], starts: &[u32]) -> Option<usize> {
+    let middle = (buf.len() / 2) as u32;
+    let at = *starts.iter().min_by_key(|&&s| s.abs_diff(middle))? as usize;
+    if at < buf.len() / 4 || at > buf.len() / 4 * 3 {
+        return None;
+    }
+    let quick = CodecConfig { codec: Codec::Zstd, level: 1, extreme: false, long: true, workers: 1 };
+    let (a, (b, whole)) = rayon::join(
+        || codec::compress(&buf[..at], quick),
+        || rayon::join(|| codec::compress(&buf[at..], quick), || codec::compress(buf, quick)),
+    );
+    let (parts, whole) = (a.ok()?.len() + b.ok()?.len(), whole.ok()?.len());
+    (parts < whole + whole / SPLIT_COST).then_some(at)
 }
 
 struct Done {
@@ -332,16 +362,27 @@ impl Drop for Timeline {
     }
 }
 
+/// Numbers a new block in `lane`.
+fn new_block(lanes: &Mutex<Vec<Lane>>, lane: Lane) -> u32 {
+    let mut l = lanes.lock().unwrap();
+    l.push(lane);
+    l.len() as u32 - 1
+}
+
 struct BlockSink {
     pool: Arc<rayon::ThreadPool>,
     slots_tx: Sender<()>,
     slots_rx: Receiver<()>,
     done_tx: Sender<Result<Done>>,
     open: [Option<OpenBlock>; 5],
-    next_id: u32,
     block_sizes: [usize; 5],
     codecs: [CodecConfig; 5],
-    lanes: Vec<Lane>,
+    /// The lane of each block number.
+    lanes: Arc<Mutex<Vec<Lane>>>,
+    /// Blocks split as they closed: (block, the second half's number, where).
+    splits: Arc<Mutex<Vec<(u32, u32, u64)>>>,
+    /// Whether blocks may split, for levels whose decoders run one per block.
+    split: bool,
     /// Pack start, for the block timeline `ARCA_DEBUG_TIMING` prints.
     start: Option<Instant>,
     key: Arc<hash::Key>,
@@ -355,12 +396,12 @@ impl BlockSink {
         let limit = self.block_sizes[lane as usize];
         let slot = &mut self.open[lane as usize];
         if slot.is_none() {
-            *slot = Some(OpenBlock { id: self.next_id, lane, buf: Vec::with_capacity(limit + CDC_MAX as usize), hard: 0 });
-            self.lanes.push(lane);
-            self.next_id += 1;
+            let id = new_block(&self.lanes, lane);
+            *slot = Some(OpenBlock { id, lane, buf: Vec::with_capacity(limit + CDC_MAX as usize), hard: 0, starts: Vec::new() });
         }
         let b = slot.as_mut().unwrap();
         let at = (b.id, b.buf.len() as u64);
+        b.starts.push(b.buf.len() as u32);
         b.buf.extend_from_slice(bytes);
         b.hard += if hard { bytes.len() } else { 0 };
         if b.buf.len() >= limit {
@@ -382,6 +423,8 @@ impl BlockSink {
         let (done_tx, slots_tx) = (self.done_tx.clone(), self.slots_tx.clone());
         let (start, key, busy, cores) = (self.start, self.key.clone(), self.busy.clone(), self.cores);
         let queued = start.map(|s| s.elapsed().as_secs_f64());
+        let (lanes, splits) = (self.lanes.clone(), self.splits.clone());
+        let may_split = self.split && cfg.codec == Codec::Lzma2 && block.buf.len() >= SPLIT_MIN;
         self.pool.spawn(move || {
             let began = start.map(|s| s.elapsed().as_secs_f64());
             let _timeline = Timeline { start, id: block.id, lane: block.lane, len: block.buf.len(), queued, began };
@@ -398,28 +441,41 @@ impl BlockSink {
             // With cores to spare, a block takes two.
             let at_once = busy.fetch_add(1, Ordering::Relaxed) + 1;
             let cfg = CodecConfig { workers: if 2 * at_once <= cores { 2 } else { 1 }, ..cfg };
-            let raw_len = block.buf.len() as u64;
-            let raw_hash = key.hash(&block.buf);
-            let res = if cfg.codec == Codec::Store {
-                Ok((Vec::new(), Codec::Store))
-            } else if block.hard * 2 > block.buf.len() {
-                codec::compress_hard(&block.buf, cfg)
-            } else {
-                codec::compress_auto(&block.buf, cfg)
-            }
-            .map(|(comp, codec)| {
-                // Never let a codec expand data: fall back to storing the block.
-                let stored = codec == Codec::Store || comp.len() >= block.buf.len();
-                let (comp, codec, checksum) = if stored {
-                    (block.buf, Codec::Store, raw_hash)
+            let finish = |id: u32, buf: Vec<u8>, hard: bool| {
+                let raw_len = buf.len() as u64;
+                let raw_hash = key.hash(&buf);
+                let res = if cfg.codec == Codec::Store {
+                    Ok((Vec::new(), Codec::Store))
+                } else if hard {
+                    codec::compress_hard(&buf, cfg)
                 } else {
-                    let checksum = key.hash(&comp);
-                    (comp, codec, checksum)
-                };
-                Done { id: block.id, comp, raw_len, raw_hash, checksum, codec }
-            });
+                    codec::compress_auto(&buf, cfg)
+                }
+                .map(|(comp, codec)| {
+                    // Never let a codec expand data: fall back to storing the block.
+                    let stored = codec == Codec::Store || comp.len() >= buf.len();
+                    let (comp, codec, checksum) = if stored {
+                        (buf, Codec::Store, raw_hash)
+                    } else {
+                        let checksum = key.hash(&comp);
+                        (comp, codec, checksum)
+                    };
+                    Done { id, comp, raw_len, raw_hash, checksum, codec }
+                });
+                let _ = done_tx.send(res);
+            };
+            let OpenBlock { id, lane, mut buf, hard, starts } = block;
+            let hard = hard * 2 > buf.len();
+            match may_split.then(|| split_point(&buf, &starts)).flatten() {
+                Some(at) => {
+                    let tail = buf.split_off(at);
+                    let second = new_block(&lanes, lane);
+                    splits.lock().unwrap().push((id, second, at as u64));
+                    rayon::join(|| finish(id, buf, hard), || finish(second, tail, hard));
+                }
+                None => finish(id, buf, hard),
+            }
             busy.fetch_sub(1, Ordering::Relaxed);
-            let _ = done_tx.send(res);
             let _ = slots_tx.send(());
         });
     }
@@ -667,7 +723,6 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         slots_rx,
         done_tx,
         open: [None, None, None, None, None],
-        next_id: 0,
         block_sizes: [
             text_block_size,
             block_size,
@@ -676,7 +731,9 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
             opts.code_block_size.min(block_size.max(1 << 20)),
         ],
         codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec, opts.code_codec],
-        lanes: Vec::new(),
+        lanes: Arc::new(Mutex::new(Vec::new())),
+        splits: Arc::new(Mutex::new(Vec::new())),
+        split: opts.level == Level::Max && stats.input_bytes < SPLIT_BELOW,
         start: timing.then_some(start),
         key: key.clone(),
         busy: busy.clone(),
@@ -833,11 +890,19 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     })?;
     phase("all files transformed");
     sink.flush();
-    let lanes = std::mem::take(&mut sink.lanes);
+    let (lanes, splits) = (sink.lanes.clone(), sink.splits.clone());
     drop(sink);
 
     let (mut out, infos) = writer.join().map_err(|_| anyhow::anyhow!("writer thread panicked"))??;
     phase("all blocks compressed and written");
+    let lanes = std::mem::take(&mut *lanes.lock().unwrap());
+    let splits: HashMap<u32, (u32, u64)> = splits.lock().unwrap().iter().map(|&(id, second, at)| (id, (second, at))).collect();
+    for c in &mut chunks {
+        if let Some(&(second, at)) = splits.get(&c.block).filter(|&&(_, at)| c.offset >= at) {
+            c.block = second;
+            c.offset -= at;
+        }
+    }
     let mut blocks: Vec<Option<BlockInfo>> = vec![None; lanes.len()];
     for (id, info) in infos {
         blocks[id as usize] = Some(info);
