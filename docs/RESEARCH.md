@@ -486,6 +486,20 @@ measured in Zipgeist's own session and scaled). The JPEG parse alone is 0.86 s
 per core, so that gap needs a faster JPEG reader or a quiet-Mac measurement to
 settle it.
 
+Fast with the light mode on the folders that hold photos among other files
+(busy Mac, load 5-6; two runs each):
+
+| Fast | Saved folder | Website mixed |
+|---|---|---|
+| Photos stored (before) | 315.9 MB, 0.75 / 0.83 s | 288.3 MB, 0.74 / 0.67 s |
+| Light mode | **298.8 MB**, 1.12 / 1.23 s | **271.1 MB**, 0.88-1.13 / 0.93 s |
+| Zipgeist tar.zst Fast (fastest rival) | 341.0 MB, 1.28 / 1.54 s | 313.8 MB, 1.12 / 1.54 s |
+
+Times are make / extract; every round trip is identical. Unpacking costs 1.6
+CPU-s more for the photos, which is about +0.25 s on these folders. Putting
+the prefix (headers, tables) in the store lane instead of the binary lane
+changed nothing measurable and cost 2.5 MB, so it stays in the binary lane.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64
