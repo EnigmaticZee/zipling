@@ -301,6 +301,8 @@ struct OpenBlock {
 
 /// Inputs from this size on have blocks enough for every core.
 const SPLIT_BELOW: u64 = 512 << 20;
+/// Inputs below this size can't fill enough full blocks to run short of memory.
+const ALL_CORES_BELOW: u64 = 256 << 20;
 /// Blocks at least this long may split in two.
 const SPLIT_MIN: usize = 32 << 20;
 /// A split is made when the quick pass says it costs less than 1 part in this
@@ -670,10 +672,11 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let mut block_threads = (spare / per_encoder).clamp(1, opts.threads.max(1) as u64) as usize;
     // LZMA2 encoders run two threads each (the match finder has its own), so
     // about half as many of them keep the cores busy without starving the
-    // first blocks: six on 10 cores made Max 4-6% faster than ten. Small inputs
-    // have fewer blocks than cores, and all of them made Silesia 38% faster.
+    // first blocks: six on 10 cores made Max 4-6% faster than ten. A small input
+    // has only a few full blocks, so its memory stays bounded and it uses every
+    // core: Silesia 38% faster.
     if [opts.text_codec, opts.binary_codec, opts.image_codec, opts.code_codec].iter().any(|c| c.codec == Codec::Lzma2) {
-        if stats.input_bytes >= SPLIT_BELOW {
+        if stats.input_bytes >= ALL_CORES_BELOW {
             block_threads = block_threads.min(opts.threads.max(1) / 2 + 1);
         }
     }
