@@ -55,8 +55,8 @@ Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
-and the quiet benchmark of them stands at 106 of 144. Next: DMGs (14 misses),
-the rANS coder in Default, text decoding at Max and the Apple slice delta.
+and the board stands at 133 of 144. Next: the last 11 rows, then the rANS coder
+in Default and the Apple slice delta.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -800,6 +800,48 @@ from 0.29 to 1.76 s. So the probe no longer routes anything: a block made mostly
 such chunks runs zstd -3 first and keeps that result when it saves under 5%. Fast
 is level 3 already and doesn't probe. Docs is now smaller than before today, so
 every set meets the size rule.
+
+**Default and Max, after the benchmark.** Every change below keeps its round trips
+identical; each was measured on its own first.
+
+- *DMGs at Default.* Expanded, except chunks of zlib levels 7-9, whose rebuild costs
+  five times the others': 19 CPU-s for Discord against 3-4. Five DMGs 615 → 550 MB,
+  5.4 s to make, 0.95 s to extract. Fast + tiny DMGs was tried and dropped: 0.06 s
+  more loses four rows to win one.
+- *Chunking across cores, at every level.* A 50 MB file on one thread held all
+  cores idle for 30% of Silesia's time at Fast. Spans of 8 MiB with seams at fixed
+  offsets cost dedup 0.8%; a rolling hash on its own 0.8% too, for shifts over 1 MiB.
+  A seam exactly where FastCDC itself would cut, with its gear table and harder mask,
+  costs nothing: third-party apps find the same 32.86 MiB of duplicates.
+- *zstd workers at Default.* With 64 MiB blocks a machine holds only a few, and one
+  block on one core was what the rest waited for. Two workers with 32 MiB jobs and a
+  full-window overlap when cores are idle (file tasks count as busy): PDFs 1.76 → 1.40
+  s, Apple's apps 2.2 → 1.4 s, for 0.01% and 0.3%. Blocks over 20:1 go round again
+  on one thread, which keeps static libraries' far repeats.
+- *Blocks split at Max.* When a block fills, a quick zstd -1 of it whole and in two
+  halves measures what a split costs, and the block splits if that is under 0.5%,
+  then the halves likewise, down to 16 MiB: Silesia's blocks measure 0.11-0.46%,
+  Apple's apps 0.72-1.04%, source up to 8.7%, PDFs 2.5%. Silesia 48.63 → 49.10 MB
+  (+1.0%), make 23.6 → 13.1 s, extract 0.66 → 0.38 s. Only under 512 MiB of input.
+- *Encoders at Max.* Eight on inputs under 256 MiB, six above. Ten was no better. One
+  run of eight on third-party apps took 254 s against 53 s, doubling its CPU. It came
+  shortly before the Mac's battery died, and the cause isn't known; large inputs stay
+  at six.
+- *bsc.* Decoding takes one thread per 8 MiB of block: 0.60 → 0.47 s on Silesia at
+  Default + bsc. Text blocks of 32 MiB at Max + bsc: source 8.09 → 8.27 MB, 1.8 → 1.2 s,
+  0.90 → 0.73 s.
+
+Tried and dropped: opening files relative to their folder; 2, 3 or 6 file creators
+against 4; zstd levels 1-2 at Fast, which cost Silesia its lead over zstd -3.
+
+**Re-score (2026-10-30, afternoon, `bench/results-2026-10-30-rescore.jsonl`).** Fast,
+Default, Max and their bsc forms on all nine sets on the SSD, 108 of 108 round trips
+identical. Load 8-14, so not a quiet run. Ultra's rows are still the checkpoint's, and
+the rivals' are this morning's and the checkpoint's. **133 of 144.** Left: photos
+against Zipgeist ZIP Normal (a tie at 0.17 s); Silesia against zstd -19 --long, xz -6
+(make +3%) and WinRAR Best (extract +1%); DMGs against zstd -19 --long and WinRAR
+Fastest (+0.04% in size); third-party apps against Zipgeist tar.zst Fast (make ×1.85),
+Zipgeist's two 7z and its tar.xz, and WinRAR Best (make +2-11% at Max, 11% smaller).
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
