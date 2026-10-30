@@ -62,6 +62,11 @@ pub struct PackOptions {
     pub code_codec: CodecConfig,
     /// Block size for the code lane.
     pub code_block_size: usize,
+    /// Send filtered binaries and ZIP or gzip files to the code lane without
+    /// `code_lane`. Fast's lane there is zstd -1: they are most of a big app's
+    /// bytes and hold the least for level 3 to find. Third-party apps 1.05 → 0.57 s,
+    /// for 10% in size, which still leaves them under zstd -3's.
+    pub quick_binaries: bool,
     /// Block size for the image lane (PNG rows).
     pub image_block_size: usize,
     /// zstd level for the index. 19 costs ~0.3 s on one thread for a 10,000-file
@@ -131,6 +136,7 @@ impl PackOptions {
                 },
                 asset_catalogs: std::env::var_os("ARCA_EXP_CAR").is_some(),
                 disk_images: level != Level::Fast,
+                verify_filters: level != Level::Fast,
             },
             dedup: true,
             probe: level == Level::Balanced,
@@ -140,7 +146,12 @@ impl PackOptions {
             // At Max and Ultra code and text get long matches: what makes source
             // trees and apps small (7-Zip Ultra is the bar there).
             code_lane: matches!(level, Level::Max | Level::Ultra),
-            code_codec: if matches!(level, Level::Max | Level::Ultra) { lzma2(9, true) } else { binary },
+            code_codec: match level {
+                Level::Max | Level::Ultra => lzma2(9, true),
+                Level::Fast => CodecConfig { long: false, ..zstd(1) },
+                Level::Balanced => binary,
+            },
+            quick_binaries: level == Level::Fast,
             code_block_size: block,
             image_block_size: block,
             index_level: if matches!(level, Level::Fast | Level::Balanced) { 9 } else { 19 },
@@ -1091,6 +1102,8 @@ fn process_file(
         }
     };
     let lane = if lane == Lane::Code && !opts.code_lane { Lane::Binary } else { lane };
+    let packed = matches!(class, Class::DeflateContainer(classify::DeflateKind::Zip | classify::DeflateKind::Gzip));
+    let lane = if opts.quick_binaries && (matches!(transform, Transform::Arm64 { .. }) || packed) { Lane::Code } else { lane };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
     let route = |(off, len, hash): (usize, usize, [u8; 16])| {
         if store_from.is_some_and(|k| off >= k) {

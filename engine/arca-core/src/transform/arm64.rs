@@ -133,6 +133,23 @@ fn filter_arm(region: &mut [u8], off: u64, encode: bool) {
     });
 }
 
+/// Bytes of x86 code one task filters.
+const X86_SPAN: u64 = 2 << 20;
+
+/// Cuts long x86 ranges into spans. The x86 filter carries state from one call
+/// to the next within a range, so it can't split a range the way the ARM64 filter
+/// can; as separate ranges in the index, encoder and decoder split alike, and only
+/// a call across a seam goes unfiltered. Half of a universal binary was otherwise
+/// on one thread: 0.35 s of Firefox's `XUL`, holding up every block behind it.
+pub fn split_ranges(ranges: Vec<(u64, u64)>) -> Vec<(u64, u64)> {
+    let mut out = Vec::with_capacity(ranges.len());
+    for (off, len) in ranges {
+        let n = len.div_ceil(X86_SPAN).max(1);
+        out.extend((0..n).map(|i| (off + i * X86_SPAN, (len - i * X86_SPAN).min(X86_SPAN))));
+    }
+    out
+}
+
 /// One stretch of a file: `Some(true)` is ARM64 code, `Some(false)` x86 code,
 /// `None` neither. Sorted and covering the file, or `None` if the ranges overlap.
 fn stretches(len: u64, arm: &[(u64, u64)], x86: &[(u64, u64)]) -> Option<Vec<(u64, u64, Option<bool>)>> {
@@ -375,5 +392,71 @@ mod tests {
         let mut d = vec![0u8; 16];
         assert!(filter(&mut d, &[(4, 100)], true).is_err());
         assert!(filter(&mut d, &[(2, 4)], true).is_err());
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 = self.0.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(0x1234_5);
+            self.0 ^ (self.0 >> 29)
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() >> 17) as usize % n.max(1)
+        }
+    }
+
+    /// Bytes with what the filters act on in plenty: branches and ADRPs for ARM64,
+    /// E8 and E9 with every kind of target for x86, runs of both, and noise.
+    fn code(r: &mut Rng, n: usize) -> Vec<u8> {
+        let mut d = Vec::with_capacity(n + 8);
+        while d.len() < n {
+            match r.below(6) {
+                0 => d.extend_from_slice(&(0x9400_0000u32 | (r.next() as u32 & 0x03FF_FFFF)).to_le_bytes()),
+                1 => d.extend_from_slice(&(0x9000_0000u32 | (r.next() as u32 & 0x6FFF_FFFF)).to_le_bytes()),
+                2 => {
+                    d.push(if r.below(2) == 0 { 0xE8 } else { 0xE9 });
+                    let top = [0x00, 0xFF, 0x7F, 0x80, r.next() as u8][r.below(5)];
+                    d.extend_from_slice(&(r.next() as u32).to_le_bytes()[..3]);
+                    d.push(top);
+                }
+                3 => d.extend(std::iter::repeat_n(0xE8, r.below(9) + 1)),
+                _ => d.extend_from_slice(&(r.next() as u32).to_le_bytes()),
+            }
+        }
+        d.truncate(n);
+        d
+    }
+
+    /// Whatever the data and wherever the ranges fall, filtering twice comes back
+    /// to the start and agrees with one thread: what Fast relies on in place of
+    /// checking each binary.
+    #[test]
+    fn filters_undo_themselves_on_anything() {
+        let mut r = Rng(0x5EED);
+        for round in 0..400 {
+            let n = 64 + r.below(if round % 40 == 0 { 9 << 20 } else { 256 << 10 });
+            let plain = code(&mut r, n);
+            let cut = (r.below(n) & !3) as u64;
+            let (arm, x86) = if round % 2 == 0 {
+                (vec![(0, cut)], split_ranges(vec![(cut, n as u64 - cut)]))
+            } else {
+                (vec![(cut, (n as u64 - cut) & !3)], split_ranges(vec![(0, cut)]))
+            };
+            let mut once = plain.clone();
+            filter_both(&mut once, &arm, &x86, true).unwrap();
+            let mut alone = plain.clone();
+            filter(&mut alone, &arm, true).unwrap();
+            filter_x86(&mut alone, &x86, true).unwrap();
+            assert!(once == alone, "round {round}: threads changed the result");
+            let mut back = once.clone();
+            filter_both(&mut back, &arm, &x86, false).unwrap();
+            assert!(back == plain, "round {round}: not undone");
+            assert!(filtered_from(&once, &plain, &arm, &x86), "round {round}: check disagrees");
+        }
     }
 }
