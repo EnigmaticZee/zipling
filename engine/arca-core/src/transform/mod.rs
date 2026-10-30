@@ -46,6 +46,10 @@ pub struct TransformOpts {
     /// Default up, where Default leaves out chunks of zlib levels 7-9 (see
     /// RESEARCH.md); a switch for any level.
     pub disk_images: bool,
+    /// Round-trip the code filters on every binary. They are bijections by
+    /// construction and a test holds them to it, so Fast leaves this off: it was
+    /// 8% of its time on big apps.
+    pub verify_filters: bool,
 }
 
 pub struct Prepared<'a> {
@@ -117,7 +121,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
             )
         }
         Class::MachO if opts.arm64 => {
-            let x86 = if std::env::var_os("ARCA_EXP_NO_X86").is_some() { Vec::new() } else { arm64::x86_code_ranges(data) };
+            let x86 = if std::env::var_os("ARCA_EXP_NO_X86").is_some() { Vec::new() } else { arm64::split_ranges(arm64::x86_code_ranges(data)) };
             let ranges = arm64::code_ranges(data);
             if ranges.is_empty() && x86.is_empty() {
                 None
@@ -142,6 +146,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
         // Lepton verifies its own round trip internally; the light JPEG coder
         // accounts for every bit of every scan while encoding (`jpeglite::encode`).
         let ok = !opts.verify
+            || (matches!(transform, Transform::Arm64 { .. }) && !opts.verify_filters)
             || transform == Transform::Lepton
             || transform == Transform::JpegLite
             || verify(&out, &transform, data);

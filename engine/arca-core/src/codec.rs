@@ -37,6 +37,10 @@ const ZSTD_JOB: usize = 32 << 20;
 /// 0.5-0.75% smaller and 9-23% less CPU on binaries, photos' leftovers and Silesia.
 const FAST_TABLES: (u32, u32) = (18, 17);
 
+/// zstd's hash table (log2) at level 1 and below. Tables the size of level 3's
+/// made level 1 no faster than level 3: most of its time went on cache misses.
+const QUICK_HASH: u32 = 15;
+
 /// A block that shrinks by more than this without long-distance matching is
 /// compressed again with it. Static libraries are the case: at 22:1 the search
 /// finds object files repeated across libraries, 10% of the lane's output.
@@ -128,10 +132,12 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
                     c.set_parameter(CParameter::JobSize(ZSTD_JOB as u32))?;
                     c.set_parameter(CParameter::OverlapSizeLog(9))?;
                 }
-                if !cfg.long && cfg.level <= 3 {
+                if !cfg.long && cfg.level == 3 {
                     let (hash, chain) = FAST_TABLES;
                     c.set_parameter(CParameter::HashLog(hash.min(wlog)))?;
                     c.set_parameter(CParameter::ChainLog(chain.min(wlog)))?;
+                } else if !cfg.long && cfg.level < 3 {
+                    c.set_parameter(CParameter::HashLog(QUICK_HASH))?;
                 }
                 Ok(c.compress(raw)?)
             };
