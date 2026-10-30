@@ -439,6 +439,17 @@ tables from a sample of the image so codes are written during the parse (no
 event replay), a cheaper table build, and the faster duplicate hash from
 Fast's profile.
 
+**Photos: light mode, round 2.** Huffman tables built by sorting and a
+two-queue merge with JPEG's Annex K.3 length cap, instead of a heap with
+allocations: table time per run 0.16 → 0.085 s, size +0.02 MB. Pack 73 MB/s
+on one core, **0.163 s** on 10 threads; unpack 70 MB/s, **0.167 s**. Every
+photo exact. A refill on every symbol in the JPEG reader was slower (56 MB/s)
+and was reverted.
+
+The per-image tables are 0.69 MB raw and 0.22 MB compressed together across
+files. In the archive they go with the headers to the compressed lane: about
+77.8 MB for the 382 photos, 18% under the smallest rival.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64

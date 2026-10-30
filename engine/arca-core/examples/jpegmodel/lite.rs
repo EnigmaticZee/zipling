@@ -283,48 +283,84 @@ impl LWriter {
     }
 }
 
-/// Length-limited Huffman code lengths (halving counts until they fit).
+/// Length-limited Huffman code lengths: sort, two-queue Huffman (no heap), then
+/// JPEG's Annex K.3 adjustment to cap the lengths at MAXLEN.
 fn lengths(cnt: &[u32; 256]) -> [u8; 256] {
-    let mut c: Vec<u64> = cnt.iter().map(|&x| x as u64).collect();
-    loop {
-        let mut len = [0u8; 256];
-        let used: Vec<usize> = (0..256).filter(|&i| c[i] > 0).collect();
-        if used.len() == 1 {
-            len[used[0]] = 1;
-            return len;
-        }
-        let mut nodes: Vec<(i32, i32)> = Vec::new();
-        let mut heap = std::collections::BinaryHeap::new();
-        for &i in &used {
-            nodes.push((-1, i as i32));
-            heap.push(std::cmp::Reverse((c[i], nodes.len() - 1)));
-        }
-        while heap.len() > 1 {
-            let std::cmp::Reverse((w1, a)) = heap.pop().unwrap();
-            let std::cmp::Reverse((w2, b)) = heap.pop().unwrap();
-            nodes.push((a as i32, b as i32));
-            heap.push(std::cmp::Reverse((w1 + w2, nodes.len() - 1)));
-        }
-        let root = heap.pop().unwrap().0 .1;
-        let mut stack = vec![(root, 0u32)];
-        let mut ok = true;
-        while let Some((i, d)) = stack.pop() {
-            let (l, r) = nodes[i];
-            if l == -1 {
-                if d > MAXLEN { ok = false; }
-                len[r as usize] = d.max(1) as u8;
-            } else {
-                stack.push((l as usize, d + 1));
-                stack.push((r as usize, d + 1));
-            }
-        }
-        if ok {
-            return len;
-        }
-        for x in c.iter_mut() {
-            if *x > 0 { *x = (*x + 1) / 2; }
+    let mut len = [0u8; 256];
+    let mut syms = [0u64; 256];
+    let mut m = 0usize;
+    for (s, &c) in cnt.iter().enumerate() {
+        if c > 0 {
+            syms[m] = ((c as u64) << 8) | s as u64;
+            m += 1;
         }
     }
+    if m == 0 {
+        return len;
+    }
+    if m == 1 {
+        len[(syms[0] & 0xFF) as usize] = 1;
+        return len;
+    }
+    let syms = &mut syms[..m];
+    syms.sort_unstable();
+    // two queues: leaves (sorted) and internal nodes (created in order)
+    let mut w = [0u64; 512];
+    let mut parent = [0u16; 512];
+    for i in 0..m {
+        w[i] = syms[i] >> 8;
+    }
+    let (mut li, mut ni, mut nn) = (0usize, m, m);
+    let mut pick = |li: &mut usize, ni: &mut usize, nn: usize, w: &[u64; 512]| -> usize {
+        if *li < m && (*ni >= nn || w[*li] <= w[*ni]) {
+            *li += 1;
+            *li - 1
+        } else {
+            *ni += 1;
+            *ni - 1
+        }
+    };
+    while nn < 2 * m - 1 {
+        let a = pick(&mut li, &mut ni, nn, &w);
+        let b = pick(&mut li, &mut ni, nn, &w);
+        w[nn] = w[a] + w[b];
+        parent[a] = nn as u16;
+        parent[b] = nn as u16;
+        nn += 1;
+    }
+    // depths from the root down (parents are created after children)
+    let mut depth = [0u8; 512];
+    for i in (0..nn - 1).rev() {
+        depth[i] = depth[parent[i] as usize] + 1;
+    }
+    // number of codes per length, capped (Annex K.3 style)
+    let mut bits = [0u32; 64];
+    for i in 0..m {
+        bits[depth[i] as usize] += 1;
+    }
+    let mut i = 63;
+    while i > MAXLEN as usize {
+        while bits[i] > 0 {
+            let mut j = i - 2;
+            while bits[j] == 0 {
+                j -= 1;
+            }
+            bits[i] -= 2;
+            bits[i - 1] += 1;
+            bits[j + 1] += 2;
+            bits[j] -= 1;
+        }
+        i -= 1;
+    }
+    // shortest codes to the most frequent symbols (syms is ascending)
+    let mut k = m;
+    for l in 1..=MAXLEN as usize {
+        for _ in 0..bits[l] {
+            k -= 1;
+            len[(syms[k] & 0xFF) as usize] = l as u8;
+        }
+    }
+    len
 }
 
 /// Canonical codes from lengths, bit-reversed for LSB-first writing (no decode table).
@@ -1015,6 +1051,8 @@ fn slow_fill(d: &[u8], pos: &mut usize, acc: &mut u64, n: &mut u32) {
     }
 }
 
+const ALWAYS_FILL: bool = false;
+
 /// `pack` with the parse written as one loop over locals.
 pub fn pack_tight(d: &[u8], img: &Image) -> Option<Vec<u8>> {
     let t0 = std::time::Instant::now();
@@ -1055,7 +1093,7 @@ pub fn pack_tight(d: &[u8], img: &Image) -> Option<Vec<u8>> {
             }
             macro_rules! sym_raw {
                 ($t:expr, $ac:expr) => {{
-                    if n < 32 { fill!(); }
+                    if ALWAYS_FILL { fill!(); } else if n < 32 { fill!(); }
                     let e = *$t.fast.as_ptr().add((acc >> 52) as usize);
                     if e != 0 {
                         let l = (e >> 8) as u32;

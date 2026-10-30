@@ -983,6 +983,13 @@ fn run_lite(files: &[std::path::PathBuf], threads: usize) {
         hdr.extend_from_slice(&d[at..]);
     }
     let h = zstd::bulk::compress(&hdr, 19).unwrap().len() as u64;
+    let mut tabs = Vec::new();
+    for p in packed.iter().flatten() {
+        let tl = u32::from_le_bytes(p[0..4].try_into().unwrap()) as usize;
+        tabs.extend_from_slice(&p[4..4 + tl]);
+    }
+    let tz = zstd::bulk::compress(&tabs, 19).unwrap().len();
+    println!("tables: {:.2} MB raw, {:.2} MB with zstd-19 across files", tabs.len() as f64 / 1e6, tz as f64 / 1e6);
     println!("lite: {} files {:.2} MB, scans {:.2} MB -> {:.2} MB ({:.1}% smaller); with headers (solid) {:.2} MB",
         jobs.len(), total as f64 / 1e6, scans as f64 / 1e6, size as f64 / 1e6, 100.0 * (1.0 - size as f64 / scans as f64), (size + h) as f64 / 1e6);
 }
