@@ -55,7 +55,9 @@ Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
-and the board stands at 141 of 144. The estimate for a codec with LZMA's ratio at
+and a quiet run of every level puts the board at 140 of 144 (the photos and
+Silesia zstd -3 rows are within a few hundredths of a second). The estimate for a
+codec with LZMA's ratio at
 a symbol coder's speed is in, and a first build (`lzs.rs`) matches its size at
 1.1-1.2x LZMA's decode speed, against the 2.5x needed; the next design steps are
 listed with it. Then the rANS JPEG coder in Default and the Apple slice delta.
@@ -1059,6 +1061,42 @@ the size cost at 1-2% on binaries, less on text); one symbol for kind and length
 class together, to cut the symbols per match from four or five to three; four
 states instead of two. Each is a day or two; together they are the difference
 between this and an LZNA-class coder, which took its makers years. Not started.
+
+**Quiet benchmark, every level (2026-10-30, 17:43-19:42,
+`bench/results-2026-10-30-quiet-all.jsonl`, report `results-2026-10-30-quiet.md`).**
+Fast, Default, Max and Ultra, each with and without bsc, against zstd -3,
+zstd -19 --long, xz -6, xz -9e, Finder, 7-Zip Normal and 7-Zip Ultra on all nine
+sets, two rounds in turns, every set started at load 2.3-2.5, 274 of 274 round
+trips identical. Zipgeist and WinRAR are the checkpoint's rows, put on this run's
+clock by the rivals both runs share and never made slower (`bench/research/board.py`;
+`checkpoint_report.py`'s own adjustment, by Arca's runs, credits a rival with
+today's engine work and is not used for them). Size MB, make s / extract s:
+
+| | Photos | PDFs and screenshots | Source | Apple apps | Silesia | Saved folder | Website mixed | DMGs | Third-party apps |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **Fast** | 78.3, 0.17 / 0.19 | 41.1, 0.06 / 0.08 | 13.5, 0.25 / 0.40 | 72.2, 0.12 / 0.16 | 65.2, 0.17 / 0.07 | 300.3, 0.59 / 0.89 | 270.2, 0.64 / 0.81 | 615.5, 0.18 / 0.17 | 504.4, 0.55 / 0.40 |
+| **Default** | 71.1, 2.04 / 1.05 | 22.1, 1.31 / 0.22 | 11.2, 1.95 / 0.40 | 56.4, 1.43 / 0.20 | 57.3, 4.96 / 0.10 | 250.7, 7.86 / 1.96 | 217.9, 8.03 / 1.70 | 560.5, 2.49 / 0.96 | 403.0, 6.68 / 0.44 |
+| **Max** | 71.1, 2.04 / 1.04 | 18.2, 9.69 / 0.41 | 8.2, 22.68 / 0.49 | 49.2, 13.05 / 0.64 | 49.4, 13.84 / 0.39 | 223.6, 22.45 / 2.69 | 197.2, 30.63 / 2.15 | 455.0, 39.27 / 4.07 | 350.2, 39.24 / 1.74 |
+| **Ultra** | 71.1, 2.03 / 1.04 | 17.8, 13.89 / 0.40 | 8.2, 22.29 / 3.72 | 48.5, 15.81 / 0.65 | 46.9, 14.23 / 5.91 | 220.6, 31.24 / 4.31 | 191.9, 35.08 / 6.74 | 448.0, 53.02 / 4.16 | 336.2, 62.35 / 1.91 |
+| **Ultra + bsc** | 71.1, 2.03 / 1.05 | 17.8, 15.23 / 0.41 | 8.1, 1.74 / 0.92 | 48.6, 15.86 / 0.62 | 45.9, 13.69 / 0.84 | 220.5, 21.11 / 2.97 | 191.2, 28.09 / 2.80 | 448.0, 52.99 / 4.11 | 336.2, 61.71 / 1.87 |
+
+**140 of 144.** Six of the nine sets are clean sweeps: PDFs, source, Apple apps,
+saved folder, website folder and third-party apps. Arca is the smallest archiver on
+every set, by 5-12% against 7-Zip Ultra and xz -9e on the five sets where that is
+close and by 20-27% on the folders and DMGs, in a quarter to two thirds of their
+time. Fast beats 51 of its 54 fast-class results, and is fastest to extract on
+every set by 1.2x (photos) to 39x (third-party apps against zstd -3). The four left:
+
+| Set | Rival | Arca | Rival | Note |
+|---|---|---|---|---|
+| Photos | Zipgeist ZIP Normal | Fast + bsc 0.166 s | 0.16 s (checkpoint, adjusted) | needs Zipgeist re-measured on this Mac |
+| Silesia | zstd -3 | Fast 0.17 s | 0.15 s | tied at 0.16 this morning; level, not behind |
+| Silesia | zstd -19 --long | Max extracts 0.39 s | 0.24 s | the codec track |
+| DMGs | zstd -19 --long | Default extracts 0.96 s | 0.45 s | the rebuild's CPU |
+
+Silesia against zstd -3 was a win this afternoon (0.16 against 0.16) and a loss by
+0.02 s tonight: Fast is zstd -3 plus its own work on a set with nothing to dedupe,
+and the two will trade places from run to run.
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
