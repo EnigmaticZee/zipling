@@ -98,6 +98,8 @@ pub enum Transform {
     Arm64 { ranges: Vec<(u64, u64)>, x86: Vec<(u64, u64)> },
     /// JPEG losslessly re-encoded with Lepton.
     Lepton,
+    /// JPEG's symbols re-coded with per-image context tables (`transform::jpeglite`).
+    JpegLite,
     /// Deflate streams expanded with preflate (ZIP/Office/PNG/PDF/gzip).
     Deflate,
 }
@@ -108,6 +110,7 @@ impl Transform {
             Transform::None => "none",
             Transform::Arm64 { .. } => "arm64",
             Transform::Lepton => "lepton",
+            Transform::JpegLite => "jpeglite",
             Transform::Deflate => "deflate",
         }
     }
@@ -299,6 +302,7 @@ impl Index {
                 }
                 Transform::Lepton => w.u8(2),
                 Transform::Deflate => w.u8(3),
+                Transform::JpegLite => w.u8(5),
             }
             if o.transform != Transform::None {
                 w.raw(&o.hash.expect("transformed objects carry a hash"));
@@ -445,6 +449,7 @@ impl Index {
                 }
                 2 => Transform::Lepton,
                 3 => Transform::Deflate,
+                5 => Transform::JpegLite,
                 t => bail!("unknown transform {t}"),
             };
             let hash = if transform == Transform::None { None } else { Some(r.array::<16>()?) };
@@ -527,6 +532,7 @@ impl Index {
                 Transform::Arm64 { .. } => 1,
                 Transform::Lepton => 2,
                 Transform::Deflate => 3,
+                Transform::JpegLite => 5,
             };
             let ext = extension[i].as_deref().unwrap_or("");
             for &c in &o.chunks {

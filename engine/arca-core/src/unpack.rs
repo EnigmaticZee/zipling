@@ -679,6 +679,7 @@ impl Extraction<'_> {
                     let _p = prof::span(
                         match obj.transform {
                             Transform::Lepton => "inverse.lepton",
+                            Transform::JpegLite => "inverse.jpeglite",
                             Transform::Deflate => "inverse.deflate",
                             Transform::Arm64 { .. } => "inverse.arm64",
                             Transform::None => "inverse.none",

@@ -7,6 +7,7 @@
 pub mod arm64;
 pub mod deflate;
 pub mod jpeg;
+pub mod jpeglite;
 pub mod pixels;
 
 use crate::classify::{Class, Lane};
@@ -17,6 +18,9 @@ use std::borrow::Cow;
 #[derive(Debug, Clone, Copy)]
 pub struct TransformOpts {
     pub jpeg: bool,
+    /// JPEG's own symbols re-coded with per-image context tables (Fast): ~16%
+    /// smaller at Huffman speed; `jpeg` (Lepton) wins when both are on.
+    pub jpeg_lite: bool,
     pub deflate: bool,
     pub arm64: bool,
     pub verify: bool,
@@ -54,7 +58,7 @@ pub struct Prepared<'a> {
 /// Whether `forward` will attempt a transform for this class.
 pub fn applies(class: Class, opts: &TransformOpts) -> bool {
     match class {
-        Class::Jpeg => opts.jpeg,
+        Class::Jpeg => opts.jpeg || opts.jpeg_lite,
         Class::DeflateContainer(crate::classify::DeflateKind::AssetCatalog) => opts.deflate && opts.asset_catalogs,
         Class::DeflateContainer(crate::classify::DeflateKind::Dmg) => opts.disk_images,
         Class::DeflateContainer(_) => opts.deflate,
@@ -82,6 +86,7 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
     let fwd = prof::span(
         match class {
             Class::Jpeg if opts.jpeg => "fwd.lepton(+verify)",
+            Class::Jpeg if opts.jpeg_lite => "fwd.jpeglite",
             Class::DeflateContainer(crate::classify::DeflateKind::Png) if opts.deflate => "fwd.deflate.png",
             Class::DeflateContainer(crate::classify::DeflateKind::Pdf) if opts.deflate => "fwd.deflate.pdf",
             Class::DeflateContainer(_) if opts.deflate => "fwd.deflate.other",
@@ -93,6 +98,12 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
     let mut store_from = None;
     let attempt: Option<(Transform, Vec<u8>, Lane)> = match class {
         Class::Jpeg if opts.jpeg => jpeg::encode(data).map(|out| (Transform::Lepton, out, Lane::Store)),
+        // Headers and tables compress with other files' in the binary lane; the
+        // coded scans are stored.
+        Class::Jpeg if opts.jpeg_lite => jpeglite::encode(data).map(|(out, from)| {
+            store_from = Some(from);
+            (Transform::JpegLite, out, Lane::Binary)
+        }),
         Class::DeflateContainer(kind) if applies(class, opts) => {
             let png = kind == crate::classify::DeflateKind::Png;
             deflate::encode(data, kind, opts.deflate_chain, opts.deflate_steps_per_byte, !opts.verify, opts.png_pixels.then_some(opts.png_pixels_per_byte_saved)).map(
@@ -128,9 +139,11 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
             },
             data.len() as u64,
         );
-        // Lepton verifies its own round trip internally.
+        // Lepton verifies its own round trip internally; the light JPEG coder
+        // re-writes every scan from what it parsed and compares while encoding.
         let ok = !opts.verify
             || transform == Transform::Lepton
+            || transform == Transform::JpegLite
             || verify(&out, &transform, data);
         if ok {
             return Prepared { transform, stored: Cow::Owned(out), lane, store_from };
@@ -158,6 +171,7 @@ pub fn inverse(stored: Vec<u8>, transform: &Transform, size: u64) -> anyhow::Res
             v
         }
         Transform::Lepton => jpeg::decode(&stored, size)?,
+        Transform::JpegLite => jpeglite::decode(&stored, size)?,
         Transform::Deflate => deflate::decode(&stored, size)?,
     };
     anyhow::ensure!(out.len() as u64 == size, "transform produced {} bytes, expected {size}", out.len());
