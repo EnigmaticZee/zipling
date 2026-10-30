@@ -1,0 +1,16 @@
+13:52:15 saved: start (load 14.7), 2 tools x 2 rounds
+13:52:43 saved r1 arca-max: 223641900 22.99s / 2.70s
+13:53:04 saved r1 arca-max-bsc: 223655445 15.76s / 3.03s
+13:53:23 saved r2 arca-max-bsc: 223655326 15.75s / 3.00s
+13:53:50 saved r2 arca-max: 223641928 23.00s / 2.67s
+13:53:57 mixed: start (load 25.5), 2 tools x 2 rounds
+13:54:32 mixed r1 arca-max: 197170060 31.60s / 2.25s
+13:54:56 mixed r1 arca-max-bsc: 194496874 19.24s / 2.83s
+13:55:19 mixed r2 arca-max-bsc: 194496868 19.44s / 2.75s
+13:55:54 mixed r2 arca-max: 197169969 31.81s / 2.22s
+13:55:56 thirdparty: start (load 25.2), 2 tools x 2 rounds
+13:56:39 thirdparty r1 arca-max: 350226275 40.97s / 1.70s
+13:57:22 thirdparty r1 arca-max-bsc: 350245411 40.00s / 1.68s
+13:58:04 thirdparty r2 arca-max-bsc: 350245430 40.00s / 1.77s
+13:58:46 thirdparty r2 arca-max: 350226252 40.79s / 1.76s
+13:58:47 done

@@ -55,8 +55,8 @@ Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
-and the board stands at 133 of 144. Next: the last 11 rows, then the rANS coder
-in Default and the Apple slice delta.
+and the board stands at 137 of 144. Next: the last seven rows, then the rANS
+coder in Default and the Apple slice delta.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -842,6 +842,36 @@ against Zipgeist ZIP Normal (a tie at 0.17 s); Silesia against zstd -19 --long, 
 (make +3%) and WinRAR Best (extract +1%); DMGs against zstd -19 --long and WinRAR
 Fastest (+0.04% in size); third-party apps against Zipgeist tar.zst Fast (make ×1.85),
 Zipgeist's two 7z and its tar.xz, and WinRAR Best (make +2-11% at Max, 11% smaller).
+
+**Max on large inputs, and the score (`bench/results-2026-10-30-rescore2.jsonl`).**
+Inputs of 512 MiB or more take 32 MiB blocks at Max: LZMA spends less on each byte
+and six encoders get through more. A measured split didn't suit them: 0.8% in size
+but no faster, since the check and queueing fought the encoders.
+
+| Max, checkpoint → now | Size MB | Make s | Extract s |
+|---|---:|---:|---:|
+| Silesia | 48.63 → 49.10 (+1.0%) | 23.5 → 13.1 | 0.69 → 0.38 |
+| Saved folder | 221.96 → 223.64 (+0.8%) | 30.0 → 23.0 | 2.74 → 2.67 |
+| Website mixed | 194.78 → 197.17 (+1.2%) | 41.0 → 31.6 | 2.25 → 2.22 |
+| Third-party apps | 339.46 → 350.23 (+3.2%) | 48.8 → 40.8 | 1.93 → 1.70 |
+
+These four are the exceptions to "at least as small": Max traded size it had in hand
+for rows it was losing. Ultra is untouched and stays the smallest setting.
+
+**137 of 144** on size, make and extract at once (96 at the checkpoint, 106 this
+morning), 120 round trips identical, 58 app tests passing. Fast beats 51 of its 54
+fast-class results. Busy Mac (load 8-15); Ultra's rows, and the rivals not in this
+morning's run, are the checkpoint's. The seven left:
+
+| Set | Rival | Gap | |
+|---|---|---|---|
+| Photos | Zipgeist ZIP Normal | make: tie at 0.17 s | a quiet run may settle it |
+| Silesia | xz -6 | Max's make +3% | a quiet run may settle it |
+| Silesia | WinRAR Best | Default + bsc's extract +1% | a quiet run may settle it |
+| DMGs | WinRAR Fastest | Fast +0.04% in size (0.26 MB) | |
+| Silesia | zstd -19 --long | Max's extract ×1.65 | needs zstd's decode speed at LZMA's size |
+| DMGs | zstd -19 --long | Default's extract ×2.1 | as above |
+| Third-party apps | Zipgeist tar.zst Fast | Fast's make ×1.85 | Fast is 20% smaller and 3.8x faster to extract |
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
