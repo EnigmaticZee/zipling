@@ -7,5 +7,9 @@ description = "Igor Pavlov's public-domain LZMA SDK (from 7-Zip 26.05): LZMA2 en
 license = "Public domain (LZMA SDK)"
 build = "build.rs"
 
+[features]
+# Research: the encoder reports every parse decision to `set_token_hook`'s hook.
+token-hook = []
+
 [build-dependencies]
 cc = "1"

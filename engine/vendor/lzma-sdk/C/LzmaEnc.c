@@ -1135,6 +1135,10 @@ static unsigned ReadMatchDistances(CLzmaEnc *p, unsigned *numPairsRes)
 
 #define MARK_LIT ((UInt32)(Int32)-1)
 
+#ifdef ARCA_TOKEN_HOOK
+extern void (*arca_lzma_token_hook)(UInt32 pos, UInt32 len, UInt32 dist, const UInt32 *reps, unsigned state);
+#endif
+
 #define MakeAs_Lit(p)       { (p)->dist = MARK_LIT; (p)->extra = 0; }
 #define MakeAs_ShortRep(p)  { (p)->dist = 0; (p)->extra = 0; }
 #define IsShortRep(p)       ((p)->dist == 0)
@@ -2459,6 +2463,12 @@ static SRes LzmaEnc_CodeOneBlock(CLzmaEnc *p, UInt32 maxPackSize, UInt32 maxUnpa
     RC_BIT_PRE(&p->rc, probs)
     
     dist = p->backRes;
+
+    #ifdef ARCA_TOKEN_HOOK
+    /* Arca's research tap: every parse decision, before it is range-coded. */
+    if (arca_lzma_token_hook)
+      arca_lzma_token_hook(nowPos32, len, dist, p->reps, p->state);
+    #endif
 
     #ifdef SHOW_STAT2
     printf("\n pos = %6X, len = %3u  pos = %6u", nowPos32, len, dist);

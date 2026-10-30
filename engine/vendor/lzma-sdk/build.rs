@@ -4,6 +4,9 @@ fn main() {
     let arm64 = std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("aarch64");
     let mut b = cc::Build::new();
     b.include("C").opt_level(2).warnings(false).define("Z7_NO_LONG_PATH", None);
+    if std::env::var_os("CARGO_FEATURE_TOKEN_HOOK").is_some() {
+        b.define("ARCA_TOKEN_HOOK", None);
+    }
     for f in ["Alloc", "CpuArch", "LzFind", "LzFindMt", "LzFindOpt", "Lzma2Dec", "Lzma2Enc", "LzmaEnc", "MtCoder", "MtDec", "Threads", "7zStream"] {
         b.file(format!("C/{f}.c"));
     }
