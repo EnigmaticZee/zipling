@@ -174,8 +174,11 @@ const CDC_MIN_FILE: usize = 1 << 20;
 const CDC_MIN: u32 = 128 << 10;
 const CDC_AVG: u32 = 512 << 10;
 const CDC_MAX: u32 = 2 << 20;
-/// Bytes of a long stream one task cuts into chunks. 64 MiB leaves third-party
-/// apps' size unchanged; 32 MiB loses 0.2% of it to chunks split at the seams.
+/// Bytes of a long stream one task cuts into chunks, at Fast. 64 MiB leaves
+/// third-party apps' size unchanged there; 32 MiB loses 0.2% to chunks split at
+/// the seams. Levels that expand archives keep one pass over the stream: Firefox's
+/// two expanded `omni.ja` dedupe against each other, and the seams cost 0.25% at
+/// Default for a saving that hardly shows in seven seconds of work.
 const CDC_SPAN: usize = 64 << 20;
 /// How far (in input bytes) file tasks may run ahead of the packer.
 const LOOKAHEAD_BYTES: u64 = 512 << 20;
@@ -905,13 +908,14 @@ fn process_file(
     // (the index keeps that hash to check the rebuilt file). Every other file is
     // only hashed once, chunk by chunk, and its identity comes from those hashes.
     let transformable = transform::applies(class, &opts.transforms);
+    let spans = opts.level == Level::Fast;
     let (hash, plain_cuts) = if transformable || data.is_empty() {
         let _h = prof::span("file.hash", job.size);
         (key.hash(&data), None)
     } else {
         let cuts = {
             let _p = prof::span("file.chunk", data.len() as u64);
-            cut_chunks(&data, key, opts.dedup)
+            cut_chunks(&data, key, opts.dedup, spans)
         };
         (content_key(&cuts, key), Some(cuts))
     };
@@ -944,13 +948,13 @@ fn process_file(
                     // Chunk the compressible head and the coded tail separately,
                     // so each chunk belongs to one lane.
                     Some(k) => {
-                        let mut c = cut_chunks(&stored[..k], key, opts.dedup);
+                        let mut c = cut_chunks(&stored[..k], key, opts.dedup, spans);
                         // The coded tail of a photo shares nothing with another's
                         // short of being the same file, so fixed cuts will do.
-                        c.extend(cut_chunks(&stored[k..], key, false).into_iter().map(|(o, l, h)| (o + k, l, h)));
+                        c.extend(cut_chunks(&stored[k..], key, false, spans).into_iter().map(|(o, l, h)| (o + k, l, h)));
                         c
                     }
-                    None => cut_chunks(stored, key, opts.dedup),
+                    None => cut_chunks(stored, key, opts.dedup, spans),
                 }
             };
             (p.transform, owned, p.lane, p.store_from, cuts)
@@ -995,11 +999,11 @@ fn content_key(cuts: &[(usize, usize, [u8; 16])], key: &hash::Key) -> [u8; 16] {
     }
 }
 
-/// Chunk boundaries with the hashes that deduplicate them. A long stream is cut
-/// span by span on every core.
-fn cut_chunks(stored: &[u8], key: &hash::Key, dedup: bool) -> Vec<(usize, usize, [u8; 16])> {
+/// Chunk boundaries with the hashes that deduplicate them. With `spans`, a long
+/// stream is cut span by span on every core.
+fn cut_chunks(stored: &[u8], key: &hash::Key, dedup: bool, spans: bool) -> Vec<(usize, usize, [u8; 16])> {
     use rayon::prelude::*;
-    if stored.len() <= 2 * CDC_SPAN {
+    if !spans || stored.len() <= 2 * CDC_SPAN {
         return cut_span(stored, key, dedup);
     }
     let parts: Vec<_> = stored
