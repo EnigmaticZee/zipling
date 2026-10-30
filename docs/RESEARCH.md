@@ -56,8 +56,9 @@ extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
 and the board stands at 141 of 144. The estimate for a codec with LZMA's ratio at
-a symbol coder's speed is in (3.9% behind LZMA, 4.6% ahead of zstd -19 on Silesia);
-next is building it. Then the rANS JPEG coder in Default and the Apple slice delta.
+a symbol coder's speed is in, and a first build (`lzs.rs`) matches its size at
+1.1-1.2x LZMA's decode speed, against the 2.5x needed; the next design steps are
+listed with it. Then the rANS JPEG coder in Default and the Apple slice delta.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -1023,6 +1024,41 @@ it: the SDK's optimal parse (first with LZMA's prices, later with the coder's ow
 tokens coded with interleaved rANS over adaptive nibble models under A+'s contexts,
 decoded with a zstd-class copy loop. If it reaches A+'s size at 2.5x LZMA's speed,
 Max extracts 2-3x faster on everything and the Silesia row falls.
+
+**The codec, first build (`arca-core/src/lzs.rs`, research; `examples/lzsbench`).**
+LZMA's parse through the tap, coded with adaptive 16-symbol models and two
+interleaved rANS states, under A+'s contexts. Every alphabet is a nibble or two.
+The models update as AV1's entropy coder does: each cumulative entry moves on its
+own towards 0 or the top, with one unit per symbol reserved so entries may meet
+without a symbol losing its range; that replaced a 12-step prefix sum with four
+vector operations. Renormalization is branch-free (the branch mispredicted half
+the time), and the two states swap registers instead of indexing memory. A short
+repeat whose distance the replay disagrees with (the LZMA2 encoder restores its
+state after a chunk it stores raw) stays a literal; a longer one becomes a match.
+
+| File | LZMA | lzs | | LZMA decode | lzs decode |
+|---|---:|---:|---:|---:|---:|
+| dickens | 2.831 | 2.918 | +3.1% | 142 MB/s | 133-144 MB/s |
+| x-ray | 4.480 | 4.677 | +4.4% | 52 | 48-63 |
+| samba | 3.731 | 3.936 | +5.5% | 183 | 219 |
+| mozilla | 13.313 | 13.972 | +5.0% | 110 | 120-128 |
+
+Size is as the estimate said (+4.7% over these four, the estimate +4.2%; the
+independent-lane update costs 0.5% against the exact one). Speed is the problem:
+1.1-1.2x LZMA, against the 2.5x the Silesia row needs. The profile puts the chain
+per symbol at about 22 cycles, slot → 16-lane compare → horizontal count → gather
+of the two cumulative entries → multiply → select, and two states only halve it;
+the measured 40 cycles a symbol also carry the per-byte loop and its branches.
+Moving the literal run into a function of its own, as for the JPEG parser, changed
+nothing here.
+
+What would reach the target, in order of expected gain: literals in semi-static
+per-chunk tables under the same contexts, decoded by an 11-bit lookup as zstd does
+(one symbol a byte at 4-5 cycles instead of two nibbles at 40; the estimator puts
+the size cost at 1-2% on binaries, less on text); one symbol for kind and length
+class together, to cut the symbols per match from four or five to three; four
+states instead of two. Each is a day or two; together they are the difference
+between this and an LZNA-class coder, which took its makers years. Not started.
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 

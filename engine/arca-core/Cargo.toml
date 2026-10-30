@@ -5,10 +5,6 @@ edition.workspace = true
 publish = false
 description = "Arca archive engine: content-aware, deduplicating, parallel archive format"
 
-[features]
-# Research: the LZ-token estimator (`cargo run --release --features lztok --example lztok`).
-lztok = ["lzma-sdk/token-hook"]
-
 [dependencies]
 anyhow = "1"
 blake3 = { version = "1.8", features = ["rayon"] }
@@ -24,7 +20,7 @@ libc = "0.2"
 liblzma = { version = "0.4", features = ["static"] }
 # For encoder memory estimates (the same vendored build `liblzma` uses).
 liblzma-sys = { version = "0.4", features = ["static"] }
-lzma-sdk = { path = "../vendor/lzma-sdk" }
+lzma-sdk = { path = "../vendor/lzma-sdk", features = ["token-hook"] }
 libbsc = { path = "../vendor/libbsc" }
 zlib-pinned = { path = "../vendor/zlib" }
 lzfse-pinned = { path = "../vendor/lzfse" }
@@ -38,7 +34,3 @@ zstd = { version = "0.13", features = ["zstdmt"] }
 
 [dev-dependencies]
 tempfile = "3"
-
-[[example]]
-name = "lztok"
-required-features = ["lztok"]
