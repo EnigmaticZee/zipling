@@ -654,9 +654,8 @@ It can only differ from the original if one of a few things went wrong, and thos
 can be checked directly: each table is a prefix code with one code per symbol;
 stuffing was FF 00; and each stretch ends with nothing but padding of ones, right
 before the next expected marker, with no made-up bits consumed. Every other bit was
-a symbol's code or its raw bits. This is stricter on one point, too: nothing was
-checking the old code's restart search for skipped bytes until the comparison. The
-fuzz test covers what neither check does, the decoder: 120,000 mutants of the 400
+a symbol's code or its raw bits. The fuzz test covers what neither check does, the
+decoder: 120,000 mutants of the 400
 real photos (244 with restart markers), one to three random changes each, 36,593
 accepted, every one back byte for byte, no crash.
 
@@ -678,6 +677,23 @@ Docs is 0.04 MB larger (0.1%), the one set that isn't at least as small; tables
 18/18 would fix it at +5-10% CPU on Silesia and third-party apps, so it stays.
 Source's wall time rose 3-4% with its CPU down 17%: noise from the load or the
 retry; to be read on a quiet Mac.
+
+**Big files and the extraction scheduler (built).** Third-party apps used 5 of 10
+cores packing and 2.4 unpacking, for three reasons:
+
+- Unpacking held at most 20 decoded blocks (2 × threads). Firefox's 352 MB `XUL`
+  spans 44 blocks and holds them all until its last one arrives, so past 20 the
+  scheduler decoded one block at a time. More are now admitted while cores are
+  idle, under the same 2 GiB cap. 0.92 → 0.45 s.
+- A photo's headers sit in a late block, so rebuilds waited until the end while
+  spare cores queued at the file-creation gate. Blocks that hold up the most
+  rebuilding now decode first: website set 0.86 → 0.78 s.
+- Packing ran the ARM64 filter, its check, chunking and routing of each file on one
+  thread. The ARM64 filter looks at one instruction at a time, so regions split
+  anywhere; ARM64 and x86 regions run side by side; the check compares in 2 MiB
+  pieces and no longer copies the whole file; streams over 128 MiB are chunked in
+  64 MiB spans. 32 MiB spans lost 0.2% to chunks split at the seams, 64 MiB nothing.
+  1.32 → 1.03 s.
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 

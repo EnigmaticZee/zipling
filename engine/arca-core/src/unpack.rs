@@ -275,9 +275,15 @@ impl Archive {
             })
             .collect();
         let refs: Vec<u32> = (0..nblocks).map(|b| (runs[b].len() + unlocks[b].len()) as u32).collect();
-        // Cheap stored blocks first: they unlock the JPEGs, the most work per byte.
+        // Cheap stored blocks first, then the blocks holding up the most rebuilding
+        // (a photo's headers sit in a late block): rebuilds then run alongside the
+        // writes, which only `CREATORS` threads can do, and not after them.
+        let holds: Vec<u64> = unlocks
+            .iter()
+            .map(|os| os.iter().map(|&o| rebuild_cost(&idx.objects[o as usize])).sum())
+            .collect();
         let mut order: Vec<u32> = (0..nblocks as u32).filter(|&b| refs[b as usize] > 0).collect();
-        order.sort_by_key(|&b| (idx.blocks[b as usize].codec != Codec::Store, b));
+        order.sort_by_key(|&b| (idx.blocks[b as usize].codec != Codec::Store, Reverse(holds[b as usize]), b));
         let wanted = order.len() as u64;
 
         let total: u64 = objs.iter().map(|&o| idx.objects[o as usize].size).sum();
@@ -489,6 +495,7 @@ const FILE_COST: u64 = 50_000;
 fn rebuild_cost(obj: &Object) -> u64 {
     let work = match obj.transform {
         Transform::Lepton => obj.size.saturating_mul(125),
+        Transform::JpegLite => obj.size.saturating_mul(17),
         Transform::Deflate => obj.stored_len.saturating_mul(27),
         _ => obj.size,
     };
@@ -519,13 +526,17 @@ impl Sched {
         }
     }
 
-    /// Queues block decodes while memory allows. When nothing else can run,
-    /// one more block is admitted regardless, so an archive whose objects span
-    /// far-apart blocks still finishes (holding more memory).
+    /// Queues block decodes while memory allows. Past the count of blocks, more
+    /// are admitted while cores are idle: one large file holds many blocks until
+    /// its last arrives, and they mustn't decode one at a time (Firefox's 352 MB
+    /// `XUL` spans 44). When nothing can run, one more block is admitted
+    /// regardless, so an archive whose objects span far-apart blocks still
+    /// finishes (holding more memory).
     fn admit(&mut self, x: &Extraction) {
         while let Some(&b) = x.order.get(self.next) {
             let raw = x.archive.index.blocks[b as usize].raw_len;
-            let fits = self.resident < x.max_resident && self.resident_bytes + raw <= MAX_RESIDENT_BYTES;
+            let idle = self.queued() + self.running < x.max_resident / 2;
+            let fits = (self.resident < x.max_resident || idle) && self.resident_bytes + raw <= MAX_RESIDENT_BYTES;
             let stalled = self.queued() == 0 && self.running == 0;
             if !fits && !stalled {
                 break;
