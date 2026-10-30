@@ -54,9 +54,9 @@ WebP-style tools in the pixel codec for flat images, similarity ordering, bzip2
 Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
-in "After the checkpoint". The light JPEG coder and Fast's overhead are done;
-next is a quiet benchmark of them, then the rANS coder in Default, DMGs, text
-decoding at Max and the Apple slice delta.
+in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
+and the quiet benchmark of them stands at 106 of 144. Next: DMGs (14 misses),
+the rANS coder in Default, text decoding at Max and the Apple slice delta.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -735,6 +735,42 @@ Fast's standing on these busy-Mac numbers, to be confirmed quietly: photos 0.18 
 against Zipgeist's 0.17-0.21 s and zstd -3's 0.26 s; website set 0.72 s against 0.84
 s; saved folder about 0.70 s against 0.97 s; third-party apps pack 1.1 s (was 2.3 s)
 and unpack 0.42 s (was 1.5 s).
+
+**Quiet benchmark (2026-10-30).** All nine sets, Fast and Default against zstd -3,
+Finder, WinRAR Fastest and Normal and 7-Zip Normal, two rounds in turns, 63 of 63
+round trips identical (`bench/results-2026-10-30-fast-quiet.jsonl`). Start-of-set
+load 2.1-3.5: photos and the saved folder never got under 2.5 in ten minutes.
+Rivals in both runs took 2-8% longer to make than at the checkpoint, so these
+numbers lean slightly against Arca. Zipgeist wasn't re-measured: its times are the
+checkpoint's adjusted ones, scaled by that clock but never made slower.
+
+| Set | Fast: MB, make / extract s | Best fast rival to make | zstd -3 | Zipgeist tar.zst Fast |
+|---|---:|---|---:|---:|
+| Photos | 78.26, 0.19 / 0.20 | Zipgeist ZIP Normal 0.17 | 91.84, 0.25 / 0.26 | 92.06, 0.18 / 0.38 |
+| PDFs and screenshots | 41.56, 0.07 / 0.08 | Zipgeist tar.zst Fast 0.17 | 45.12, 0.43 / 0.44 | 45.24, 0.17 / 0.43 |
+| Source | 13.55, 0.27 / 0.43 | Zipgeist ZIP Normal 0.45 | 15.16, 3.88 / 3.62 | 16.99, 0.48 / 0.77 |
+| Apple apps | 71.70, 0.17 / 0.16 | Zipgeist tar.zst Fast 0.34 | 77.25, 1.14 / 1.15 | 86.23, 0.34 / 0.67 |
+| Silesia | 65.24, 0.19 / 0.07 | zstd -3 0.16 | 66.58, 0.16 / 0.21 | 73.31, 0.17 / 0.56 |
+| Saved folder | 298.11, 0.65 / 0.89 | Zipgeist tar.zst Fast 0.97 | 329.66, 6.91 / 10.91 | 340.98, 0.97 / 1.24 |
+| Website mixed | 270.40, 0.71 / 0.79 | Zipgeist tar.zst Fast 0.84 | 296.09, 5.76 / 5.77 | 313.80, 0.84 / 1.27 |
+| Third-party apps | 462.37, 1.13 / 0.44 | Zipgeist tar.zst Fast 0.55 | 515.59, 1.50 / 15.17 | 569.63, 0.55 / 1.57 |
+| DMGs | 619.69, 0.32 / 0.19 | Zipgeist tar.zst Fast 0.25 | 616.33, 0.26 / 0.48 | 617.58, 0.25 / 0.58 |
+
+Against the six fast-class rivals (zstd -3, Finder, WinRAR Fastest, Zipgeist tar.zst
+Fast, ZIP Fast and ZIP Normal), Fast beats 43 of 54 on size, make and extract at
+once; all 11 misses are on make or on DMGs. It is fastest to extract and smaller
+than every one of them outside DMGs. On the whole board, by
+`bench/research/board.py`, one Arca setting beats **106 of 144** rival results at
+once (96 at the checkpoint): saved and website folders 16 of 16 each, photos 14,
+third-party 13, source 14, docs 12, apps 11, Silesia 8, DMGs 2. DMGs are the biggest
+block left. Default makes them faster than Fast does (0.23 / 0.14 s, 619.67 MB),
+which needs explaining. Max and Ultra rows are still the checkpoint's, which can
+only understate them.
+
+The comparison caught a regression: 64 MiB chunking spans had cost third-party apps
+0.25% at Default, where Firefox's expanded `omni.ja` files dedupe against each
+other. Spans are now Fast's alone; Default is back to 411.70 MB (the results file
+still shows 412.75 MB from the run before the fix).
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
