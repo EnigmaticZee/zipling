@@ -62,6 +62,10 @@ pub struct PackOptions {
     pub code_codec: CodecConfig,
     /// Block size for the code lane.
     pub code_block_size: usize,
+    /// Send disk images to the code lane without `code_lane`, when it runs zstd.
+    /// Default's lane there is zstd -5: an image is hundreds of megabytes of mostly
+    /// app bundles, and five DMGs took 5.4 s at level 12 against 2.7 s, for 1.8%.
+    pub quick_images: bool,
     /// Send filtered binaries and ZIP, gzip or asset catalog files to the code lane
     /// without `code_lane`. Fast's lane there is zstd -1: they are most of a big app's
     /// bytes and hold the least for level 3 to find. Third-party apps 1.05 → 0.57 s,
@@ -149,9 +153,11 @@ impl PackOptions {
             code_codec: match level {
                 Level::Max | Level::Ultra => lzma2(9, true),
                 Level::Fast => CodecConfig { long: false, ..zstd(1) },
-                Level::Balanced => binary,
+                // Disk images only: see `quick_images`.
+                Level::Balanced => zstd(5),
             },
             quick_binaries: level == Level::Fast,
+            quick_images: level == Level::Balanced,
             code_block_size: block,
             image_block_size: block,
             index_level: if matches!(level, Level::Fast | Level::Balanced) { 9 } else { 19 },
@@ -1112,6 +1118,8 @@ fn process_file(
     use classify::DeflateKind as Kind;
     let packed = matches!(class, Class::DeflateContainer(Kind::Zip | Kind::Gzip | Kind::AssetCatalog));
     let lane = if opts.quick_binaries && (matches!(transform, Transform::Arm64 { .. }) || packed) { Lane::Code } else { lane };
+    let image = matches!(class, Class::DeflateContainer(Kind::Dmg));
+    let lane = if image && opts.quick_images && opts.code_codec.codec == Codec::Zstd { Lane::Code } else { lane };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
     let route = |(off, len, hash): (usize, usize, [u8; 16])| {
         if store_from.is_some_and(|k| off >= k) {
