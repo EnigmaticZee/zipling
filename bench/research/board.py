@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The checkpoint's board with a newer run laid over it.
 
-    python3 -I bench/research/board.py <newer.jsonl>
+    python3 -I bench/research/board.py <newer.jsonl> [newer still.jsonl ...]
 
 Rows in the newer run replace the checkpoint's. Rivals it didn't run keep their
 checkpoint times, scaled per set by how the two runs' shared rivals compare, but
@@ -38,6 +38,8 @@ for extra in ("zipgeist", "checkpoint-rar", "checkpoint-7z"):
         best[k] = b
 
 new = load(sys.argv[1])
+for path in sys.argv[2:]:
+    new.update(load(path))
 clock = {}
 for s in SET_INFO:
     pairs = [(b, best[k]) for k, b in new.items() if k[0] == s and not k[1].startswith("arca") and k in best and "size" in b]
