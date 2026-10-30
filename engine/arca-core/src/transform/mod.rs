@@ -42,8 +42,9 @@ pub struct TransformOpts {
     /// spends ~9x the CPU on them and zstd does worse than LZFSE (see RESEARCH.md).
     pub asset_catalogs: bool,
     /// Expand the zlib and LZFSE chunks of disk images (`.dmg`). 10-26% smaller
-    /// DMGs, but the expanded data takes 4-10x the time to compress; on at Max
-    /// and Ultra (see RESEARCH.md), and a switch for any level.
+    /// DMGs, but the expanded data takes 4-10x the time to compress. On from
+    /// Default up, where Default leaves out chunks of zlib levels 7-9 (see
+    /// RESEARCH.md); a switch for any level.
     pub disk_images: bool,
 }
 

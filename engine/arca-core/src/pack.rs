@@ -124,7 +124,7 @@ impl PackOptions {
                     _ => 0,
                 },
                 asset_catalogs: std::env::var_os("ARCA_EXP_CAR").is_some(),
-                disk_images: matches!(level, Level::Max | Level::Ultra),
+                disk_images: level != Level::Fast,
             },
             dedup: true,
             probe: level == Level::Balanced,
