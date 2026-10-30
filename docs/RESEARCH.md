@@ -406,6 +406,39 @@ lane; verify by re-writing the parsed symbols, which is cheap) and the rANS
 coder as Default's. Then measure the photo set in the real archive against
 every rival on a quiet Mac.
 
+**Photos: light mode, tuning round** (`lite.rs`: `pack_tight`, `unpack_tight`).
+Same size (78.26 MB with headers on the 382 unique photos); every photo exact
+after each step. One core and 10 threads, busy Mac (load ~3-4):
+
+| Step | Pack 1 / 10 threads | Unpack 1 / 10 threads |
+|---|---:|---:|
+| Before | 60 MB/s / 0.208 s | 61 MB/s / 0.197 s |
+| Symbol and raw bits in one step; one write per symbol | 60 / 0.207 | 61 / 0.196 |
+| Branch-free light-stream writer (8-byte store, advance by whole bytes) | 63 / 0.197 | 61 / 0.196 |
+| Raw bits in their own stream (events shrink to 2 bytes) | 68 / 0.177 | 60 / 0.198 |
+| Bands from the position's top bit (0.6 MB bigger) | no gain, reverted | no gain |
+| Closures replaced by a block iterator | 72 / 0.171 | 61 / 0.193 |
+| **Unpack as one loop over locals, raw pointers, stuffing on a cold path** | 72 / 0.171 | **68 / 0.172** |
+| **Pack likewise** (event buffer checked per block) | 71 / **0.175** | **70 / 0.166** |
+
+The big lesson: the per-block closure captured the bit-reader state by
+reference. LLVM kept it in memory, which meant 125 instructions per symbol and
+loads and stores on every step. Instructions and cycles for unpacking were
+19.7 G and 5.0 G per pass (IPC 3.9), which pointed straight at it.
+
+Packing now is mostly the JPEG read itself: reading alone takes 0.86 s per
+core (110 MB/s, ~5.4 ns per symbol). The rest is events, tables (0.16 s) and
+the write (0.32 s).
+
+Against the rivals on photos, this harness has the light mode ahead of all of
+them on size (78.3 vs 85.3+ MB) and on unpacking (0.17 vs 0.27+ s). Packing
+(0.175 s) is ahead of zstd -3 (0.26 s) and Zipgeist's tar.zst Fast (0.21 s),
+and close to Zipgeist's ZIP (0.19 s, which Fast's store already beats). In the
+archive, reading files and hashing add to packing. Ideas left for packing:
+tables from a sample of the image so codes are written during the parse (no
+event replay), a cheaper table build, and the faster duplicate hash from
+Fast's profile.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64
