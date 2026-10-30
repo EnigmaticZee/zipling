@@ -660,17 +660,29 @@ struct ParseIo {
     ac: *mut [u32; 256],
 }
 
-/// Reads one block's symbols and raw bits; returns its count of nonzero AC values.
-/// A function of its own, and one that keeps the state in locals: inside `encode`
-/// the compiler kept the read position and raw writer on the stack, and each
-/// symbol waited on a store being forwarded to the next load, 18 cycles a symbol.
+/// What a run of blocks needs beyond the parser's own state.
+struct Run<'a> {
+    l: &'a Layout,
+    tabs: &'a [(JTable, JTable)],
+    counts: &'a mut [Vec<u8>],
+    clean_len: usize,
+    raw_len: usize,
+}
+
+/// Reads the symbols and raw bits of blocks until `mcus` MCUs are done or the scan
+/// ends, and says which. A function of its own that keeps the state in locals:
+/// inside `encode` the compiler kept the read position and raw writer on the
+/// stack, and each symbol waited on a store being forwarded to the next load, 18
+/// cycles a symbol. With one block per call, the call and the state copied in and
+/// out cost a fifth of the parse at five symbols a block.
 ///
 /// # Safety
 /// The buffers in `io` must have room for a whole block past their positions.
 #[inline(never)]
-unsafe fn parse_block(st: &mut Parse, io: &ParseIo, tdc: &JTable, tac: &JTable, dctx: usize, row: usize) -> Option<u32> {
+unsafe fn parse_run(st: &mut Parse, io: &mut ParseIo, evs: &mut Vec<u16>, run: &mut Run, blocks: &mut Blocks, mcus: usize) -> Option<bool> {
     let Parse { mut acc, mut n, mut p, mut racc, mut rn, mut rlen, mut nev } = *st;
-    let (cp, rbp, evp) = (io.clean, io.raw, io.events);
+    let (cp, rbp) = (io.clean, io.raw);
+    let mut evp = io.events;
     // After a refill at least 56 bits are in; a symbol and its raw bits take at
     // most 32. Refilling only when needed keeps the bit position out of the path
     // from one symbol to the next: a load on it would add 8 cycles a symbol.
@@ -714,42 +726,73 @@ unsafe fn parse_block(st: &mut Parse, io: &ParseIo, tdc: &JTable, tac: &JTable, 
             rn &= 7;
         }};
     }
-    refill!();
-    let (s, r, sz) = sym_raw!(tdc, false);
-    if s > 15 {
-        return None;
-    }
-    (*io.dc.add(dctx))[s as usize] += 1;
-    *evp.add(nev) = ((dctx as u16) << 8) | s as u16;
-    nev += 1;
-    rput!(r, sz);
-    let (mut k, mut nz) = (1usize, 0u32);
-    let ac = io.ac.add(row);
-    while k < 64 {
-        let (rs, r, sz) = sym_raw!(tac, true);
-        let at = band(k) * NCTX;
-        (*ac.add(at))[rs as usize] += 1;
-        *evp.add(nev) = (((CTX_DC + row + at) as u16) << 8) | rs as u16;
+    let mut done = 0usize;
+    let ended = loop {
+        let Some((ci, si, b, end_mcu, up, lf)) = blocks.next() else { break true };
+        // a block reads less than this from the padding
+        if p > run.clean_len - 512 {
+            return None;
+        }
+        // room for a whole block's events (1 + 63 + a few ZRL)
+        if nev + 80 > evs.capacity() {
+            evs.set_len(nev);
+            evs.reserve(evs.capacity());
+            evp = evs.as_mut_ptr();
+            io.events = evp;
+        }
+        // one block writes at most 132 raw bytes
+        if rlen + 256 > run.raw_len {
+            return None;
+        }
+        let cc = ci.min(1);
+        let cnt = run.counts.get_unchecked_mut(ci);
+        let nc = nctx(cnt, run.l.comps.get_unchecked(ci).bw, b, up, lf);
+        let (tdc, tac) = (&run.tabs.get_unchecked(si).0, &run.tabs.get_unchecked(si).1);
+        let (dctx, row) = (cc * NCTX + nc, cc * 8 * NCTX + nc);
+        refill!();
+        let (s, r, sz) = sym_raw!(tdc, false);
+        if s > 15 {
+            return None;
+        }
+        (*io.dc.add(dctx))[s as usize] += 1;
+        *evp.add(nev) = ((dctx as u16) << 8) | s as u16;
         nev += 1;
         rput!(r, sz);
-        if sz == 0 {
-            if rs == 0xF0 {
-                k += 16;
-                continue;
+        let (mut k, mut nz) = (1usize, 0u32);
+        let ac = io.ac.add(row);
+        while k < 64 {
+            let (rs, r, sz) = sym_raw!(tac, true);
+            let at = band(k) * NCTX;
+            (*ac.add(at))[rs as usize] += 1;
+            *evp.add(nev) = (((CTX_DC + row + at) as u16) << 8) | rs as u16;
+            nev += 1;
+            rput!(r, sz);
+            if sz == 0 {
+                if rs == 0xF0 {
+                    k += 16;
+                    continue;
+                }
+                if rs != 0 {
+                    return None; // not EOB, ZRL or a value
+                }
+                break;
             }
-            if rs != 0 {
-                return None; // not EOB, ZRL or a value
-            }
-            break;
+            k += (rs >> 4) as usize + 1;
+            nz += 1;
         }
-        k += (rs >> 4) as usize + 1;
-        nz += 1;
-    }
-    if k > 64 {
-        return None;
-    }
+        if k > 64 {
+            return None;
+        }
+        *cnt.get_unchecked_mut(b) = nz.min(63) as u8;
+        if end_mcu {
+            done += 1;
+            if done == mcus {
+                break false;
+            }
+        }
+    };
     *st = Parse { acc, n, p, racc, rn, rlen, nev };
-    Some(nz)
+    Some(ended)
 }
 
 pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
@@ -793,40 +836,16 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
                     }
                 }};
             }
-            let (mut mcu, mut first) = (0usize, true);
-            for (ci, si, b, end_mcu, up, lf) in Blocks::new(&l, sc) {
-                if l.dri > 0 && first && mcu > 0 && mcu % l.dri == 0 {
-                    ended!();
-                    st.p = *ends.get(stretch)?;
-                    stretch += 1;
-                    st.acc = 0;
-                    st.n = 0;
-                }
-                // a block reads less than this from the padding
-                if st.p > clean.len() - 512 {
-                    return None;
-                }
-                first = false;
-                // room for a whole block's events (1 + 63 + a few ZRL)
-                if st.nev + 80 > evs.capacity() {
-                    evs.set_len(st.nev);
-                    evs.reserve(evs.capacity());
-                    io.events = evs.as_mut_ptr();
-                }
-                // one block writes at most 132 raw bytes
-                if st.rlen + 256 > rawbuf.len() {
-                    return None;
-                }
-                let cc = ci.min(1);
-                let cnt = counts.get_unchecked_mut(ci);
-                let nc = nctx(cnt, l.comps.get_unchecked(ci).bw, b, up, lf);
-                let (tdc, tac) = (&tabs.get_unchecked(si).0, &tabs.get_unchecked(si).1);
-                let nz = parse_block(&mut st, &io, tdc, tac, cc * NCTX + nc, cc * 8 * NCTX + nc)?;
-                *cnt.get_unchecked_mut(b) = nz.min(63) as u8;
-                if end_mcu {
-                    mcu += 1;
-                    first = true;
-                }
+            let mut run = Run { l: &l, tabs: &tabs, counts: &mut counts, clean_len: clean.len(), raw_len: rawbuf.len() };
+            let mut blocks = Blocks::new(&l, sc);
+            let mcus = if l.dri > 0 { l.dri } else { usize::MAX };
+            // A run of blocks at a time: to the next restart marker, or the end.
+            while !parse_run(&mut st, &mut io, &mut evs, &mut run, &mut blocks, mcus)? && !blocks.done {
+                ended!();
+                st.p = *ends.get(stretch)?;
+                stretch += 1;
+                st.acc = 0;
+                st.n = 0;
             }
             ended!();
             if stretch + 1 != ends.len() {
