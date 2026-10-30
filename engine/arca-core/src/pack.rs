@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
@@ -76,8 +76,8 @@ pub struct PackOptions {
 impl PackOptions {
     pub fn preset(level: Level) -> Self {
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
-        let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false, long: true };
-        let lzma2 = |level, extreme| CodecConfig { codec: Codec::Lzma2, level, extreme, long: false };
+        let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false, long: true, workers: 1 };
+        let lzma2 = |level, extreme| CodecConfig { codec: Codec::Lzma2, level, extreme, long: false, workers: 1 };
         // Per lane: text needs the expensive match finders (zstd's binary tree, xz's
         // extreme mode) to reach full ratio; binaries lose <0.4% with the cheaper
         // ones and gain it back from bigger blocks, at 3-4x the speed.
@@ -94,7 +94,7 @@ impl PackOptions {
             // Ultra is the smallest: context modelling for text (it beats LZ on
             // prose and source code, at the cost of decode speed) and the longest
             // LZMA2 matches.
-            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false, long: false }, lzma2(9, true), 64 << 20, 64 << 20, 0),
+            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false, long: false, workers: 1 }, lzma2(9, true), 64 << 20, 64 << 20, 0),
         };
         let heavy = level != Level::Fast;
         PackOptions {
@@ -345,6 +345,9 @@ struct BlockSink {
     /// Pack start, for the block timeline `ARCA_DEBUG_TIMING` prints.
     start: Option<Instant>,
     key: Arc<hash::Key>,
+    /// File tasks and blocks under way or waiting, and the cores they share.
+    busy: Arc<AtomicUsize>,
+    cores: usize,
 }
 
 impl BlockSink {
@@ -377,7 +380,7 @@ impl BlockSink {
         self.slots_rx.recv().expect("slot channel");
         let cfg = self.codecs[block.lane as usize];
         let (done_tx, slots_tx) = (self.done_tx.clone(), self.slots_tx.clone());
-        let (start, key) = (self.start, self.key.clone());
+        let (start, key, busy, cores) = (self.start, self.key.clone(), self.busy.clone(), self.cores);
         let queued = start.map(|s| s.elapsed().as_secs_f64());
         self.pool.spawn(move || {
             let began = start.map(|s| s.elapsed().as_secs_f64());
@@ -392,6 +395,9 @@ impl BlockSink {
                 },
                 block.buf.len() as u64,
             );
+            // With cores to spare, a block takes two.
+            let at_once = busy.fetch_add(1, Ordering::Relaxed) + 1;
+            let cfg = CodecConfig { workers: if 2 * at_once <= cores { 2 } else { 1 }, ..cfg };
             let raw_len = block.buf.len() as u64;
             let raw_hash = key.hash(&block.buf);
             let res = if cfg.codec == Codec::Store {
@@ -412,6 +418,7 @@ impl BlockSink {
                 };
                 Done { id: block.id, comp, raw_len, raw_hash, checksum, codec }
             });
+            busy.fetch_sub(1, Ordering::Relaxed);
             let _ = done_tx.send(res);
             let _ = slots_tx.send(());
         });
@@ -648,7 +655,8 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         Ok((out, infos))
     });
 
-    let store = CodecConfig { codec: Codec::Store, level: 0, extreme: false, long: false };
+    let store = CodecConfig { codec: Codec::Store, level: 0, extreme: false, long: false, workers: 1 };
+    let busy = Arc::new(AtomicUsize::new(0));
     // Drawn after the files exist: see `hash` for why that is what matters.
     let key = Arc::new(hash::Key::random());
     let mut sink = BlockSink {
@@ -671,6 +679,8 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         lanes: Vec::new(),
         start: timing.then_some(start),
         key: key.clone(),
+        busy: busy.clone(),
+        cores: opts.threads.max(1),
     };
 
     let mut objects: Vec<Object> = Vec::new();
@@ -724,6 +734,8 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                     inflight += jobs[i].size;
                     spawned += 1;
                     let (slots, claims, cancel, grown, key, tx) = (&slots, &claims, &cancel, &grown, &key, ready_tx.clone());
+                    busy.fetch_add(1, Ordering::Relaxed);
+                    let busy = &busy;
                     scope.spawn(move |_| {
                         let r = if cancel.load(Ordering::Relaxed) {
                             Err(anyhow::anyhow!("cancelled"))
@@ -734,6 +746,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                             grown.fetch_add(h.extra, Ordering::Relaxed);
                         }
                         *slots[i].lock().unwrap() = Some(r);
+                        busy.fetch_sub(1, Ordering::Relaxed);
                         let _ = tx.send(());
                     });
                 }

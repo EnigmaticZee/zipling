@@ -210,6 +210,7 @@ fn main() -> Result<()> {
                     level: level.trim_end_matches('e').parse()?,
                     extreme,
                     long: true,
+                    workers: 1,
                 };
                 match name {
                     "text" => o.text_codec = cfg,
