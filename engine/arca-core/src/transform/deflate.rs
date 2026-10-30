@@ -363,6 +363,15 @@ impl Scanner<'_> {
             }
         }
         candidates.sort_unstable_by_key(|c| c.pieces[0].0);
+        // Chunks from zlib levels 7-9 are worth expanding only at the deep search
+        // of Max and Ultra: Discord's cost five times the others' to rebuild
+        // (19 CPU-s to unpack, against 3-4), which Default's extraction can't carry.
+        if self.config.max_chain_length < 4096 {
+            candidates.retain(|c| {
+                let chunk = &d[c.pieces[0].0..c.pieces[0].0 + c.pieces[0].1];
+                c.lzfse.is_some() || zlib_header(chunk).is_none_or(|(flevel, _)| flevel < 3)
+            });
+        }
         // One encoder wrote every chunk. If stock zlib at some level re-creates
         // the first level 6-9 chunk (`hdiutil -imagekey zlib-level=9`, as many
         // app installers are made), the rest are tried with the same setting.

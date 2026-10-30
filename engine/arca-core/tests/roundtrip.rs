@@ -178,15 +178,16 @@ fn disk_images_are_expanded_and_rebuilt() {
     for (f, ..) in images {
         assert_eq!(fs::read(out.join(format!("tree/{f}.dmg"))).unwrap(), fs::read(src.join(format!("{f}.dmg"))).unwrap(), "{f}");
     }
-    // Off at Default unless switched on.
+    // Default leaves out the level-9 image, whose chunks are slow to rebuild; the
+    // switch turns expansion off.
     let expanded = |opts: &PackOptions| {
         let stats = pack(std::slice::from_ref(&src), &tmp.path().join("b.arca"), opts).unwrap();
         stats.transforms.iter().find(|(name, _)| *name == "deflate").map_or(0, |(_, t)| t.files)
     };
     let mut opts = PackOptions::preset(Level::Balanced);
+    assert_eq!(expanded(&opts), 2);
+    opts.transforms.disk_images = false;
     assert_eq!(expanded(&opts), 0);
-    opts.transforms.disk_images = true;
-    assert_eq!(expanded(&opts), 3);
 }
 
 #[test]
