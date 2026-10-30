@@ -152,6 +152,7 @@ fn main() -> Result<()> {
             }
             if no_transforms {
                 o.transforms.jpeg = false;
+                o.transforms.jpeg_lite = false;
                 o.transforms.deflate = false;
                 o.transforms.arm64 = false;
                 o.transforms.disk_images = false;

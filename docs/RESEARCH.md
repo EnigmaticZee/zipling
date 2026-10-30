@@ -450,6 +450,42 @@ The per-image tables are 0.69 MB raw and 0.22 MB compressed together across
 files. In the archive they go with the headers to the compressed lane: about
 77.8 MB for the 382 photos, 18% under the smallest rival.
 
+**Photos: the light mode in the engine (Fast).** `transform/jpeglite.rs`, tag
+5, `TransformOpts::jpeg_lite` (on at Fast; `ARCA_EXP_NO_JPEGLITE=1` turns it off,
+and `--no-transforms` also covers it). Baseline JPEGs only; others stay as they
+are. The stored form is a prefix (the file without its scan data, scan offsets
+and tables), which compresses with the binary lane, and the code and raw
+streams, which are stored. On the photo set, headers and tables are 2.73 MiB →
+0.47 MiB in the binary lane.
+
+Checking. A full decode after each encode cost as much as unpacking (1.76
+CPU-s on the set). Instead, while parsing, every scan is re-written from the
+parsed symbols and raw bits with the photo's own codes, restarts and padding,
+and compared with the original. That covers the JPEG side and every raw bit;
+our code stream is canonical Huffman over the same symbols, covered by the
+tests. Cost: +0.3 s on one core (separately it was +0.6 s). Tests: round trips
+of `sips`-made photos at four sizes and qualities, plus garbage rejection; the
+whole engine suite passes.
+
+The photo set, Fast, real archive (busy Mac, load 6-9; four runs):
+
+| Fast | Size | Make | Extract | Round trip |
+|---|---:|---:|---:|---|
+| Before (photos stored) | 95.09 MB | 0.10 s | 0.05 s | identical |
+| **Light mode** | **78.26 MB (−17.7%)** | **0.27 s** (2.16 CPU-s) | **0.23 s** (1.95 CPU-s) | identical |
+| zstd -3 (checkpoint) | 91.7 MB | 0.26 s | 0.27 s | |
+| Zipgeist tar.zst Fast (†) | 92.1 MB | 0.21 s | 0.50 s | |
+| Zipgeist ZIP Fast / Normal (†) | 98.5 MB | 0.19-0.23 s | 0.53 s | |
+| WinRAR Fastest | 92.5 MB | 1.09 s | 0.30 s | |
+| Finder | 93.3 MB | 2.56 s | 0.51 s | |
+
+One thread: encode (with the check) 1.62 s, decode 1.46 s. On size and
+extraction the light mode beats every fast rival. On make it beats WinRAR and
+Finder; zstd -3 is level, and Zipgeist's fast settings are ahead (0.19-0.21 s,
+measured in Zipgeist's own session and scaled). The JPEG parse alone is 0.86 s
+per core, so that gap needs a faster JPEG reader or a quiet-Mac measurement to
+settle it.
+
 **Apple's apps: two copies of the same code.** Every large binary in the apps
 set holds two arm64e slices (CPU subtypes 0x80000002 and 0x8000000c) built from
 the same source, so `__text` is 15.46 vs 15.04 MB in Maps. With xz -9 (arm64

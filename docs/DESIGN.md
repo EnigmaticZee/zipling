@@ -67,6 +67,12 @@ is accepted. A transform bug can therefore cost ratio, never data.
 
 * **Lepton** (`jpeg.rs`) — re-codes JPEG DCT coefficients with an adaptive
   arithmetic coder. ~22–25% smaller, bit-exact.
+* **Light JPEG** (`jpeglite.rs`, Fast) — keeps JPEG's own symbols and raw bits and
+  re-codes the symbols with static Huffman tables per image and per context (band
+  of the next position, neighbours' nonzero counts). ~16% smaller at Huffman speed
+  both ways. Headers and tables go to the binary lane, the coded scans to the
+  store lane. Instead of a separate inverse, every scan is re-written from the
+  parsed symbols while encoding and compared with the original.
 * **Deflate expansion** (`deflate.rs`): finds every Deflate stream in ZIP-family
   files (docx/xlsx/pptx/jar/apk/epub/ipa/pages/numbers…), PNG IDAT, PDF
   FlateDecode and gzip members, expands them with preflate (which records the tiny

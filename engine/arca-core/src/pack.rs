@@ -103,6 +103,7 @@ impl PackOptions {
             adaptive_below,
             transforms: TransformOpts {
                 jpeg: heavy,
+                jpeg_lite: level == Level::Fast && std::env::var_os("ARCA_EXP_NO_JPEGLITE").is_none(),
                 deflate: heavy,
                 arm64: true,
                 verify: true,
