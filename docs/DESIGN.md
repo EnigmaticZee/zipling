@@ -67,12 +67,16 @@ is accepted. A transform bug can therefore cost ratio, never data.
 
 * **Lepton** (`jpeg.rs`) — re-codes JPEG DCT coefficients with an adaptive
   arithmetic coder. ~22–25% smaller, bit-exact.
-* **Light JPEG** (`jpeglite.rs`, Fast) — keeps JPEG's own symbols and raw bits and
-  re-codes the symbols with static Huffman tables per image and per context (band
-  of the next position, neighbours' nonzero counts). ~16% smaller at Huffman speed
-  both ways. Headers and tables go to the binary lane, the coded scans to the
-  store lane. Instead of a separate inverse, every scan is re-written from the
-  parsed symbols while encoding and compared with the original.
+* **Light JPEG** (`jpeglite.rs`; research, `ARCA_EXP_JPEGLITE=1` at Fast) — keeps
+  JPEG's own symbols and raw bits and re-codes the symbols with static Huffman
+  tables per image and per context (band of the next position, neighbours' nonzero
+  counts). ~12% smaller than storing, at Huffman speed both ways. Headers and tables
+  go to the binary lane, the coded scans to the store lane. Instead of a separate
+  inverse, every scan is re-written from the parsed symbols while encoding and
+  compared with the original. Fast does not run it: reading 157M symbols takes 4x
+  the time of its lanes, so at Fast a photo goes through the image lane at zstd -1
+  instead (`PackOptions::quick_photos`), which catches duplicate and synthetic
+  images in copying time; Default and up re-code with Lepton.
 * **Deflate expansion** (`deflate.rs`): finds every Deflate stream in ZIP-family
   files (docx/xlsx/pptx/jar/apk/epub/ipa/pages/numbers…), PNG IDAT, PDF
   FlateDecode and gzip members, expands them with preflate (which records the tiny
