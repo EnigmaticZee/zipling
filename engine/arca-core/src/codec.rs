@@ -98,6 +98,8 @@ const HARD_RATIO: f64 = 0.95;
 /// incompressible doesn't sit through a slow level: DMGs at level 12 took 6x as long.
 pub fn compress_hard(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
     if cfg.codec == Codec::Zstd && cfg.level > 3 {
+        // Without long-distance matching: with it the pass found 0.3% more in
+        // Apple's apps for 38% more time at Default (see RESEARCH.md, DMGs).
         let quick = compress(raw, CodecConfig { codec: Codec::Zstd, level: 3, extreme: false, long: false, workers: 1 })?;
         if quick.len() as f64 > raw.len() as f64 * HARD_RATIO {
             return Ok((quick, Codec::Zstd));
