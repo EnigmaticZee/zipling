@@ -1185,6 +1185,18 @@ figures above with forced 16 MiB blocks are what a 1% line would buy. The rest o
 lzt's gap to LZMA on compressible data is still in those token symbols (28% of
 nci's bits) and the far distances' raw bits that both pay alike.
 
+**The setting on the board (2026-10-31, 01:06-01:34, quiet,
+`results-2026-10-31-max-lzt.jsonl`).** `arca-max-lzt` in the harness: Max with
+lzt lanes and 16 MiB blocks, two rounds on every set, 9 of 9 round trips
+identical. Silesia 50.18 MB, make 12.0-12.1 s, extract 0.23-0.25 s against zstd
+-19 --long's 52.65 MB, 28.3 s and 0.241 s. With it laid over the quiet runs the
+board is **138 of 144** (`board.py`): the Silesia extract row is won. The six
+left: the three Zipgeist rows on photos (Fast + bsc make x2.0-2.7, the store
+against the re-coder), Silesia against zstd -3 (Fast make x1.04) and Zipgeist
+tar.zst Fast (x1.21), and DMGs against zstd -19 --long (Default extract x2.06).
+The margin on Silesia is thin (0.23 against 0.241); 8 MiB parts or a looser
+split line for lzt lanes would widen it at a small cost in size.
+
 **Quiet benchmark, every level (2026-10-30, 17:43-19:42,
 `bench/results-2026-10-30-quiet-all.jsonl`, report `results-2026-10-30-quiet.md`).**
 Fast, Default, Max and Ultra, each with and without bsc, against zstd -3,
