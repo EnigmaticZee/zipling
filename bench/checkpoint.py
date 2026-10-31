@@ -55,6 +55,9 @@ def arca_tools(set_name):
     if set_name == "dmgs":
         for level in ["fast", "balanced"]:
             tools.append((f"arca-{level}-dmg", f"{ARCA} pack {{out}} {{src}} -l {level} --disk-images on"))
+    # Max with the table codec on its lanes and 16 MiB blocks: the fast-extract
+    # setting (research, behind ARCA_EXP_LZT; see docs/RESEARCH.md).
+    tools.append(("arca-max-lzt", f"ARCA_EXP_LZT=1 {ARCA} pack {{out}} {{src}} -l max --block-mib 16 --text-block-mib 16"))
     return [(name, make, f"{ARCA} unpack {{out}} -o {{dest}}", ".zlg") for name, make in tools]
 
 

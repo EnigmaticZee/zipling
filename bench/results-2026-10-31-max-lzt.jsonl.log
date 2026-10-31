@@ -1,0 +1,28 @@
+01:01:38 jpeg: start (load 2.3), 1 tools x 2 rounds
+01:01:42 jpeg r1 arca-max-lzt: 71096318 2.19s / 1.07s
+01:01:45 jpeg r2 arca-max-lzt: 71096314 2.17s / 1.09s
+01:06:45 docs: start (load 2.4), 1 tools x 2 rounds
+01:06:51 docs r1 arca-max-lzt: 21972671 5.17s / 0.33s
+01:06:57 docs r2 arca-max-lzt: 21972675 5.36s / 0.33s
+01:07:32 source: start (load 2.5), 1 tools x 2 rounds
+01:07:44 source r1 arca-max-lzt: 9599022 10.92s / 0.48s
+01:07:56 source r2 arca-max-lzt: 9599034 10.76s / 0.49s
+01:14:43 apps: start (load 2.2), 1 tools x 2 rounds
+01:14:48 apps r1 arca-max-lzt: 56457852 5.10s / 0.35s
+01:14:54 apps r2 arca-max-lzt: 56457842 5.35s / 0.34s
+01:16:39 silesia: start (load 2.4), 1 tools x 2 rounds
+01:16:52 silesia r1 arca-max-lzt: 50176451 12.09s / 0.23s
+01:17:04 silesia r2 arca-max-lzt: 50176441 12.01s / 0.25s
+01:18:58 saved: start (load 2.4), 1 tools x 2 rounds
+01:19:27 saved r1 arca-max-lzt: 235194533 23.24s / 2.67s
+01:19:54 saved r2 arca-max-lzt: 235194410 23.53s / 2.63s
+01:24:17 mixed: start (load 2.3), 1 tools x 2 rounds
+01:24:55 mixed r1 arca-max-lzt: 209990845 32.14s / 2.26s
+01:25:29 mixed r2 arca-max-lzt: 209990846 31.77s / 2.24s
+01:28:30 dmgs: start (load 2.4), 1 tools x 2 rounds
+01:29:10 dmgs r1 arca-max-lzt: 480781490 35.26s / 3.77s
+01:29:49 dmgs r2 arca-max-lzt: 480781488 35.22s / 3.68s
+01:32:35 thirdparty: start (load 2.4), 1 tools x 2 rounds
+01:33:11 thirdparty r1 arca-max-lzt: 378826855 34.06s / 1.06s
+01:33:46 thirdparty r2 arca-max-lzt: 378826851 34.33s / 1.08s
+01:33:46 done

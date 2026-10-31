@@ -46,7 +46,7 @@ WEB_TOOL = {"finder": "finder-zip", "7z": "7z-ultra", "zst": "zstd-19-long", "xz
             "fast": "arca-fast", "balanced": "arca-balanced", "max": "arca-max", "ultra": "arca-ultra"}
 NAMES = {"arca-fast": "Arca Fast", "arca-fast-bsc": "Arca Fast + bsc", "arca-balanced": "Arca Default",
          "arca-balanced-bsc": "Arca Default + bsc", "arca-max": "Arca Max", "arca-max-bsc": "Arca Max + bsc",
-         "arca-ultra": "Arca Ultra", "arca-ultra-bsc": "Arca Ultra + bsc",
+         "arca-ultra": "Arca Ultra", "arca-ultra-bsc": "Arca Ultra + bsc", "arca-max-lzt": "Arca Max, fast extract (lzt)",
          "arca-fast-dmg": "Arca Fast + DMG expansion", "arca-balanced-dmg": "Arca Default + DMG expansion",
          "finder-zip": "Finder (ditto zip)", "7z-normal": "7-Zip normal (-mx5)", "7z-ultra": "7-Zip Ultra (-mx9)",
          "zstd-3": "tar + zstd -3", "zstd-19-long": "tar + zstd -19 --long", "xz-6": "tar + xz -6", "xz-9e": "tar + xz -9e",
@@ -55,7 +55,7 @@ NAMES = {"arca-fast": "Arca Fast", "arca-fast-bsc": "Arca Fast + bsc", "arca-bal
          "rar-fastest": "WinRAR Fastest (-m1)", "rar-normal": "WinRAR Normal (-m3)", "rar-best": "WinRAR Best (-m5, solid)"}
 SHORT = {"arca-fast": "Fast", "arca-fast-bsc": "Fast+bsc", "arca-balanced": "Default", "arca-balanced-bsc": "Default+bsc",
          "arca-max": "Max", "arca-max-bsc": "Max+bsc", "arca-ultra": "Ultra", "arca-ultra-bsc": "Ultra+bsc",
-         "arca-fast-dmg": "Fast+DMG", "arca-balanced-dmg": "Default+DMG"}
+         "arca-max-lzt": "Max+lzt", "arca-fast-dmg": "Fast+DMG", "arca-balanced-dmg": "Default+DMG"}
 METRICS = [("size", "Size MB"), ("make_s", "Make s"), ("extract_s", "Extract s"),
            ("make_mb", "Make peak MB"), ("extract_mb", "Extract peak MB")]
 CHARTS = ["size", "make_s", "extract_s"]
