@@ -5,11 +5,11 @@ best, Ultra as our extra against the best. A row is won when Arca is smaller,
 faster to make and faster to extract at once. Then the upsets: where a lower
 Arca level beats a rival of a higher class on all three.
 
-    python3 -I bench/research/levels.py <arca results.jsonl> [rival results.jsonl ...]
+    python3 -I bench/research/levels.py <arca results.jsonl ...> [--rivals <rival results.jsonl ...>]
 
-Without rival files, the quiet runs of 2026-10-30 (quiet-all, quiet-rar,
-zipgeist) supply the rivals. Arca rows come only from the files given first;
-rival rows from the rival files (an Arca file's rival rows count too).
+Without --rivals, the quiet runs of 2026-10-30 (quiet-all, quiet-rar, zipgeist)
+supply the rivals. Arca rows come only from the files before --rivals; rival rows
+from the rival files (an Arca file's rival rows count too).
 """
 
 import os
@@ -46,8 +46,11 @@ def merge(into, more, arca):
 args = sys.argv[1:]
 if not args:
     sys.exit(__doc__)
-arca_files = [a for a in args if "rival" not in a]
-rival_files = [os.path.join(HERE, f) for f in RIVALS_DEFAULT]
+if "--rivals" in args:
+    i = args.index("--rivals")
+    arca_files, rival_files = args[:i], args[i + 1:]
+else:
+    arca_files, rival_files = args, [os.path.join(HERE, f) for f in RIVALS_DEFAULT]
 ours, theirs = {}, {}
 for f in arca_files:
     merge(ours, load(f), arca=True)

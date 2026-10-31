@@ -1,4 +1,4 @@
-// stopwatch <bundle-path> <arm-file> <result-file> [skip]
+// stopwatch <bundle-path> <arm-file> <result-file> [skip] [click|key]
 // Waits for <arm-file>, lets <skip> left clicks go by (the ones that open the menu
 // and the dialog), then times from the next left click until every process of the
 // app (and anything it starts) has gone idle. Prints and appends one JSON line.
@@ -9,6 +9,14 @@ import Foundation
 let args = CommandLine.arguments
 let bundle = args[1], armFile = args[2], resultFile = args[3]
 let skip = args.count > 4 ? Int(args[4]) ?? 0 : 0
+// "click" (default): the clock starts at the left click after <skip> skipped ones;
+// "key": at the first key press after arming (Return on a dialog's default button),
+// so the set-up clicks can be any number and the button's position does not matter.
+let trigger = args.count > 5 ? args[5] : "click"
+// CPU seconds per 20 ms poll that count as busy (0.004 = a fifth of a core). An
+// I/O-bound job over thousands of small files (Archive Utility expanding source code)
+// needs a lower bar, or it looks idle while still writing.
+let busy = args.count > 6 ? Double(args[6]) ?? 0.004 : 0.004
 var timebase = mach_timebase_info_data_t()
 mach_timebase_info(&timebase)
 func ticksToSeconds(_ t: UInt64) -> Double { Double(t) * Double(timebase.numer) / Double(timebase.denom) / 1e9 }
@@ -52,8 +60,9 @@ while !FileManager.default.fileExists(atPath: armFile) { usleep(10_000) }
 try? FileManager.default.removeItem(atPath: armFile)
 let armed = now()
 var clicks: [Double] = []
-while clicks.count <= skip {
-    let since = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .leftMouseDown)
+let eventType: CGEventType = trigger == "key" ? .keyDown : .leftMouseDown
+while clicks.count <= (trigger == "key" ? 0 : skip) {
+    let since = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: eventType)
     let at = now() - since
     // the same click reads back a millisecond or so apart from poll to poll
     if at > armed + 0.01, clicks.last.map({ at - $0 > 0.05 }) ?? true { clicks.append(at) }
@@ -77,7 +86,7 @@ while true {
     }
     cpu += delta
     peak = max(peak, mem)
-    if delta > 0.004 { lastBusy = t }
+    if delta > busy { lastBusy = t }
     if lastBusy > 0, t - lastBusy > 3 { break }
     if lastBusy == 0, t - click > 20 { break }
     if t - click > 1800 { break }

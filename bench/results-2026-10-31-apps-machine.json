@@ -1,0 +1,45 @@
+{
+  "benchmark": "Zipling app against rival apps and tools, for the published benchmark",
+  "date": "2026-10-31",
+  "machine": {
+    "model": "MacBook Pro (MacBookPro18,3)",
+    "chip": "Apple M1 Pro, 10 cores (8 performance, 2 efficiency)",
+    "memory_gb": 32,
+    "storage": "internal Apple SSD, 1 TB (sets read from and archives written to the same APFS volume)",
+    "os": "macOS 27.0.1 (26A434)",
+    "appearance": "dark"
+  },
+  "tools": {
+    "zipling": {"version": "0.1.0 (1)", "engine": "Arca, archive format 3, locked presets of 2026-10-31", "how": "the installed /Applications/Zipling.app, driven through its AppleScript compress and extract commands; timed from the command's start to its return, minus a measured no-work AppleScript round trip; CPU and peak footprint of the app process sampled through proc_pid_rusage"},
+    "zipgeist": {"version": "1.0.0 (1)", "how": "the installed app, driven through its Finder menu (Compress As > Options), the only way it compresses; timed by a stopwatch from the click on Compress to the last busy moment of its processes, with the archive's write time as a floor; six settings: ZIP Fast, ZIP Normal, tar.zst Fast, 7z Normal, 7z Best, tar.xz Best"},
+    "finder": {"version": "macOS 27.0.1", "how": "Finder's Compress command and double-click to expand (Archive Utility), timed by the same stopwatch on Archive Utility's processes; also ditto -c -k --sequesterRsrc --keepParent / ditto -x -k from the command line, which is the same engine (finder-zip rows)"},
+    "7zip": {"version": "7-Zip (z) 26.05 arm64, 2026-10-21", "how": "7zz a -t7z -mx=5 (Normal) and -mx=9 (Ultra), symbolic links kept (-snl); extract with -snld20. Stands in for Keka and BetterZip, which use 7-Zip's code; neither has its own engine"},
+    "winrar": {"version": "RAR 7.23 for macOS (command line; WinRAR has no Mac app)", "how": "rar a -m1 (Fastest), -m3 (Normal, its default), -m5 -s (Best, solid); links kept (-ol); all cores"},
+    "zstd": {"version": "1.5.6", "how": "tar | zstd -3 -T0 and zstd -19 --long=27 -T0"},
+    "xz": {"version": "XZ Utils 5.6.4", "how": "tar | xz -6 -T0 and xz -9e -T0"}
+  },
+  "sets": {
+    "jpeg": {"title": "Photos", "mb": 95, "files": 400, "note": "400 JPEGs, 3.3 MB of exact duplicates"},
+    "docs": {"title": "PDFs and screenshots", "mb": 89, "files": 850},
+    "source": {"title": "Source code", "mb": 172, "files": 7693, "note": "89 Rust crates"},
+    "apps": {"title": "Apple apps", "mb": 170, "files": 1324, "note": "8 apps from /System/Applications"},
+    "silesia": {"title": "Silesia corpus", "mb": 203, "files": 12},
+    "saved": {"title": "Saved folder", "mb": 533, "files": 11051, "note": "the user's own mixed folder"},
+    "mixed": {"title": "Website mixed folder", "mb": 726, "files": 10279, "note": "all five public sets together"},
+    "dmgs": {"title": "Disk images", "mb": 592, "files": 5, "note": "five installers"},
+    "thirdparty": {"title": "Third-party apps", "mb": 874, "files": 1400, "note": "six apps"}
+  },
+  "method": [
+    "Every tool runs on every set twice, the second round in reverse order; the better of the two rounds counts; the first round's extracted tree is compared with the source byte for byte (names, types, bytes, link targets).",
+    "Each set is read once (tar to /dev/null) before its runs, so every tool starts with the files in the page cache.",
+    "A set's runs start only when the 1-minute load is under 2.5 (the Mac otherwise idle).",
+    "Zipling and the command-line rivals alternate within a set (bench/research/apprun.py).",
+    "Zipgeist and Finder's Compress need the screen: they ran under full-screen control, which keeps WindowServer and the Claude app at about one core together; one Zipling Fast run per set in the same session (arca-fast-clock) shows the effect on the clock.",
+    "A row is won when Zipling is smaller, faster to make and faster to extract at once; 1:1 by level (Fast against the fast settings, Default against the normal ones, Max and Ultra against the best), upsets listed separately (bench/research/levels.py)."
+  ],
+  "files": {
+    "zipling_and_cli_rivals": "bench/results-2026-10-31-apps.jsonl",
+    "zipgeist": "bench/results-2026-10-31-apps-zipgeist.jsonl",
+    "finder_gui": "bench/results-2026-10-31-apps-finder.jsonl"
+  }
+}
