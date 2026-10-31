@@ -35,16 +35,38 @@ const CAP: u32 = 4096;
 // Contexts, flat.
 const LIT0: usize = 0;
 const MATCHED0: usize = 32;
+/// Run and fused symbols are coded under LZMA's twelve-state history of the
+/// last tokens (literal, match, repeat, short repeat, and whether literals came
+/// between), which says more than the previous kind alone.
+const N_STATES: usize = 12;
 const LL0: usize = 96;
-const FUSED0: usize = 103;
-const OF0: usize = 131;
-const ALIGN: usize = 134;
+const FUSED0: usize = LL0 + N_STATES;
+const OF0: usize = FUSED0 + 4 * N_STATES;
+const ALIGN: usize = OF0 + 3;
 /// Extra bits of length codes 16-21 (lengths 18-129), run codes 16-21, and the
 /// bits below the top one of a distance under 64: modelled, as LZMA does.
-const LEX0: usize = 135;
-const RLEX0: usize = 141;
-const DLOW0: usize = 147;
-const N_CTX: usize = 152;
+const LEX0: usize = ALIGN + 1;
+const RLEX0: usize = LEX0 + 6;
+const DLOW0: usize = RLEX0 + 6;
+const N_CTX: usize = DLOW0 + 5;
+
+/// LZMA's state machine.
+const fn after_literal(s: usize) -> usize {
+    if s < 4 {
+        0
+    } else if s < 10 {
+        s - 3
+    } else {
+        s - 6
+    }
+}
+const fn after_token(s: usize, kind: usize) -> usize {
+    match kind {
+        KIND_MATCH => if s < 7 { 7 } else { 10 },
+        KIND_SHORT => if s < 7 { 9 } else { 11 },
+        _ => if s < 7 { 8 } else { 11 },
+    }
+}
 
 /// Length codes (`code` of anything below 2^32 is under 72); a fused symbol is
 /// `kind * ML_CODES + length code`.
@@ -52,31 +74,42 @@ const ML_CODES: usize = 72;
 
 const KIND_MATCH: usize = 0;
 const KIND_SHORT: usize = 5;
-const KIND_START: usize = 6;
 
 /// Symbols of a context, the escape not counted: the escape is symbol `alphabet`.
 const fn alphabet(ctx: usize) -> usize {
-    match ctx {
-        0..=95 => 256,
-        96..=102 => ML_CODES,
-        103..=130 => 6 * ML_CODES,
-        131..=133 => 32,
-        134 => 16,
-        135..=146 => 8 << ((ctx - LEX0) % 6 / 2),
-        _ => 2 << (ctx - DLOW0),
+    if ctx < LL0 {
+        256
+    } else if ctx < FUSED0 {
+        ML_CODES
+    } else if ctx < OF0 {
+        6 * ML_CODES
+    } else if ctx < ALIGN {
+        32
+    } else if ctx == ALIGN {
+        16
+    } else if ctx < DLOW0 {
+        8 << ((ctx - LEX0) % 6 / 2)
+    } else {
+        2 << (ctx - DLOW0)
     }
 }
 
 /// Raw bits an escaped symbol of the context takes.
 const fn sym_bits(ctx: usize) -> u32 {
-    match ctx {
-        0..=95 => 8,
-        96..=102 => 7,
-        103..=130 => 9,
-        131..=133 => 5,
-        134 => 4,
-        135..=146 => 3 + ((ctx - LEX0) % 6 / 2) as u32,
-        _ => 1 + (ctx - DLOW0) as u32,
+    if ctx < LL0 {
+        8
+    } else if ctx < FUSED0 {
+        7
+    } else if ctx < OF0 {
+        9
+    } else if ctx < ALIGN {
+        5
+    } else if ctx == ALIGN {
+        4
+    } else if ctx < DLOW0 {
+        3 + ((ctx - LEX0) % 6 / 2) as u32
+    } else {
+        1 + (ctx - DLOW0) as u32
     }
 }
 
@@ -110,7 +143,7 @@ const COUNT_ENTRIES: usize = COUNT_BASE[N_CTX];
 /// extra, 2 near distance, 3 far distance). Encoder and decoder agree through it.
 fn walk(data: &[u8], tokens: &[Token], mut sym: impl FnMut(usize, u32), mut raw: impl FnMut(u32, u32, usize)) {
     let mut reps = [1u32; 4];
-    let (mut pos, mut prev_kind, mut after_match) = (0usize, KIND_START, false);
+    let (mut pos, mut state, mut after_match) = (0usize, 0usize, false);
     let mut ti = 0;
     loop {
         // A short repeat whose distance the replay doesn't agree with can't be a
@@ -121,7 +154,7 @@ fn walk(data: &[u8], tokens: &[Token], mut sym: impl FnMut(usize, u32), mut raw:
         let next = tokens.get(ti).map_or(data.len(), |t| t.pos as usize);
         let run = (next - pos) as u32;
         let (c, nb, extra) = code(run);
-        sym(LL0 + prev_kind, c);
+        sym(LL0 + state, c);
         if (16..22).contains(&c) {
             sym(RLEX0 + (c - 16) as usize, extra);
         } else {
@@ -136,6 +169,7 @@ fn walk(data: &[u8], tokens: &[Token], mut sym: impl FnMut(usize, u32), mut raw:
             } else {
                 sym(LIT0 + prev + 8 * (p & 3), data[p] as u32);
             }
+            state = after_literal(state);
         }
         pos = next;
         let Some(&t) = tokens.get(ti) else { break };
@@ -150,7 +184,7 @@ fn walk(data: &[u8], tokens: &[Token], mut sym: impl FnMut(usize, u32), mut raw:
                 kind = KIND_MATCH;
             }
         }
-        let fused = FUSED0 + prev_kind * 4 + (pos & 3);
+        let fused = FUSED0 + state * 4 + (pos & 3);
         if kind == KIND_SHORT {
             sym(fused, (KIND_SHORT * ML_CODES) as u32);
         } else {
@@ -185,7 +219,7 @@ fn walk(data: &[u8], tokens: &[Token], mut sym: impl FnMut(usize, u32), mut raw:
         }
         debug_assert!(d as usize <= pos && d > 0);
         pos += t.len as usize;
-        prev_kind = kind;
+        state = after_token(state, kind);
         after_match = true;
     }
     debug_assert_eq!(pos, data.len());
@@ -382,13 +416,9 @@ pub fn encode(data: &[u8], tokens: &[Token]) -> Vec<u8> {
     // Research: bits per category (LZT_STATS).
     let stats = std::env::var_os("LZT_STATS").is_some();
     let spent = std::cell::RefCell::new([0f64; 11]);
-    let group = |ctx: usize| match ctx {
-        0..=31 => 0,
-        32..=95 => 1,
-        96..=102 | 141..=146 => 2,
-        103..=130 | 135..=140 => 3,
-        131..=133 | 147..=151 => 4,
-        _ => 5,
+    let group = |ctx: usize| {
+        if ctx < MATCHED0 { 0 } else if ctx < LL0 { 1 } else if ctx < FUSED0 || (RLEX0..DLOW0).contains(&ctx) { 2 }
+        else if ctx < OF0 || (LEX0..RLEX0).contains(&ctx) { 3 } else if ctx < ALIGN || ctx >= DLOW0 { 4 } else { 5 }
     };
     walk(
         data,
@@ -629,14 +659,14 @@ pub fn decode(stored: &[u8], size: usize) -> Result<Vec<u8>> {
     }
     let mut out: Vec<u8> = Vec::with_capacity(size + COPY_SLACK);
     let mut reps = [1u32; 4];
-    let (mut prev_kind, mut after_match) = (KIND_START, false);
+    let (mut state, mut after_match) = (0usize, false);
     // SAFETY: the rANS reader checks its end on every read, the raw reader's
     // buffer is padded, and output writes stay within the capacity reserved
     // above, checked per token.
     unsafe {
         loop {
             let pos = out.len();
-            let c = dec.sym(LL0 + prev_kind) as u32;
+            let c = dec.sym(LL0 + state) as u32;
             let nb = if c < 16 { 0 } else { (c - 16) / 2 + 3 };
             let extra = if (16..22).contains(&c) { dec.sym(RLEX0 + (c - 16) as usize) as u32 } else { dec.raw.get(nb) };
             let run = uncode(c, extra) as usize;
@@ -644,11 +674,15 @@ pub fn decode(stored: &[u8], size: usize) -> Result<Vec<u8>> {
             let op = out.as_mut_ptr();
             literals(&mut dec, op, pos, run, after_match, reps[0] as usize);
             out.set_len(pos + run);
+            // three literals take any state to 0
+            for _ in 0..run.min(3) {
+                state = after_literal(state);
+            }
             let pos = pos + run;
             if pos >= size {
                 break;
             }
-            let v = dec.sym(FUSED0 + prev_kind * 4 + (pos & 3));
+            let v = dec.sym(FUSED0 + state * 4 + (pos & 3));
             let (kind, c) = (v / ML_CODES, (v % ML_CODES) as u32);
             ensure!(kind <= KIND_SHORT, "bad token kind");
             let len = if kind == KIND_SHORT {
@@ -686,7 +720,7 @@ pub fn decode(stored: &[u8], size: usize) -> Result<Vec<u8>> {
             let (src, dst) = (op.add(pos - d), op.add(pos));
             copy_match(src, dst, d, len, pos + len + COPY_SLACK <= size);
             out.set_len(pos + len);
-            prev_kind = kind;
+            state = after_token(state, kind);
             after_match = true;
         }
         ensure!(dec.r.p <= dec.r.end.add(2), "rANS stream overrun");

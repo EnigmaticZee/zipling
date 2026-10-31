@@ -1152,6 +1152,39 @@ where lzt's binary-lane loss is largest), and whether that setting replaces Max
 or stands beside it is the user's call: a Max that extracts 1.6x faster for 1.6%
 in size, or the smallest Max.
 
+**Every set (2026-10-31, 03:10-04:30, RAM disk, one round).** Max as it is
+against Max with lzt lanes and 16 MiB blocks, with the smallest rival's size:
+
+| Set | Max | Max, lzt, 16 MiB | Smallest rival | Extract |
+|---|---:|---:|---:|---|
+| Silesia | 49.41 | 50.18 (+1.6%) | xz -9e 48.42; zstd -19 --long 52.65 | 0.37 → 0.24 s |
+| Photos | 71.10 | 71.10 | 85.29 | 1.10 → 1.04 s |
+| Saved folder | 223.64 | 235.19 (+5.2%) | 273.99 | 2.60 → 2.45 s |
+| Website mixed | 197.17 | 209.99 (+6.5%) | 235.04 | 2.36 → 2.10 s |
+| DMGs | 454.96 | 480.78 (+5.7%) | 609.64 | 4.17 → 3.58 s |
+| Third-party apps | 350.23 | 378.83 (+8.2%) | 7-Zip Ultra 355.52 | 1.68 → 1.05 s |
+| Apple apps | 49.16 | 56.46 (+14.8%) | 7-Zip Ultra 54.10 | 0.65 → 0.32 s |
+| Source | 8.23 | 9.60 (+16.6%) | xz -9e 8.34 | 0.46 → 0.38 s |
+| PDFs | 18.20 | 21.97 (+20.7%) | 38.25 | 0.40 → 0.35 s |
+
+Extraction is 1.3-2x faster everywhere, but on the compressible sets the size
+loss is 15-21%, and apps and third-party apps cross 7-Zip Ultra. Half of it is
+the block size, half the codec: with LZMA2 at 16 MiB blocks PDFs are 19.58 MB,
+source 9.00, apps 53.19 (+7.6-9.4%: far repeats across a 64 MiB block are what
+those sets have), and lzt at 64 MiB blocks gives 20.33, 8.78 and 52.10 (+6-12%).
+So lzt cannot replace Max; as a setting beside it, it takes the Silesia row.
+
+Two things since. nci's bits were 37% in the run, kind and length symbols, so
+those are now coded under LZMA's twelve-state history (what the last tokens were
+and whether literals came between) instead of the previous kind: nci +10.3 →
++8.2%, mozilla +9.2 → +8.4%, x-ray +1.3 → +1.1%, dickens unchanged, same speed.
+And the block splitter's minimum part went from 32 to 16 MiB so Silesia could
+split into four-core blocks without forcing 16 MiB everywhere; it changed
+nothing, the quick pass refusing the quarters at its 0.5% cost line, so the
+figures above with forced 16 MiB blocks are what a 1% line would buy. The rest of
+lzt's gap to LZMA on compressible data is still in those token symbols (28% of
+nci's bits) and the far distances' raw bits that both pay alike.
+
 **Quiet benchmark, every level (2026-10-30, 17:43-19:42,
 `bench/results-2026-10-30-quiet-all.jsonl`, report `results-2026-10-30-quiet.md`).**
 Fast, Default, Max and Ultra, each with and without bsc, against zstd -3,
