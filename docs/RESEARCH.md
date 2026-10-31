@@ -61,7 +61,10 @@ stores JPEGs in 0.06 s where Fast re-codes them in 0.19 s. Since then a Max with
 the table codec's lanes took the Silesia extract row and Default's rebuild budget
 for disk images the DMGs row: **139 of 144**. Off the board, inputs under 64 MiB
 now keep whole blocks cut into overlapping zstd jobs instead of blocks of a
-core's share: a folder of PDFs 25% smaller, a small disk image 11%. The estimate for a
+core's share: a folder of PDFs 25% smaller, a small disk image 11%. Fast's two
+Silesia make rows are at the machine's floor for zstd -3's ratio (see "Fast on
+Silesia"): a tie with zstd -3 in the harness, and Zipgeist's zstd -1 speed is
+out of reach without giving up size. The estimate for a
 codec with LZMA's ratio at
 a symbol coder's speed is in, and its table form (`lzt.rs`: LZMA's parse, each
 context a table rebuilt from its own counts) is 5.3% behind LZMA on Silesia, about
@@ -1232,6 +1235,75 @@ and the probe is not involved (disk images take the quick-images lane, which it
 does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
+
+**Fast on Silesia: where the 0.15 s is, and zstd's own tables (2026-10-31,
+02:35-07:00, in the engine).** The two Silesia rows left at Fast are the make
+times against zstd -3 (0.152 s, piped from tar) and Zipgeist's tar.zst Fast
+(0.130 s, which is zstd -1: 73.3 MB to Fast's 65.2). Fast took 0.146-0.153 s.
+A file timeline (`ARCA_DEBUG_TIMING` now prints each file's task too) and a
+histogram of running blocks say where it goes: every file is read and cut by
+0.020 s; the first block starts at 0.008 s and ten blocks run without a gap from
+0.03 to 0.13 s; the tail is one or two blocks on the two efficiency cores, which
+take 8 MiB in 60-70 ms where a performance core takes 40-50. The blocks are
+1.07-1.12 thread-seconds of work (profile: 0.99 s of CPU), so ten threads need
+0.107 s of them and the floor is about 0.125 s. zstd's own multithreading shows
+the same arithmetic: `zstd -3 -T10 -B8M` with Fast's parameters is 0.91 CPU-s
+and 0.14 s wall, 0.61 CPU-s on one thread; `-B32M` 0.78 CPU-s but 0.18 s (seven
+jobs on ten threads). What the CPU is, one thread against ten (Silesia as one
+tar, Fast's window):
+
+| zstd -3, binary-lane settings | 1 thread | 10 threads, 8 MiB jobs | Size |
+|---|---:|---:|---:|
+| hash 17, chain 16 (zstd's own) | 0.58 s | 0.70 s, 0.11 s wall | 66.45 MB |
+| hash 17, chain 17 | 0.60 s | 0.77 s, 0.12 s | 66.01 MB |
+| hash 18, chain 16 | 0.59 s | 0.84 s, 0.13 s | 65.89 MB |
+| hash 18, chain 17 (Fast's, until now) | 0.60 s | 0.89 s, 0.14 s | 65.52 MB |
+| hash 19, chain 16 | 0.61 s | 1.18 s, 0.18 s | 65.47 MB |
+| long-distance matching (text lane) | +37% | | -0.4% |
+
+The 2x tables cost nothing on one thread, which is how they were chosen, and 33%
+more CPU on ten: 1.5 MB of tables a thread in a 12 MB cache four cores share
+(and 4 MB for the two efficiency cores). Long-distance matching is a rolling
+hash over every byte, 1 ns each, whatever the insertion rate; it buys nothing on
+Silesia beside the tables but 3.6% on the source set, so the text lane keeps it.
+In the engine, the binary lane's tables against the committed engine, every set
+at Fast, Silesia the median of eight:
+
+| Binary-lane tables | Silesia | apps | mixed | docs | dmgs | others |
+|---|---:|---:|---:|---:|---:|---:|
+| 18, 17 (before) | 65.18 MB, 0.146 s | | | | | |
+| 18, 16 | +0.54%, 0.149 s | +0.04% | +0.15% | -0.02% | 0 | 0 |
+| 17, 17 | +0.32%, 0.142 s | +0.12% | +0.18% | +0.40% | +0.01% | 0 |
+| 17, 16 | +0.93%, 0.133 s | +0.21% | +0.38% | +0.46% | +0.02% | ≤0.03% |
+| 16, 16 | +1.34%, 0.146 s | +0.34% | +0.60% | +1.10% | +0.06% | ≤0.07% |
+
+zstd's own tables take 9% off Fast's time on Silesia (and 5-10% off disk images
+and the mixed folder, single runs) for under 1% in size, every Fast size row
+keeping its margin (DMGs against zstd -3: 0.12%). But they win no row: in the
+quiet harness (`results-2026-10-31-fast-tables.jsonl`, 06:28) Fast with them
+made Silesia in 0.153-0.157 s against zstd -3's 0.151-0.154, a tie. The harness
+times a whole process with `/usr/bin/time`, which puts about 15 ms around either
+tool (Fast's own clock said 0.130-0.135; `arca --version` alone is 4 ms, as is
+`zstd --version`), so what the engine's clock saves shows on the board only
+above the noise of two runs. By the standing rule (faster and at least as small,
+or a row won) the tables stay at 18, 17; zstd's own are one constant away
+(`FAST_TABLES`, or `ARCA_EXP_FAST_TABLES=17,16`) for a Fast that favours time.
+Kept: the CLI exits once the archive is reported instead of freeing a few
+hundred MB of buffers first, 4 of the 8 ms outside the engine's clock. Tried for
+the tail and the ramp, all rejected, none moved Silesia outside 0.14-0.155 s:
+blocks that shrink with what is left (guided self-scheduling, down to 1 MiB: the
+tail ends compactly but the total does not move, +0.24-0.41% on text-heavy sets);
+a queue of 40 blocks (the feed finishes at 0.045 s instead of 0.09; the encoders
+were never waiting on it); three files open at a time (the first blocks start at
+0.008 s, but folders of many small files take 1.3-3x longer: jpeg 0.146 to
+0.437 s); a lookahead of 48-128 MiB instead of 512 (no change); files of a later
+sort group held until the packer reaches it (the text files are cut by 0.01 s
+either way; the ramp to ten running blocks, 0.01 to 0.03 s, is the packer sealing
+them); the first blocks' buffers pre-mapped on every core (the packer's appends
+fall from 20 to 10 ms of CPU over the run, but mapping 120 MB first delays the
+first block by 10 ms). Zipgeist's 0.130 s stays out of reach at this ratio: it
+does zstd -1's work, 0.57 CPU-s, and Fast's floor with zstd -3's ratio on this
+machine is about 0.125 s on the engine's clock.
 
 **Small inputs: whole blocks, cut into zstd's own jobs (2026-10-31, 02:05-02:30,
 in the engine).** Default cut an input under 64 MiB into blocks of a core's

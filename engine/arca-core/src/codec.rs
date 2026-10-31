@@ -53,8 +53,23 @@ const ZSTD_JOB: usize = 32 << 20;
 
 /// zstd's hash and chain table sizes (log2) at level 3 without long-distance
 /// matching: 2x zstd's own. Against long-distance matching with zstd's tables,
-/// 0.5-0.75% smaller and 9-23% less CPU on binaries, photos' leftovers and Silesia.
+/// 0.5-0.75% smaller and 9-23% less CPU on binaries, photos' leftovers and Silesia,
+/// one thread at a time. On ten threads they cost 33% more CPU than zstd's own
+/// (17, 16): the cores' shared cache. zstd's own would make Silesia in 0.133 s
+/// instead of 0.146 at Fast, 0.9% bigger (apps +0.2%, mixed +0.4%, docs +0.5%),
+/// and wins no row, so the size stays (see RESEARCH.md, "Fast on Silesia").
 const FAST_TABLES: (u32, u32) = (18, 17);
+
+/// Research knob: `ARCA_EXP_FAST_TABLES=h,c` in `FAST_TABLES`' place.
+fn fast_tables() -> (u32, u32) {
+    std::env::var("ARCA_EXP_FAST_TABLES")
+        .ok()
+        .and_then(|v| {
+            let (h, c) = v.split_once(',')?;
+            Some((h.parse().ok()?, c.parse().ok()?))
+        })
+        .unwrap_or(FAST_TABLES)
+}
 
 /// zstd's hash table (log2) at level 1 and below. Tables the size of level 3's
 /// made level 1 no faster than level 3: most of its time went on cache misses.
@@ -166,7 +181,8 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
                     c.set_parameter(CParameter::OverlapSizeLog(if split { overlap_log } else { 0 }))?;
                     // 0 is zstd's own size for the level.
                     let (hash, chain) = if !cfg.long && cfg.level == 3 {
-                        (FAST_TABLES.0.min(wlog), FAST_TABLES.1.min(wlog))
+                        let tables = fast_tables();
+                        (tables.0.min(wlog), tables.1.min(wlog))
                     } else if !cfg.long && cfg.level < 3 {
                         (QUICK_HASH, 0)
                     } else {

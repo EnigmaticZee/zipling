@@ -386,7 +386,7 @@ impl Drop for Timeline {
     fn drop(&mut self) {
         if let (Some(s), Some(q), Some(b)) = (self.start, self.queued, self.began) {
             eprintln!(
-                "  block {:>3} {:<6} {:>5.1} MiB  queued {:>6.2}s  start {:>6.2}s  end {:>6.2}s",
+                "  block {:>3} {:<6} {:>5.1} MiB  queued {:>6.3}s  start {:>6.3}s  end {:>6.3}s",
                 self.id,
                 format!("{:?}", self.lane),
                 self.len as f64 / 1048576.0,
@@ -696,6 +696,9 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     let pool = rayon::ThreadPoolBuilder::new().num_threads(opts.threads.max(1)).build()?;
 
     let timing = std::env::var_os("ARCA_DEBUG_TIMING").is_some();
+    if timing {
+        let _ = TIMING_START.set(start);
+    }
     let phase = |name: &str| {
         if timing {
             eprintln!("[{:>7.3}s] {name}", start.elapsed().as_secs_f64());
@@ -984,7 +987,9 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                                     }
                                 }
                             }
+                            let _a = prof::span("pack.append", len as u64);
                             let (block, offset) = sink.append(lane, &stored[off..off + len], hard);
+                            drop(_a);
                             let c = chunks.len() as u32;
                             chunks.push(Chunk { block, offset, len: len as u64 });
                             by_chunk.insert(hash, c);
@@ -1106,9 +1111,33 @@ struct Hashed {
     prepared: Option<Prepared>,
 }
 
+/// The first pack's start, for the file timeline `ARCA_DEBUG_TIMING` prints.
+static TIMING_START: OnceLock<Instant> = OnceLock::new();
+
 /// Reads, hashes and, unless another task already claimed the same content,
 /// transforms and chunks one file.
 fn process_file(
+    job: &Job,
+    index: usize,
+    claims: &Mutex<HashMap<[u8; 16], usize>>,
+    key: &hash::Key,
+    opts: &PackOptions,
+) -> Result<Hashed> {
+    let began = TIMING_START.get().map(|s| s.elapsed().as_secs_f64());
+    let r = process_file_inner(job, index, claims, key, opts);
+    if let Some(s) = TIMING_START.get() {
+        eprintln!(
+            "  file {:>5.1} MiB  start {:>6.3}s  end {:>6.3}s  {}",
+            job.size as f64 / 1048576.0,
+            began.unwrap_or(0.0),
+            s.elapsed().as_secs_f64(),
+            job.source.display()
+        );
+    }
+    r
+}
+
+fn process_file_inner(
     job: &Job,
     index: usize,
     claims: &Mutex<HashMap<[u8; 16], usize>>,
