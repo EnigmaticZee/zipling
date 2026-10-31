@@ -335,8 +335,10 @@ struct OpenBlock {
 const SPLIT_BELOW: u64 = 512 << 20;
 /// Inputs below this size can't fill enough full blocks to run short of memory.
 const FEW_BLOCKS_BELOW: u64 = 256 << 20;
-/// Blocks at least this long may split in two, and the halves likewise.
-const SPLIT_MIN: usize = 32 << 20;
+/// Blocks at least this long may split in two, and the halves likewise. 16 MiB
+/// parts, where the quick pass allows them, let a block's decoding spread over
+/// four cores: Silesia extracts in 0.22 s against 0.36 s with 32 MiB parts.
+const SPLIT_MIN: usize = 16 << 20;
 /// A split is made when the quick pass says it costs less than 1 part in this
 /// many: Silesia's blocks measure 0.11-0.46%, Apple's apps 0.72-1.04%, where LZMA
 /// loses more (1.7%), a source tree 1.1-8.7%, PDFs 2.5%.
