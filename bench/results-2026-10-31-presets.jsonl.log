@@ -1,0 +1,104 @@
+12:21:45 jpeg: start (load 2.4), 5 tools x 2 rounds
+12:21:45 jpeg r1 arca-fast: 89078383 0.06s / 0.05s
+12:21:48 jpeg r1 arca-balanced: 69183183 2.07s / 0.71s
+12:21:51 jpeg r1 arca-max: 69173348 2.12s / 0.68s
+12:21:54 jpeg r1 arca-ultra: 69172215 2.24s / 0.71s
+12:21:57 jpeg r1 arca-max-lzt: 69197719 2.14s / 0.68s
+12:22:00 jpeg r2 arca-max-lzt: 69197716 2.16s / 0.70s
+12:22:03 jpeg r2 arca-ultra: 69172196 2.23s / 0.69s
+12:22:06 jpeg r2 arca-max: 69173334 2.14s / 0.70s
+12:22:09 jpeg r2 arca-balanced: 69183173 2.05s / 0.69s
+12:22:09 jpeg r2 arca-fast: 89078384 0.05s / 0.06s
+12:24:54 docs: start (load 2.4), 5 tools x 2 rounds
+12:24:55 docs r1 arca-fast: 41064918 0.06s / 0.07s
+12:24:56 docs r1 arca-balanced: 22140698 1.34s / 0.23s
+12:25:08 docs r1 arca-max: 18197798 10.82s / 0.41s
+12:25:24 docs r1 arca-ultra: 17810865 15.46s / 0.42s
+12:25:32 docs r1 arca-max-lzt: 21783058 7.47s / 0.30s
+12:25:39 docs r2 arca-max-lzt: 21783069 7.48s / 0.32s
+12:25:55 docs r2 arca-ultra: 17810871 15.37s / 0.41s
+12:26:06 docs r2 arca-max: 18197784 10.77s / 0.42s
+12:26:08 docs r2 arca-balanced: 22140706 1.35s / 0.23s
+12:26:08 docs r2 arca-fast: 41064923 0.07s / 0.07s
+12:27:43 source: start (load 2.4), 5 tools x 2 rounds
+12:27:44 source r1 arca-fast: 13547930 0.25s / 0.37s
+12:27:48 source r1 arca-balanced: 11200892 1.99s / 0.36s
+12:27:51 source r1 arca-max: 8308522 1.61s / 0.68s
+12:27:55 source r1 arca-ultra: 8092659 1.74s / 0.92s
+12:28:12 source r1 arca-max-lzt: 9634400 15.28s / 0.40s
+12:28:39 source r2 arca-max-lzt: 9634404 26.39s / 0.40s
+12:28:42 source r2 arca-ultra: 8092653 1.76s / 0.94s
+12:28:45 source r2 arca-max: 8308510 1.62s / 0.69s
+12:28:48 source r2 arca-balanced: 11200896 1.99s / 0.37s
+12:28:49 source r2 arca-fast: 13547931 0.26s / 0.37s
+12:32:21 apps: start (load 2.4), 5 tools x 2 rounds
+12:32:21 apps r1 arca-fast: 72299668 0.14s / 0.16s
+12:32:23 apps r1 arca-balanced: 56438836 1.43s / 0.21s
+12:32:37 apps r1 arca-max: 49154202 12.68s / 0.65s
+12:32:53 apps r1 arca-ultra: 48553253 15.08s / 0.64s
+12:33:01 apps r1 arca-max-lzt: 56689803 7.31s / 0.34s
+12:33:07 apps r2 arca-max-lzt: 56689803 5.64s / 0.34s
+12:33:23 apps r2 arca-ultra: 48553258 15.04s / 0.63s
+12:33:37 apps r2 arca-max: 49154197 12.46s / 0.64s
+12:33:38 apps r2 arca-balanced: 56438851 1.45s / 0.22s
+12:33:39 apps r2 arca-fast: 72299680 0.14s / 0.15s
+12:36:09 silesia: start (load 2.4), 5 tools x 2 rounds
+12:36:09 silesia r1 arca-fast: 65182580 0.16s / 0.06s
+12:36:14 silesia r1 arca-balanced: 57257063 4.73s / 0.10s
+12:36:21 silesia r1 arca-max: 46679302 6.14s / 0.66s
+12:36:36 silesia r1 arca-ultra: 45917922 13.93s / 0.82s
+12:36:48 silesia r1 arca-max-lzt: 50478565 12.05s / 0.19s
+12:37:00 silesia r2 arca-max-lzt: 50478560 11.53s / 0.19s
+12:37:14 silesia r2 arca-ultra: 45917925 13.63s / 0.81s
+12:37:21 silesia r2 arca-max: 46679307 6.55s / 0.57s
+12:37:27 silesia r2 arca-balanced: 57257060 5.04s / 0.10s
+12:37:27 silesia r2 arca-fast: 65182584 0.16s / 0.06s
+12:40:35 saved: start (load 2.5), 5 tools x 2 rounds
+12:40:38 saved r1 arca-fast: 311177486 0.50s / 0.73s
+12:40:50 saved r1 arca-balanced: 248821645 8.36s / 1.52s
+12:41:12 saved r1 arca-max: 221740559 16.53s / 2.49s
+12:41:42 saved r1 arca-ultra: 218567596 22.63s / 2.58s
+12:42:10 saved r1 arca-max-lzt: 232767905 22.40s / 2.11s
+12:42:35 saved r2 arca-max-lzt: 232767823 21.77s / 2.10s
+12:43:00 saved r2 arca-ultra: 218567576 22.06s / 2.59s
+12:43:20 saved r2 arca-max: 221740638 16.56s / 2.50s
+12:43:30 saved r2 arca-balanced: 248821646 8.11s / 1.57s
+12:43:32 saved r2 arca-fast: 311177492 0.49s / 0.70s
+12:47:55 mixed: start (load 2.4), 5 tools x 2 rounds
+12:47:57 mixed r1 arca-fast: 281108034 0.52s / 0.60s
+12:48:09 mixed r1 arca-balanced: 215972250 8.63s / 1.28s
+12:48:34 mixed r1 arca-max: 192573762 19.11s / 2.37s
+12:49:09 mixed r1 arca-ultra: 189257618 29.46s / 2.43s
+12:49:41 mixed r1 arca-max-lzt: 207451954 28.31s / 1.61s
+12:50:12 mixed r2 arca-max-lzt: 207451895 28.36s / 1.60s
+12:50:44 mixed r2 arca-ultra: 189257663 29.40s / 2.44s
+12:51:07 mixed r2 arca-max: 192573743 19.48s / 2.38s
+12:51:17 mixed r2 arca-balanced: 215971647 8.54s / 1.32s
+12:51:19 mixed r2 arca-fast: 281108001 0.53s / 0.60s
+12:54:35 dmgs: start (load 2.4), 7 tools x 2 rounds
+12:54:36 dmgs r1 arca-fast: 615456867 0.19s / 0.13s
+12:54:37 dmgs r1 arca-balanced: 601825280 1.05s / 0.35s
+12:55:23 dmgs r1 arca-max: 454961166 41.10s / 4.26s
+12:56:22 dmgs r1 arca-ultra: 447960413 55.41s / 4.19s
+12:56:32 dmgs r1 arca-fast-dmg: 555358293 6.88s / 2.94s
+12:56:33 dmgs r1 arca-balanced-dmg: 601825281 1.04s / 0.36s
+12:57:13 dmgs r1 arca-max-lzt: 478127993 36.15s / 3.70s
+12:57:53 dmgs r2 arca-max-lzt: 478127994 36.14s / 3.66s
+12:57:55 dmgs r2 arca-balanced-dmg: 601825277 1.30s / 0.35s
+12:58:04 dmgs r2 arca-fast-dmg: 555358276 6.60s / 2.93s
+12:59:04 dmgs r2 arca-ultra: 447960418 55.74s / 4.32s
+12:59:50 dmgs r2 arca-max: 454961165 41.28s / 4.26s
+12:59:52 dmgs r2 arca-balanced: 601787283 1.33s / 0.38s
+12:59:52 dmgs r2 arca-fast: 615456871 0.20s / 0.13s
+13:03:24 thirdparty: start (load 2.5), 5 tools x 2 rounds
+13:03:26 thirdparty r1 arca-fast: 504357169 0.59s / 0.48s
+13:03:34 thirdparty r1 arca-balanced: 402765418 7.28s / 0.49s
+13:04:19 thirdparty r1 arca-max: 350248013 42.45s / 1.79s
+13:05:23 thirdparty r1 arca-ultra: 336185323 61.58s / 1.96s
+13:06:03 thirdparty r1 arca-max-lzt: 376178712 37.19s / 1.12s
+13:06:41 thirdparty r2 arca-max-lzt: 376178695 37.36s / 1.10s
+13:07:45 thirdparty r2 arca-ultra: 336185301 61.92s / 1.85s
+13:08:29 thirdparty r2 arca-max: 350248014 42.33s / 1.74s
+13:08:37 thirdparty r2 arca-balanced: 402765401 7.15s / 0.49s
+13:08:38 thirdparty r2 arca-fast: 504357174 0.57s / 0.40s
+13:08:38 done

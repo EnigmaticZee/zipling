@@ -95,6 +95,11 @@ impl PackOptions {
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
         let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false, long: true, workers: 1, job: 0 };
         let lzma2 = |level, extreme| CodecConfig { codec: Codec::Lzma2, level, extreme, long: false, workers: 1, job: 0 };
+        // BWT with LZP in front (libbsc); `extreme` falls back to LZMA2 where bsc
+        // does not pay. The research flag `--lane text=bsc:1 --lane code=bsc:2e`,
+        // measured on every set 2026-10-30, now the preset at Max and Ultra.
+        let bsc = |level, extreme| CodecConfig { codec: Codec::Bsc, level, extreme, long: true, workers: 1, job: 0 };
+        let lzt_lanes = std::env::var_os("ARCA_EXP_LZT").is_some();
         // Per lane: text needs the expensive match finders (zstd's binary tree, xz's
         // extreme mode) to reach full ratio; binaries lose <0.4% with the cheaper
         // ones and gain it back from bigger blocks, at 3-4x the speed.
@@ -105,22 +110,25 @@ impl PackOptions {
             Level::Balanced => (zstd(15), zstd(12), 16 << 20, 64 << 20, 64 << 20),
             // Max is the fast high-ratio level: LZMA2 with 32-byte matches (half the
             // CPU of 273-byte ones for 1-6% more output) for binaries and pixels,
-            // while text and code (the code lane below) get the longest matches in
-            // 64 MiB blocks: what source trees and Silesia need to beat 7-Zip Ultra.
-            // Research: ARCA_EXP_LZT puts the table coder on Max's lanes in
-            // LZMA2's place, same parse.
-            Level::Max if std::env::var_os("ARCA_EXP_LZT").is_some() => (
+            // bsc (BWT) for text and code (the code lane below) in 64 MiB blocks:
+            // the mixed folder 197 → 194.5 MB in 18.6 s instead of 30.6, source
+            // trees 22.7 → 1.6 s, Silesia 6% smaller; extraction 2.15 → 2.74 s on
+            // the mixed folder, still under every rival (see RESEARCH.md, "Quiet
+            // benchmark"). Research: ARCA_EXP_LZT puts the table coder on Max's
+            // lanes in LZMA2's place, same parse.
+            Level::Max if lzt_lanes => (
                 CodecConfig { codec: Codec::Lzt, ..lzma2(9, true) },
                 CodecConfig { codec: Codec::Lzt, ..lzma2(7, false) },
                 64 << 20,
                 64 << 20,
                 0,
             ),
-            Level::Max => (lzma2(9, true), lzma2(7, false), 64 << 20, 64 << 20, 0),
-            // Ultra is the smallest: context modelling for text (it beats LZ on
-            // prose and source code, at the cost of decode speed) and the longest
-            // LZMA2 matches.
-            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false, long: false, workers: 1, job: 0 }, lzma2(9, true), 64 << 20, 64 << 20, 0),
+            Level::Max => (bsc(1, false), lzma2(7, false), 64 << 20, 64 << 20, 0),
+            // Ultra is the smallest: bsc for text and code too (it took over from
+            // PPMd, which was 0.4% bigger on the mixed folder, 25% slower to make
+            // and 2.4x slower to extract) and the longest LZMA2 matches for the rest.
+            // `--text-codec ppmd` still gives the context model.
+            Level::Ultra => (bsc(1, false), lzma2(9, true), 64 << 20, 64 << 20, 0),
         };
         let heavy = level != Level::Fast;
         PackOptions {
@@ -173,7 +181,8 @@ impl PackOptions {
             // trees and apps small (7-Zip Ultra is the bar there).
             code_lane: matches!(level, Level::Max | Level::Ultra),
             code_codec: match level {
-                Level::Max | Level::Ultra => lzma2(9, true),
+                Level::Max | Level::Ultra if lzt_lanes => lzma2(9, true),
+                Level::Max | Level::Ultra => bsc(2, true),
                 Level::Fast => CodecConfig { long: false, ..zstd(1) },
                 // Disk images only: see `quick_images`.
                 Level::Balanced => zstd(5),

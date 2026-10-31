@@ -124,8 +124,8 @@ per core for small inputs: always at fast, below 64 MB at balanced):
 |---|---|---|---|---|
 | fast | zstd 3 | zstd 3 | ARM64 filter | 8 / 8 MiB |
 | balanced (default) | zstd 15 (binary-tree search) | zstd 12 (lazy search) | all; preflate depth 256 | 16 / 64 MiB |
-| max | LZMA2 preset 9e (xz) | same | all | 64 / 64 MiB |
-| ultra | PPMd var. H, order 16 | LZMA2 preset 9e | all | 64 / 64 MiB |
+| max | bsc (LZP + BWT), code lane bsc with LZMA2 fallback | LZMA2 preset 7 (32-byte matches) | all | 64 / 64 MiB |
+| ultra | bsc, code lane bsc with LZMA2 fallback | LZMA2 preset 9e | all | 64 / 64 MiB |
 
 zstd runs with window = block and long-distance matching. Balanced splits codecs by
 lane because the costs differ. Text needs zstd-15's binary-tree search (lighter
@@ -134,10 +134,16 @@ speed, and the bigger 64 MiB binary blocks win that back. Together with the pipe
 in section 2, balanced packs the mixed benchmark folder 1.8× faster than the earlier
 zstd-15-everywhere setup, and the archive is 0.3% smaller.
 
-PPMd (context modelling) beats LZ codecs on prose, but its decoder is as slow as its
-encoder. So it lives in *ultra* only, where it gains 3.4% on Silesia at about 7× the
-extraction time. *Max* keeps LZMA's fast decoding. Separate text and binary lanes
-let each block use the codec that suits it, and give each its own statistics.
+Text and code at *max* and *ultra* go through bsc: LZP in front of a BWT with an
+adaptive coder behind it (libbsc). On text and source it is smaller than LZMA2 9e
+and several times faster to make (source trees 22.7 → 1.6 s at max, the mixed
+folder 30.6 → 18.6 s), with a decoder about as fast as its encoder, so extraction
+of text-heavy archives is somewhat slower than LZMA's (mixed folder 2.15 → 2.74 s,
+still under every rival). Binaries keep LZMA2: max with 32-byte matches (half the
+CPU of 273-byte ones for 1–6% more output), ultra with the longest. PPMd (context
+modelling, `--text-codec ppmd`) stays available; bsc took its place at ultra as
+0.4% smaller on the mixed folder and 2.4× faster to extract. Separate lanes let
+each block use the codec that suits it, and give each its own statistics.
 
 LZMA comes from a vendored copy of liblzma with two speed patches that leave
 every output byte unchanged. The fast unaligned-load path is turned on, as xz's
