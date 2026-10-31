@@ -687,7 +687,7 @@ private struct ResultSummary: View {
         if dup > 0 { lines.append("\(Format.bytes(dup)) of duplicates stored once") }
         for t in result.transforms {
             switch t.name {
-            case "lepton":
+            case "lepton", "jpegrans", "jpeglite":
                 lines.append("\(Format.count(t.files, "photo")) re-encoded losslessly (\(Format.percent(1 - Double(t.output) / Double(max(t.input, 1)))) smaller)")
             case "deflate":
                 lines.append("\(Format.count(t.files, "document or image")) unpacked for stronger compression")
@@ -697,7 +697,7 @@ private struct ResultSummary: View {
             }
         }
         if parts > 1 { lines.append("Split into \(parts) parts") }
-        lines.append(format == .zlg ? "Every block checked with BLAKE3" : "Read back and checked after writing")
+        lines.append(format == .zlg ? "Every block checked on extraction" : "Read back and checked after writing")
         return lines
     }
 }

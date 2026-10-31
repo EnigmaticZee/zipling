@@ -34,6 +34,8 @@ enum Format {
 enum Method {
     static func label(transform: String, codec: String) -> String {
         switch transform {
+        case "jpegrans": "JPEG coder"
+        case "jpeglite": "JPEG coder (light)"
         case "lepton": "Lepton"
         case "deflate": "Unpacked + \(shortCodec(codec))"
         case "arm64": "ARM64 + \(shortCodec(codec))"
@@ -61,12 +63,15 @@ enum Method {
         case "xz", "lzma2": "LZMA2"
         case "ppmd": "PPMd"
         case "bsc": "BWT"
+        case "lzt": "Table LZ"
         default: "Stored"
         }
     }
 
     static func explanation(transform: String) -> String {
         switch transform {
+        case "jpegrans": "This JPEG's coefficients were re-encoded losslessly with Zipling's own coder, and checked against the original. It comes back bit for bit identical, about 30% smaller."
+        case "jpeglite": "This JPEG's symbols were re-coded losslessly with Zipling's light coder. It comes back bit for bit identical, about 15% smaller."
         case "lepton": "This JPEG was re-encoded losslessly with Lepton. It comes back bit for bit identical, about a fifth smaller."
         case "deflate": "This file's internal Deflate compression (ZIP, Office, PNG or PDF) was undone, so a much stronger codec could see the real data. It is rebuilt exactly on extraction."
         case "arm64": "The Apple silicon code in this app binary was rearranged so repeated calls look alike and compress better. Reversed exactly on extraction."
@@ -77,7 +82,7 @@ enum Method {
 
     static func symbol(transform: String) -> String {
         switch transform {
-        case "lepton": "photo"
+        case "lepton", "jpegrans", "jpeglite": "photo"
         case "deflate": "doc.zipper"
         case "arm64": "cpu"
         default: "square.stack.3d.down.right"
