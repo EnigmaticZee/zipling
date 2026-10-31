@@ -59,7 +59,9 @@ and a quiet run of every level, with WinRAR and Zipgeist re-measured on every se
 put the board at 137 of 144: Zipgeist's checkpoint times were inflated, and on photos it
 stores JPEGs in 0.06 s where Fast re-codes them in 0.19 s. Since then a Max with
 the table codec's lanes took the Silesia extract row and Default's rebuild budget
-for disk images the DMGs row: **139 of 144**. The estimate for a
+for disk images the DMGs row: **139 of 144**. Off the board, inputs under 64 MiB
+now keep whole blocks cut into overlapping zstd jobs instead of blocks of a
+core's share: a folder of PDFs 25% smaller, a small disk image 11%. The estimate for a
 codec with LZMA's ratio at
 a symbol coder's speed is in, and its table form (`lzt.rs`: LZMA's parse, each
 context a table rebuilt from its own counts) is 5.3% behind LZMA on Silesia, about
@@ -1231,7 +1233,45 @@ does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
 
-**Expanding what pays: a rebuild budget (2026-10-31, 02:10-02:45, in the
+**Small inputs: whole blocks, cut into zstd's own jobs (2026-10-31, 02:05-02:30,
+in the engine).** Default cut an input under 64 MiB into blocks of a core's
+share (1 MiB at the least), and Fast every input, so that every core had a
+block to encode. Fast, but a block that small loses every repeat farther back
+than itself: a 7 MB disk image came out 12% bigger than as one block, a 45 MB
+folder of PDFs 34% bigger (their fonts and images recur from file to file, and
+long-distance matching finds them only inside a block). zstd has its own answer
+for one block on many cores: jobs, each of which first loads some of the data
+before it (the overlap) into its tables, so a far repeat is found at the cost of
+loading the overlap twice. The blocks now stay whole; a small input's blocks are
+cut into jobs of a core's share of the input (`CodecConfig::job`), each
+overlapping the one before by an eighth of zstd's job window (`ARCA_EXP_OVLOG`,
+6). Default, RAM disk, best of two, against the engine before:
+
+| Input | Before | Overlap 1/8 (taken) | 1/4 | 1/2 | One block, one thread |
+|---|---:|---:|---:|---:|---:|
+| dickens, 10.2 MB | 3,283,865, 0.39 s | **-4.7%, 0.69 s** | -6.2%, 1.33 s | -7.0%, 2.65 s | -7.1%, 2.75 s |
+| webster, 41.5 MB | 9,924,745, 1.38 s | **-1.7%, 1.72 s** | -2.4%, 1.94 s | -3.1%, 2.63 s | -4.6%, 7.82 s |
+| Burnish.dmg, 7.3 MB | 6,954,315, 0.03 s | **-11.1%, 0.04 s** | -11.1% | -11.1% | -11.1%, 0.04 s |
+| source tree, 31.5 MB | 4,125,760, 0.40 s | **-4.4%, 0.55 s** | -4.9%, 0.77 s | -5.9%, 1.05 s | |
+| PDFs, 44.9 MB | 19,848,266, 0.70 s | **-25.3%, 1.13 s** | -25.6%, 1.11 s | -26.1%, 1.17 s | |
+| apps, 33.2 MB | 13,234,151, 0.25 s | **-3.2%, 0.29 s** | -3.3%, 0.36 s | -3.9%, 0.40 s | |
+| mixed, 96.1 MB (over the line) | 26,818,787, 1.17 s | same bytes | same | same | |
+
+An eighth takes most of the size for the least time (a quarter costs text twice
+the time for another 0.5-1.5%); the PDFs' 25% and the disk image's 11% come from
+the whole block, not the overlap. Fast gains 0.2-1.2% on the same inputs (the
+disk image 6.5%) for 2-9 ms on 24-70. Peak memory rises with the whole block and
+its jobs' tables: PDFs 910 to 1254 MB, webster 650 to 821, the source tree 722
+to 819, within what Default uses on the bench sets. No bench set is under 64 MiB,
+so the board does not move; the 96 MB slice confirms the big-input path is
+byte-identical. Also tried for Fast's Silesia rows, and rejected: a queue forty
+blocks deep (Fast read all of Silesia by 0.05 s instead of 0.11; no wall gain,
+the encoders are the bound), splitting the last wave of blocks across idle cores
+(no gain), and a 2 MiB binary lane at Fast (Silesia 0.140 s, 7% ahead of zstd
+-3, but +0.6-1.7% on apps, docs, saved, mixed and third-party apps and +0.2% on
+DMGs, where 616.77 MB would lose the row to zstd -3's 616.33).
+
+**Expanding what pays: a rebuild budget (2026-10-31, 01:45-02:02, in the
 engine).** The chunk table says each chunk's decoded size, so before any chunk
 is expanded Default knows what re-creating it will cost (the pinned encoders'
 measured pace) and what it is likely worth (the ratio the image got: a chunk it

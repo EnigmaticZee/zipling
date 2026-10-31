@@ -21,8 +21,20 @@ pub struct CodecConfig {
     /// and faster on all but text and blocks full of far repeats, which try again
     /// with the search on (`LONG_RETRY_RATIO`).
     pub long: bool,
-    /// zstd: threads for one block, when the block is at least two `ZSTD_JOB`s.
+    /// zstd: threads for one block, when the block is at least two `ZSTD_JOB`s
+    /// (or two `job`s).
     pub workers: u32,
+    /// zstd, a block under two `ZSTD_JOB`s: cut it into jobs this big, each
+    /// overlapping the one before by `SMALL_OVERLAP_LOG`. The packer sets a
+    /// core's share of a small input; 0 keeps the block one job.
+    pub job: usize,
+}
+
+/// How much of the block before it a small input's zstd job sees, as zstd
+/// counts it (9: the whole window, 8: half, 7: a quarter, 6: an eighth; with
+/// long-distance matching on, of a window the size of a job). Research knob.
+fn small_overlap_log() -> u32 {
+    std::env::var("ARCA_EXP_OVLOG").ok().and_then(|v| v.parse().ok()).unwrap_or(6)
 }
 
 thread_local! {
@@ -66,7 +78,7 @@ const BSC_FALLBACK_RATIO: usize = 16;
 /// As `compress`, also saying which codec the output is in: a bsc lane with the
 /// fallback may hand a block to LZMA2.
 pub fn compress_auto(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
-    let lzma = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true, long: false, workers: 1 };
+    let lzma = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true, long: false, workers: 1, job: 0 };
     if cfg.codec == Codec::Bsc && cfg.extreme {
         // A sample decides up front for large blocks, so LZMA2's blocks don't pay
         // for a whole bsc pass first (the sample takes ~0.1 s).
@@ -100,7 +112,7 @@ pub fn compress_hard(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
     if cfg.codec == Codec::Zstd && cfg.level > 3 {
         // Without long-distance matching: with it the pass found 0.3% more in
         // Apple's apps for 38% more time at Default (see RESEARCH.md, DMGs).
-        let quick = compress(raw, CodecConfig { codec: Codec::Zstd, level: 3, extreme: false, long: false, workers: 1 })?;
+        let quick = compress(raw, CodecConfig { codec: Codec::Zstd, level: 3, extreme: false, long: false, workers: 1, job: 0 })?;
         if quick.len() as f64 > raw.len() as f64 * HARD_RATIO {
             return Ok((quick, Codec::Zstd));
         }
@@ -129,7 +141,12 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
         }
         Codec::Store => Ok(raw.to_vec()),
         Codec::Zstd => {
-            let split = cfg.workers > 1 && raw.len() >= 2 * ZSTD_JOB;
+            // Big blocks: 32 MiB jobs, each seeing the whole window before it.
+            // A small input's blocks (`cfg.job`, a core's share of the input):
+            // jobs that size, each seeing part of the one before, where blocks
+            // cut to that share lost 5-12% (see RESEARCH.md).
+            let (job, overlap_log) = if raw.len() >= 2 * ZSTD_JOB { (ZSTD_JOB, 9) } else { (cfg.job, small_overlap_log()) };
+            let split = cfg.workers > 1 && job > 0 && raw.len() / 2 >= job;
             let zstd = |long: bool, split: bool| -> Result<Vec<u8>> {
                 ZSTD_CCTX.with(|cell| {
                     let mut slot = cell.borrow_mut();
@@ -145,8 +162,8 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
                     c.set_parameter(CParameter::WindowLog(wlog))?;
                     c.set_parameter(CParameter::EnableLongDistanceMatching(long))?;
                     c.set_parameter(CParameter::NbWorkers(if split { cfg.workers } else { 0 }))?;
-                    c.set_parameter(CParameter::JobSize(if split { ZSTD_JOB as u32 } else { 0 }))?;
-                    c.set_parameter(CParameter::OverlapSizeLog(if split { 9 } else { 0 }))?;
+                    c.set_parameter(CParameter::JobSize(if split { job as u32 } else { 0 }))?;
+                    c.set_parameter(CParameter::OverlapSizeLog(if split { overlap_log } else { 0 }))?;
                     // 0 is zstd's own size for the level.
                     let (hash, chain) = if !cfg.long && cfg.level == 3 {
                         (FAST_TABLES.0.min(wlog), FAST_TABLES.1.min(wlog))

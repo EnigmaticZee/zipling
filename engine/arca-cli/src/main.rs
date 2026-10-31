@@ -213,6 +213,7 @@ fn main() -> Result<()> {
                     extreme,
                     long: true,
                     workers: 1,
+                    job: 0,
                 };
                 match name {
                     "text" => o.text_codec = cfg,

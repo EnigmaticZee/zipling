@@ -87,8 +87,8 @@ pub struct PackOptions {
 impl PackOptions {
     pub fn preset(level: Level) -> Self {
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
-        let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false, long: true, workers: 1 };
-        let lzma2 = |level, extreme| CodecConfig { codec: Codec::Lzma2, level, extreme, long: false, workers: 1 };
+        let zstd = |level| CodecConfig { codec: Codec::Zstd, level, extreme: false, long: true, workers: 1, job: 0 };
+        let lzma2 = |level, extreme| CodecConfig { codec: Codec::Lzma2, level, extreme, long: false, workers: 1, job: 0 };
         // Per lane: text needs the expensive match finders (zstd's binary tree, xz's
         // extreme mode) to reach full ratio; binaries lose <0.4% with the cheaper
         // ones and gain it back from bigger blocks, at 3-4x the speed.
@@ -114,7 +114,7 @@ impl PackOptions {
             // Ultra is the smallest: context modelling for text (it beats LZ on
             // prose and source code, at the cost of decode speed) and the longest
             // LZMA2 matches.
-            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false, long: false, workers: 1 }, lzma2(9, true), 64 << 20, 64 << 20, 0),
+            Level::Ultra => (CodecConfig { codec: Codec::Ppmd, level: 16, extreme: false, long: false, workers: 1, job: 0 }, lzma2(9, true), 64 << 20, 64 << 20, 0),
         };
         let heavy = level != Level::Fast;
         PackOptions {
@@ -354,7 +354,7 @@ fn split_point(buf: &[u8], starts: &[u32]) -> Option<usize> {
     if at < buf.len() / 4 || at > buf.len() / 4 * 3 {
         return None;
     }
-    let quick = CodecConfig { codec: Codec::Zstd, level: 1, extreme: false, long: true, workers: 1 };
+    let quick = CodecConfig { codec: Codec::Zstd, level: 1, extreme: false, long: true, workers: 1, job: 0 };
     let (a, (b, whole)) = rayon::join(
         || codec::compress(&buf[..at], quick),
         || rayon::join(|| codec::compress(&buf[at..], quick), || codec::compress(buf, quick)),
@@ -457,6 +457,9 @@ struct BlockSink {
     /// File tasks and blocks under way or waiting, and the cores they share.
     busy: Arc<AtomicUsize>,
     cores: usize,
+    /// A small input: the zstd job for its blocks, a core's share of it (0: a
+    /// block is one job, two workers with cores to spare).
+    small_job: usize,
 }
 
 impl BlockSink {
@@ -490,6 +493,7 @@ impl BlockSink {
         let cfg = self.codecs[block.lane as usize];
         let (done_tx, slots_tx) = (self.done_tx.clone(), self.slots_tx.clone());
         let (start, key, busy, cores) = (self.start, self.key.clone(), self.busy.clone(), self.cores);
+        let small_job = self.small_job;
         let queued = start.map(|s| s.elapsed().as_secs_f64());
         let (lanes, splits, queue) = (self.lanes.clone(), self.splits.clone(), self.queue.clone());
         let may_split = self.split && matches!(cfg.codec, Codec::Lzma2 | Codec::Bsc | Codec::Lzt) && block.buf.len() >= SPLIT_MIN;
@@ -506,9 +510,11 @@ impl BlockSink {
                 },
                 block.buf.len() as u64,
             );
-            // With cores to spare, a block takes two.
+            // With cores to spare, a block takes two; a small input's block is cut
+            // into a core's share of the input, on every core.
             let at_once = busy.fetch_add(1, Ordering::Relaxed) + 1;
-            let cfg = CodecConfig { workers: if 2 * at_once <= cores { 2 } else { 1 }, ..cfg };
+            let (workers, job) = if small_job > 0 { (cores as u32, small_job) } else if 2 * at_once <= cores { (2, 0) } else { (1, 0) };
+            let cfg = CodecConfig { workers, job, ..cfg };
             let finish = Arc::new(move |Part { id, buf, hard, cfg, .. }: Part| {
                 let raw_len = buf.len() as u64;
                 let raw_hash = key.hash(&buf);
@@ -746,11 +752,12 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
             _ => {}
         }
     }
-    if stats.input_bytes < opts.adaptive_below {
-        let per_core = (stats.input_bytes / opts.threads.max(1) as u64).max(1 << 20) as usize;
-        block_size = block_size.min(per_core);
-        text_block_size = text_block_size.min(per_core);
-    }
+    // A small input keeps whole blocks; zstd cuts each into a core's share of
+    // the input, jobs that overlap, instead: blocks cut to that share cost
+    // 5-12% on a 7-41 MB input (far repeats across them lost) where the jobs
+    // cost 0-4% at the same speed.
+    let small_job =
+        if stats.input_bytes < opts.adaptive_below { (stats.input_bytes / opts.threads.max(1) as u64).max(1 << 20) as usize } else { 0 };
 
     // Write to a temporary name and rename at the end: never leave a half archive.
     let mut out = File::create(tmp_path).with_context(|| format!("creating {}", tmp_path.display()))?;
@@ -801,7 +808,9 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
             lookahead >> 20
         );
     }
-    // Running blocks plus two queued: enough to keep every encoder fed.
+    // Running blocks plus two queued: enough to keep every encoder fed. (A queue
+    // forty deep let Fast read all of Silesia by 0.05 s instead of 0.11 and
+    // changed nothing: the encoders are the bound, not the feed.)
     let in_flight = block_threads + 2;
     let (slots_tx, slots_rx) = bounded::<()>(in_flight);
     for _ in 0..in_flight {
@@ -830,7 +839,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         Ok((out, infos))
     });
 
-    let store = CodecConfig { codec: Codec::Store, level: 0, extreme: false, long: false, workers: 1 };
+    let store = CodecConfig { codec: Codec::Store, level: 0, extreme: false, long: false, workers: 1, job: 0 };
     let busy = Arc::new(AtomicUsize::new(0));
     // Drawn after the files exist: see `hash` for why that is what matters.
     let key = Arc::new(hash::Key::random());
@@ -858,6 +867,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         key: key.clone(),
         busy: busy.clone(),
         cores: opts.threads.max(1),
+        small_job,
     };
 
     let mut objects: Vec<Object> = Vec::new();

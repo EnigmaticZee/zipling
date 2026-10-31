@@ -785,7 +785,7 @@ mod tests {
             data.push(b'a' + (s >> 55) as u8 % 26);
         }
         for extreme in [false, true] {
-            let cfg = CodecConfig { codec: Codec::Lzt, level: 7, extreme, long: false, workers: 1 };
+            let cfg = CodecConfig { codec: Codec::Lzt, level: 7, extreme, long: false, workers: 1, job: 0 };
             let comp = compress(&data, cfg).unwrap();
             assert!(comp.len() < data.len() / 4, "lzt did not compress: {}", comp.len());
             assert_eq!(decompress(&comp, Codec::Lzt, data.len() as u64).unwrap(), data);
