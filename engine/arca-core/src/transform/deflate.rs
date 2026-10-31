@@ -92,13 +92,33 @@ struct Candidate {
     /// zlib settings that re-created a sibling stream (a disk image's chunks all
     /// come from one encoder), tried for any level.
     zlib: Option<ZlibParams>,
+    /// Decoded size when the container says it (a disk image's chunk table), 0 otherwise.
+    decoded: usize,
 }
 
 impl Candidate {
     fn deflate(pieces: Vec<(usize, usize)>, skip: usize) -> Self {
-        Candidate { pieces, skip, lzfse: None, zlib: None }
+        Candidate { pieces, skip, lzfse: None, zlib: None, decoded: 0 }
+    }
+
+    /// Seconds one core takes to re-create the stream at extraction, from the
+    /// pinned encoders' measured pace (LZFSE 122 MB/s, zlib level 1 84 MB/s).
+    fn rebuild_seconds(&self) -> f64 {
+        self.decoded as f64 / if self.lzfse.is_some() { 122e6 } else { 84e6 }
     }
 }
+
+/// Rebuild time Default allows a disk image at extraction, per byte of the image:
+/// 4.5 ms a megabyte, under 3 CPU-seconds for 600 MB of images, which ten cores
+/// re-create while the rest of the extraction runs. Chunks with the best ratio
+/// (the ones a stronger compressor gains the most on) are expanded first. On the
+/// DMGs set: 3 ms gave 606 MB and 0.27 s to extract, 4.5 ms 602 MB and 0.35 s,
+/// 6 ms 598 MB and 0.41 s, against 560 MB and 1.05 s expanding everything.
+const DMG_REBUILD_S_PER_BYTE: f64 = 4.5e-9;
+
+/// A chunk the image compressed by less than this holds already-compressed data:
+/// expanding it gains nothing and costs its rebuild.
+const DMG_MIN_RATIO: f64 = 1.1;
 
 impl Scanner<'_> {
     /// Expands one candidate stream. Pure, so candidates run in parallel.
@@ -353,16 +373,16 @@ impl Scanner<'_> {
                     continue;
                 }
                 let pieces = vec![(at.unwrap() as usize, len as usize)];
+                let decoded = (sectors as usize).saturating_mul(512);
                 match kind {
-                    0x8000_0005 => candidates.push(Candidate::deflate(pieces, 2)),
+                    0x8000_0005 => candidates.push(Candidate { decoded, ..Candidate::deflate(pieces, 2) }),
                     0x8000_0007 if sectors < 1 << 22 => {
-                        candidates.push(Candidate { pieces, skip: 0, lzfse: Some(sectors as usize * 512), zlib: None })
+                        candidates.push(Candidate { pieces, skip: 0, lzfse: Some(decoded), zlib: None, decoded })
                     }
                     _ => {}
                 }
             }
         }
-        candidates.sort_unstable_by_key(|c| c.pieces[0].0);
         // Chunks from zlib levels 7-9 are worth expanding only at the deep search
         // of Max and Ultra: Discord's cost five times the others' to rebuild
         // (19 CPU-s to unpack, against 3-4), which Default's extraction can't carry.
@@ -371,7 +391,27 @@ impl Scanner<'_> {
                 let chunk = &d[c.pieces[0].0..c.pieces[0].0 + c.pieces[0].1];
                 c.lzfse.is_some() || zlib_header(chunk).is_none_or(|(flevel, _)| flevel < 3)
             });
+            // Chunks that hold already-compressed data gain nothing from a second
+            // compressor and cost their rebuild at extraction: left as they are.
+            // (Max expands them too: under LZMA they still gave 2.3% on the set.)
+            let ratio = |c: &Candidate| c.decoded as f64 / c.pieces[0].1 as f64;
+            candidates.retain(|c| c.decoded == 0 || ratio(c) >= DMG_MIN_RATIO);
+            // Default bounds what the extraction will have to re-create: the best
+            // ratios first, until the image's rebuild budget is spent.
+            candidates.sort_by(|a, b| ratio(b).total_cmp(&ratio(a)));
+            let per_byte = std::env::var("ARCA_EXP_DMG_BUDGET_MS").ok().and_then(|v| v.parse::<f64>().ok()).map_or(DMG_REBUILD_S_PER_BYTE, |ms| ms * 1e-9);
+            let budget = d.len() as f64 * per_byte;
+            let mut spent = 0.0;
+            candidates.retain(|c| {
+                let cost = c.rebuild_seconds();
+                let fits = spent + cost <= budget;
+                if fits {
+                    spent += cost;
+                }
+                fits
+            });
         }
+        candidates.sort_unstable_by_key(|c| c.pieces[0].0);
         // One encoder wrote every chunk. If stock zlib at some level re-creates
         // the first level 6-9 chunk (`hdiutil -imagekey zlib-level=9`, as many
         // app installers are made), the rest are tried with the same setting.
@@ -393,7 +433,7 @@ impl Scanner<'_> {
         while let Some(p) = memmem::find(&d[at..], b"bvx").map(|p| p + at) {
             match lzfse_extent(&d[p..]) {
                 Some((len, raw_len)) => {
-                    candidates.push(Candidate { pieces: vec![(p, len)], skip: 0, lzfse: Some(raw_len), zlib: None });
+                    candidates.push(Candidate { pieces: vec![(p, len)], skip: 0, lzfse: Some(raw_len), zlib: None, decoded: raw_len });
                     at = p + len;
                 }
                 None => at = p + 3,

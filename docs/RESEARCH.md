@@ -1229,6 +1229,29 @@ does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
 
+**Expanding what pays: a rebuild budget (2026-10-31, 02:10-02:45, in the
+engine).** The chunk table says each chunk's decoded size, so before any chunk
+is expanded Default knows what re-creating it will cost (the pinned encoders'
+measured pace) and what it is likely worth (the ratio the image got: a chunk it
+barely compressed holds compressed data and gains nothing twice). Default now
+takes chunks in order of ratio until a budget of 4.5 ms of rebuild per MB of the
+image is spent, and leaves chunks under 1.1:1 alone; Max and Ultra expand
+everything as before (the ratio filter cost Max 2.3% on the set, so it is
+Default's only). On the DMGs set, RAM disk:
+
+| Default | Size | Make | Extract |
+|---|---:|---:|---:|
+| expanding everything (before) | 560.5 MB | 2.9 s | 1.05 s |
+| budget 3 ms/MB | 606.3 MB | 1.1 s | 0.27 s |
+| **budget 4.5 ms/MB** | **601.8 MB** | 1.1 s | **0.35 s** |
+| budget 6 ms/MB | 597.8 MB | 1.3 s | 0.41 s |
+| zstd -19 --long | 610.27 MB | 24.0 s | 0.45 s |
+
+4.5 ms keeps a 23% margin on the extract time and takes the row; what Default
+gives up against expanding everything is 7% on disk images in exchange for
+extracting them 3x faster, which is what a Default is for. The 4 Deflate tests
+and the 8 round trips pass; the quiet run of Default on the set follows.
+
 **Quiet benchmark, every level (2026-10-30, 17:43-19:42,
 `bench/results-2026-10-30-quiet-all.jsonl`, report `results-2026-10-30-quiet.md`).**
 Fast, Default, Max and Ultra, each with and without bsc, against zstd -3,
