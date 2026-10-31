@@ -123,6 +123,36 @@
             </div>
           </section>
 
+          <section class="scene" data-name="Levels" aria-roledescription="slide">
+            <div class="scene-copy">
+              <p class="scene-kicker">Four levels</p>
+              <h3 class="scene-title">Fast in half a second. Max in 40% of 7-Zip's time.</h3>
+              <p class="scene-sub">On the 736 MB folder: Fast packs it in 0.5 s. Default is 8% smaller than 7-Zip Ultra and six times faster. Max is 18% smaller in 40% of the time, Ultra smaller still.</p>
+            </div>
+            <div class="scene-vis" aria-hidden="true">
+              <div class="vis vis-levels">
+                <div class="panel a-up" style="--at:.1s">
+                  <p class="panel-head"><b>Archive size</b><span>736 MB folder, smaller is better</span></p>
+                  <div class="race"><span class="who">7-Zip Ultra</span><span class="track"><i class="a-grow" style="--w:.836;--at:.4s"></i></span><span class="val"><b data-to="235.0" data-dec="1" data-at="400" data-dur="900">235.0</b> MB</span></div>
+                  <div class="race us"><span class="who">Fast</span><span class="track"><i class="a-grow" style="--w:1;--at:.55s"></i></span><span class="val"><b data-to="281.1" data-dec="1" data-at="550" data-dur="900">281.1</b> MB</span></div>
+                  <div class="race us"><span class="who">Default</span><span class="track"><i class="a-grow" style="--w:.768;--at:.7s"></i></span><span class="val"><b data-to="216.0" data-dec="1" data-at="700" data-dur="900">216.0</b> MB</span></div>
+                  <div class="race us"><span class="who">Max</span><span class="track"><i class="a-grow" style="--w:.685;--at:.85s"></i></span><span class="val"><b data-to="192.6" data-dec="1" data-at="850" data-dur="900">192.6</b> MB</span></div>
+                  <div class="race us"><span class="who">Ultra</span><span class="track"><i class="a-grow" style="--w:.673;--at:1s"></i></span><span class="val"><b data-to="189.3" data-dec="1" data-at="1000" data-dur="900">189.3</b> MB</span></div>
+                  <span class="badge a-pop" style="--at:2.1s">Max: 18% smaller than 7-Zip's best</span>
+                </div>
+                <div class="panel a-up" style="--at:.5s">
+                  <p class="panel-head"><b>Time to compress</b><span>shorter is better</span></p>
+                  <div class="race"><span class="who">7-Zip Ultra</span><span class="track"><i class="a-grow slow" style="--w:1;--at:.9s"></i></span><span class="val"><b data-to="47.8" data-dec="1" data-at="900" data-dur="1800">47.8</b> s</span></div>
+                  <div class="race us"><span class="who">Fast</span><span class="track"><i class="a-grow" style="--w:.011;--at:.9s"></i></span><span class="val"><b data-to="0.5" data-dec="1" data-at="900" data-dur="300">0.5</b> s</span></div>
+                  <div class="race us"><span class="who">Default</span><span class="track"><i class="a-grow" style="--w:.178;--at:.9s"></i></span><span class="val"><b data-to="8.5" data-dec="1" data-at="900" data-dur="500">8.5</b> s</span></div>
+                  <div class="race us"><span class="who">Max</span><span class="track"><i class="a-grow" style="--w:.4;--at:.9s"></i></span><span class="val"><b data-to="19.1" data-dec="1" data-at="900" data-dur="900">19.1</b> s</span></div>
+                  <div class="race us"><span class="who">Ultra</span><span class="track"><i class="a-grow" style="--w:.615;--at:.9s"></i></span><span class="val"><b data-to="29.4" data-dec="1" data-at="900" data-dur="1200">29.4</b> s</span></div>
+                  <span class="badge a-pop" style="--at:2.9s">Fast: 90× faster than 7-Zip's best</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section class="scene" data-name="Every byte" aria-roledescription="slide">
             <div class="scene-copy">
               <p class="scene-kicker">The archive browser</p>
@@ -131,10 +161,10 @@
             </div>
             <div class="scene-vis" aria-hidden="true">
               <div class="vis vis-shot">
-                <div class="view"><div class="cam"><img class="shot" src="assets/app-archive.jpg" alt="" width="2480" height="1800" loading="lazy"></div></div>
+                <div class="view"><div class="cam"><img class="shot" src="assets/app-archive.jpg?v=20261031" alt="" width="2480" height="1800" loading="lazy"></div></div>
                 <span class="callout c1" style="left:346px;top:194px"><i style="width:76px;height:26px"></i><em style="top:13px;height:83px"></em><b style="left:-46px;top:96px">Saved, file by file</b></span>
                 <span class="callout c2" style="left:414px;top:194px"><i style="width:52px;height:26px"></i><em style="top:13px;height:137px"></em><b style="left:-44px;top:150px">How: JPEG coder, unpacked PDFs, Zstandard</b></span>
-                <span class="callout c3" style="left:420px;top:150px"><i style="width:160px;height:160px"></i><em class="h" style="left:-98px;width:18px"></em><b class="to-left">50% smaller, every block checked</b></span>
+                <span class="callout c3" style="left:420px;top:150px"><i style="width:160px;height:160px"></i><em class="h" style="left:-98px;width:18px"></em><b class="to-left">36% smaller, every block checked</b></span>
               </div>
             </div>
           </section>
@@ -409,7 +439,7 @@
           </ul>
         </div>
         <figure class="app-shot reveal">
-          <img src="assets/app-preview.jpg" alt="The Photos folder inside a Zipling archive, with Golden Gate at sunset.jpg selected and previewed in the inspector, straight from the archive: 2.1 MB, packed to about 1.5 MB with Zipling's JPEG coder, 30% smaller." width="2480" height="1440" loading="lazy">
+          <img src="assets/app-preview.jpg?v=20261031" alt="The Photos folder inside a Zipling archive, with Sonoma wallpaper.jpg selected and previewed in the inspector, straight from the archive: 1.8 MB, packed to about 1.2 MB with Zipling's JPEG coder, 33% smaller." width="2480" height="1440" loading="lazy">
         </figure>
       </div>
 

@@ -210,6 +210,14 @@ h1 { font-size: clamp(44px, 7.4vw, 92px); line-height: 1.02; font-weight: 700; l
 .race .val { text-align: right; font-variant-numeric: tabular-nums; }
 .vis-bench .badge { position: absolute; top: 14px; right: 16px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; background: var(--r-grad); color: #fff; box-shadow: 0 6px 20px rgba(106, 92, 255, 0.45); }
 
+/* 2b. Levels: the same race bars, five to a panel, 7-Zip's best as the first row. */
+.vis-levels .panel { position: absolute; left: 20px; width: 520px; padding: 14px 20px 16px; border-radius: 18px; background: var(--r-glass); border: 1px solid var(--r-edge); }
+.vis-levels .panel:nth-child(1) { top: 6px; }
+.vis-levels .panel:nth-child(2) { top: 214px; }
+.vis-levels .race { margin-top: 10px; font-size: 13.5px; }
+.vis-levels .race .track { height: 10px; }
+.vis-levels .badge { position: absolute; top: 10px; right: 16px; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: var(--r-grad); color: #fff; box-shadow: 0 6px 20px rgba(106, 92, 255, 0.45); }
+
 /* 3. The archive browser */
 /* The screenshot sits in a clipped viewport; a camera tilts it in, zooms into the
    list (two callouts), then pans to the inspector's ring (one more). */

@@ -246,7 +246,7 @@ function reel() {
   const scenes = [...root.querySelectorAll(".scene")];
   const steps = root.querySelector(".reel-steps");
   const toggle = root.querySelector(".reel-toggle");
-  const durations = [5200, 5800, 5800, 5000, 5400, 5400, 5200];
+  const durations = [5200, 5800, 6400, 5800, 5000, 5400, 5400, 5200];
 
   // Repair: an archive's blocks, a few of them damaged, and its recovery data.
   const damaged = new Set([8, 9, 21, 33, 34, 50, 63]);

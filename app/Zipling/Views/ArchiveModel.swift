@@ -768,7 +768,7 @@ final class ArchiveModel {
                 let result = try await Archives.verify(archive, task: job.task, cancel: job.cancelToken,
                                                        progress: job.progressHandler)
                 job.finish(nil, outcome: archive.backend == .arca
-                    ? "All \(Format.count(result.files, "file")) (\(Format.bytes(result.bytes))) decoded and matched their BLAKE3 hashes in \(Format.duration(result.seconds))."
+                    ? "All \(Format.count(result.files, "file")) (\(Format.bytes(result.bytes))) decoded and matched their checksums in \(Format.duration(result.seconds))."
                     : "All \(Format.count(result.files, "file")) (\(Format.bytes(result.bytes))) decoded and passed the archive's checks in \(Format.duration(result.seconds)).")
             } catch let p as PasswordRequired {
                 job.finish(EngineError(message: "cancelled"))

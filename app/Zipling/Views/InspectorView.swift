@@ -107,7 +107,7 @@ private struct ArchiveSummary: View {
         }
 
         InspectorSection("Integrity") {
-            Text("Every block carries BLAKE3 hashes and is checked during extraction.")
+            Text("Every block carries a checksum and is checked during extraction; the index carries a BLAKE3 hash.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button {
@@ -131,6 +131,8 @@ private struct ArchiveSummary: View {
         var rows: [String: Row] = [:]
         for e in listing.entries where e.kind == "file" {
             let (key, title) = switch e.transform {
+            case "jpegrans": ("jpegrans", "Photos re-encoded (JPEG coder)")
+            case "jpeglite": ("jpeglite", "Photos re-encoded (light JPEG coder)")
             case "lepton": ("lepton", "Photos re-encoded (Lepton)")
             case "deflate": ("deflate", "Documents & images unpacked")
             case "arm64": ("arm64", "App code optimized")
