@@ -1,5 +1,81 @@
-# Zipling app benchmark, 2026-10-31: phases 1 and 2
+# Zipling app benchmark, 2026-10-31
 
+## Scoreboard (phases 1 and 2: Zipgeist and Finder; the Zipling side is provisional until phase 3)
+
+Each grid is one Zipling level against the rival settings in its class. A row is won
+only when Zipling is smaller **and** faster to make **and** faster to extract; where it is
+not, the cell says which of the three failed and by how much.
+
+### Zipling Fast
+
+| Set | Zipgeist ZIP Fast | Zipgeist tar.zst Fast | Finder Compress |
+|---|---|---|---|
+| Photos | ✅ | ✅ | ✅ |
+| PDFs | ✅ | ✅ | ✅ |
+| Source code | ✅ | ✅ | ✅ |
+| Apple apps | ✅ | ✅ | ✅ |
+| Silesia | ✅ | ❌ 1.2x slower to make | ✅ |
+| Saved folder | ✅ | ✅ | ✅ |
+| Mixed folder | ✅ | ✅ | ✅ |
+| Disk images | ✅ | ✅ | ✅ |
+| 3rd-party apps | ✅ | ✅ | ✅ |
+
+**Fast: 26 of 27 won.**
+
+### Zipling Default
+
+| Set | Zipgeist ZIP Normal | Zipgeist 7z Normal |
+|---|---|---|
+| Photos | ❌ 26x slower to make, 1.3x slower to extract | ✅ |
+| PDFs | ❌ 10x slower to make | ✅ |
+| Source code | ❌ 4x slower to make | ❌ 7% bigger |
+| Apple apps | ❌ 1.5x slower to make | ✅ |
+| Silesia | ❌ 4x slower to make | ❌ 15% bigger |
+| Saved folder | ❌ 4x slower to make | ✅ |
+| Mixed folder | ❌ 3x slower to make | ✅ |
+| Disk images | ❌ 5x slower to make | ✅ |
+| 3rd-party apps | ❌ 1.0x slower to make | ❌ 6% bigger |
+
+**Default: 6 of 18 won.**
+
+### Zipling Max
+
+| Set | Zipgeist 7z Best | Zipgeist tar.xz Best |
+|---|---|---|
+| Photos | ✅ | ✅ |
+| PDFs | ❌ 6x slower to make | ❌ 6x slower to make |
+| Source code | ✅ | ✅ |
+| Apple apps | ❌ 2.0x slower to make | ❌ 1.9x slower to make |
+| Silesia | ✅ | ✅ |
+| Saved folder | ✅ | ✅ |
+| Mixed folder | ✅ | ✅ |
+| Disk images | ❌ 5x slower to make, 2.9x slower to extract | ❌ 5x slower to make, 2.5x slower to extract |
+| 3rd-party apps | ✅ | ✅ |
+
+**Max: 12 of 18 won.**
+
+### Zipling Ultra
+
+| Set | Zipgeist 7z Best | Zipgeist tar.xz Best |
+|---|---|---|
+| Photos | ✅ | ✅ |
+| PDFs | ❌ 8x slower to make | ❌ 9x slower to make |
+| Source code | ✅ | ✅ |
+| Apple apps | ❌ 2.4x slower to make | ❌ 2.3x slower to make |
+| Silesia | ✅ | ✅ |
+| Saved folder | ❌ 1.3x slower to make | ❌ 1.2x slower to make |
+| Mixed folder | ❌ 1.0x slower to make | ❌ 1.1x slower to make |
+| Disk images | ❌ 7x slower to make, 2.8x slower to extract | ❌ 7x slower to make, 2.4x slower to extract |
+| 3rd-party apps | ❌ 1.1x slower to make | ❌ 1.1x slower to make |
+
+**Ultra: 6 of 18 won.**
+
+**All levels: 50 of 81 rows won.** A row counts only when all three are better at once; Zipling is the smaller file in 78 of 81 rows and the faster extractor in 76 of 81.
+
+
+---
+
+# Details
 Status: **phases 1 and 2 done, phase 3 pending.** Phase 1 drove Zipgeist 1.0.0 through its
 own Finder menu on all nine sets, six settings, two rounds: 108 of 108 round trips
 identical. Phase 2 drove Finder's own Compress and the double-click Expand (Archive
