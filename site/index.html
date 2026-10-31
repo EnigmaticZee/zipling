@@ -123,36 +123,6 @@
             </div>
           </section>
 
-          <section class="scene" data-name="Levels" aria-roledescription="slide">
-            <div class="scene-copy">
-              <p class="scene-kicker">Four levels</p>
-              <h3 class="scene-title">Fast in half a second. Max in 40% of 7-Zip's time.</h3>
-              <p class="scene-sub">On the 736 MB folder: Fast packs it in 0.5 s. Default is 8% smaller than 7-Zip Ultra and six times faster. Max is 18% smaller in 40% of the time, Ultra* smaller still. (* experimental, not in the released app)</p>
-            </div>
-            <div class="scene-vis" aria-hidden="true">
-              <div class="vis vis-levels">
-                <div class="panel a-up" style="--at:.1s">
-                  <p class="panel-head"><b>Archive size</b><span>736 MB folder, smaller is better</span></p>
-                  <div class="race"><span class="who">7-Zip Ultra</span><span class="track"><i class="a-grow" style="--w:.836;--at:.4s"></i></span><span class="val"><b data-to="235.0" data-dec="1" data-at="400" data-dur="900">235.0</b> MB</span></div>
-                  <div class="race us"><span class="who">Fast</span><span class="track"><i class="a-grow" style="--w:1;--at:.55s"></i></span><span class="val"><b data-to="281.1" data-dec="1" data-at="550" data-dur="900">281.1</b> MB</span></div>
-                  <div class="race us"><span class="who">Default</span><span class="track"><i class="a-grow" style="--w:.768;--at:.7s"></i></span><span class="val"><b data-to="216.0" data-dec="1" data-at="700" data-dur="900">216.0</b> MB</span></div>
-                  <div class="race us"><span class="who">Max</span><span class="track"><i class="a-grow" style="--w:.685;--at:.85s"></i></span><span class="val"><b data-to="192.6" data-dec="1" data-at="850" data-dur="900">192.6</b> MB</span></div>
-                  <div class="race us"><span class="who">Ultra*</span><span class="track"><i class="a-grow" style="--w:.673;--at:1s"></i></span><span class="val"><b data-to="189.3" data-dec="1" data-at="1000" data-dur="900">189.3</b> MB</span></div>
-                  <span class="badge a-pop" style="--at:2.1s">Max: 18% smaller than 7-Zip's best</span>
-                </div>
-                <div class="panel a-up" style="--at:.5s">
-                  <p class="panel-head"><b>Time to compress</b><span>shorter is better</span></p>
-                  <div class="race"><span class="who">7-Zip Ultra</span><span class="track"><i class="a-grow slow" style="--w:1;--at:.9s"></i></span><span class="val"><b data-to="47.8" data-dec="1" data-at="900" data-dur="1800">47.8</b> s</span></div>
-                  <div class="race us"><span class="who">Fast</span><span class="track"><i class="a-grow" style="--w:.011;--at:.9s"></i></span><span class="val"><b data-to="0.5" data-dec="1" data-at="900" data-dur="300">0.5</b> s</span></div>
-                  <div class="race us"><span class="who">Default</span><span class="track"><i class="a-grow" style="--w:.178;--at:.9s"></i></span><span class="val"><b data-to="8.5" data-dec="1" data-at="900" data-dur="500">8.5</b> s</span></div>
-                  <div class="race us"><span class="who">Max</span><span class="track"><i class="a-grow" style="--w:.4;--at:.9s"></i></span><span class="val"><b data-to="19.1" data-dec="1" data-at="900" data-dur="900">19.1</b> s</span></div>
-                  <div class="race us"><span class="who">Ultra*</span><span class="track"><i class="a-grow" style="--w:.615;--at:.9s"></i></span><span class="val"><b data-to="29.4" data-dec="1" data-at="900" data-dur="1200">29.4</b> s</span></div>
-                  <span class="badge a-pop" style="--at:2.9s">Fast: 90× faster than 7-Zip's best</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
           <section class="scene" data-name="Every byte" aria-roledescription="slide">
             <div class="scene-copy">
               <p class="scene-kicker">The archive browser</p>
@@ -348,7 +318,7 @@
         <article class="kind">
           <p class="kind-num">3×</p>
           <h3>Faster extraction</h3>
-          <p>The default setting extracts the mixed folder 3× faster than 7-Zip and nearly 8× faster than Finder.</p>
+          <p>The default setting extracts the mixed folder 3× faster than 7-Zip and 6× faster than Finder.</p>
         </article>
       </div>
 
@@ -422,25 +392,59 @@
         <div class="app-copy reveal">
           <p class="kicker">The app</p>
           <h2>See where every byte went.</h2>
-          <p class="sub">Zipling is a native Mac app built in SwiftUI. It opens the archives you already have, and for its own it shows, file by file, how much was saved and how.</p>
-          <ul class="ticks">
-            <li>Opens ZIP, 7z, RAR, TAR, DMG, ISO, StuffIt and classic Mac formats, split and password-protected archives</li>
-            <li>Fixes garbled names from old Windows and Japanese or Chinese ZIPs</li>
-            <li>Archives inside archives open in place, and search looks inside them too</li>
-            <li>Quick Look and drag out any file without extracting the rest</li>
-            <li>Makes Zipling, ZIP, 7z and TAR archives, encrypted and split, and edits them in place</li>
-            <li>Extract Here keeps things tidy, in the background, with progress on the Dock</li>
-            <li>Converts any archive to Zipling, ZIP or 7z, and shows the new size and time before you start</li>
-            <li>Compress fast now: Zipling shrinks it to Max later, while your Mac is idle and plugged in</li>
-            <li>Recovery files repair a damaged archive, byte for byte</li>
-            <li>Lives in Finder: Quick Look for archives, right-click menu, menu-bar drop zone</li>
-            <li>Works with Shortcuts, AppleScript and Folder Actions, and Spotlight finds archives by the files inside</li>
-            <li>Safe extraction: nothing escapes the folder, and downloaded files stay marked for Gatekeeper</li>
-          </ul>
+          <p class="sub">Zipling is a native Mac app built in SwiftUI. It opens the archives you already have, and for its own it shows, file by file, how much was saved and how. Everything it does, below, in six moves.</p>
         </div>
         <figure class="app-shot reveal">
           <img src="assets/app-preview.jpg?v=20261031b" alt="The Photos folder inside a Zipling archive, with Sonoma wallpaper.jpg selected and previewed in the inspector, straight from the archive: 1.8 MB, packed to about 1.2 MB with Zipling's JPEG coder, 33% smaller." width="2480" height="1440" loading="lazy">
         </figure>
+      </div>
+
+      <!-- Six things the app does, each with a small motion that plays when it scrolls in. -->
+      <div class="feats" data-stagger>
+        <article class="feat">
+          <div class="stage" aria-hidden="true">
+            <span class="chip pop" style="--at:.1s">ZIP</span><span class="chip pop" style="--at:.18s">7z</span><span class="chip pop" style="--at:.26s">RAR</span><span class="chip pop" style="--at:.34s">TAR</span><span class="chip pop" style="--at:.42s">DMG</span><span class="chip pop" style="--at:.5s">ISO</span><span class="chip pop" style="--at:.58s">StuffIt</span><span class="chip pop" style="--at:.66s">Split .001</span><span class="chip hot pop" style="--at:.9s">Passwords</span><span class="chip hot pop" style="--at:1.05s">Names repaired</span>
+          </div>
+          <h3>Opens everything</h3>
+          <p>ZIP, 7z, RAR, TAR, DMG, ISO, StuffIt and classic Mac formats, split or password-protected, with garbled names from old Windows, Japanese or Chinese ZIPs repaired.</p>
+        </article>
+        <article class="feat">
+          <div class="stage crumbs" aria-hidden="true">
+            <span class="chip pop" style="--at:.1s">Project.zip</span><i class="sep up" style="--at:.3s"></i><span class="chip pop" style="--at:.4s">photos.zip</span><i class="sep up" style="--at:.6s"></i><span class="chip pop" style="--at:.7s">Beach.jpg</span><span class="chip hot pop" style="--at:1.1s"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>Quick Look</span>
+          </div>
+          <h3>Looks inside</h3>
+          <p>Archives inside archives open in place, search looks inside them too, and you can Quick Look or drag out one file without extracting the rest.</p>
+        </article>
+        <article class="feat">
+          <div class="stage" aria-hidden="true">
+            <span class="chip us pop" style="--at:.1s">.zlg</span><i class="spin up" style="--at:.35s"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0114-5.3M20 12a8 8 0 01-14 5.3M18 3v4h-4M6 21v-4h4"/></svg></i><span class="chip pop" style="--at:.55s">ZIP</span><span class="chip pop" style="--at:.63s">7z</span><span class="chip pop" style="--at:.71s">TAR</span><span class="chip hot pop" style="--at:1s">281 → 216 MB, 8.5 s</span>
+          </div>
+          <h3>Makes, edits, converts</h3>
+          <p>Makes Zipling, ZIP, 7z and TAR archives, encrypted and split, edits them in place, and converts any archive, showing the new size and time before you start.</p>
+        </article>
+        <article class="feat">
+          <div class="stage shrink" aria-hidden="true">
+            <span class="track"><i></i></span>
+            <span class="chip pop" style="--at:.2s">Fast · 0.5 s</span><span class="chip light" style="--at:.9s">Idle</span><span class="chip light" style="--at:1.1s">Plugged in</span><span class="chip hot pop" style="--at:2.4s">Max · 31% smaller</span>
+          </div>
+          <h3>Fast now, smaller later</h3>
+          <p>Compress in seconds; while your Mac is idle and plugged in, Zipling re-packs the archive at Max and swaps it in once it has been checked.</p>
+        </article>
+        <article class="feat">
+          <div class="stage" aria-hidden="true">
+            <span class="blocks"><i style="--at:.05s"></i><i style="--at:.1s"></i><i class="x" style="--at:.15s"></i><i style="--at:.2s"></i><i style="--at:.25s"></i><i style="--at:.3s"></i><i class="x" style="--at:.35s"></i><i style="--at:.4s"></i><i style="--at:.45s"></i><i style="--at:.5s"></i><i class="x" style="--at:.55s"></i><i style="--at:.6s"></i></span>
+            <span class="chip hot pop" style="--at:1.9s"><svg viewBox="0 0 20 20"><path d="M5.5 10.5l3 3 6-7"/></svg>Repaired, byte for byte</span><span class="chip pop" style="--at:2.1s">Gatekeeper kept</span>
+          </div>
+          <h3>Repairs and protects</h3>
+          <p>A recovery file rebuilds a damaged archive byte for byte. Extraction never escapes its folder, and downloaded files keep their Gatekeeper mark.</p>
+        </article>
+        <article class="feat">
+          <div class="stage" aria-hidden="true">
+            <span class="chip pop" style="--at:.1s">Right-click in Finder</span><span class="chip pop" style="--at:.2s">Quick Look</span><span class="chip pop" style="--at:.3s">Menu bar</span><span class="chip pop" style="--at:.4s">Dock progress</span><span class="chip pop" style="--at:.5s">Shortcuts</span><span class="chip pop" style="--at:.6s">AppleScript</span><span class="chip pop" style="--at:.7s">Folder Actions</span><span class="chip hot pop" style="--at:1s"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>Spotlight sees inside</span>
+          </div>
+          <h3>Part of your Mac</h3>
+          <p>Right-click, Quick Look and a menu-bar drop zone in Finder, Extract Here in the background with progress on the Dock, Shortcuts, AppleScript, Folder Actions, and Spotlight that finds archives by the files inside.</p>
+        </article>
       </div>
 
       <div class="roadmap reveal">
