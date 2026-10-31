@@ -55,7 +55,14 @@ enum Engine {
 
     static func list(_ archive: URL) async throws -> Listing {
         let path = archive.path
-        return try await detached { try decode(arca_list(path)) }
+        return try await detached {
+            Timing.mark("engine.list: calling")
+            let raw = arca_list(path)
+            Timing.mark("engine.list: returned")
+            let listing: Listing = try decode(raw)
+            Timing.mark("engine.list: decoded")
+            return listing
+        }
     }
 
     static func pack(
@@ -64,7 +71,12 @@ enum Engine {
     ) async throws -> PackResult {
         let request = try json(PackRequest(inputs: inputs.map(\.path), output: output.path, level: level.rawValue))
         return try await withProgress(progress) { ctx in
-            try decode(arca_pack(request, task.handle, trampoline, ctx))
+            Timing.mark("engine.pack: calling")
+            let raw = arca_pack(request, task.handle, trampoline, ctx)
+            Timing.mark("engine.pack: returned")
+            let result: PackResult = try decode(raw)
+            Timing.mark("engine.pack: decoded")
+            return result
         }
     }
 
@@ -76,7 +88,12 @@ enum Engine {
         let request = try json(ExtractRequest(archive: archive.path, dest: dest.path, only: only, overwrite: false,
                                               quarantine: quarantine.map { [UInt8]($0) }))
         var result: ExtractResult = try await withProgress(progress) { ctx in
-            try decode(arca_extract(request, task.handle, trampoline, ctx))
+            Timing.mark("engine.extract: calling")
+            let raw = arca_extract(request, task.handle, trampoline, ctx)
+            Timing.mark("engine.extract: returned")
+            let result: ExtractResult = try decode(raw)
+            Timing.mark("engine.extract: decoded")
+            return result
         }
         result.quarantined = quarantine != nil
         return result
@@ -213,5 +230,27 @@ enum Engine {
         let only: [String]
         let overwrite: Bool
         let quarantine: [UInt8]?
+    }
+}
+
+/// Timing marks around the engine, for finding where the app spends time that the
+/// engine does not. Off unless `defaults write com.observantsystems.zipling timing
+/// -bool true`; then `log show --last 5m --style compact --predicate 'subsystem ==
+/// "com.observantsystems.zipling" AND category == "timing"'`.
+enum Timing {
+    nonisolated(unsafe) private static var start = ContinuousClock.now
+    private static let on = UserDefaults.standard.bool(forKey: "timing")
+    private static let log = Logger(subsystem: "com.observantsystems.zipling", category: "timing")
+
+    static func begin(_ what: String) {
+        guard on else { return }
+        start = .now
+        log.notice("\(what, privacy: .public): start")
+    }
+
+    static func mark(_ what: String) {
+        guard on else { return }
+        let ms = (ContinuousClock.now - start) / .milliseconds(1)
+        log.notice("\(what, privacy: .public): \(ms, format: .fixed(precision: 1), privacy: .public) ms")
     }
 }

@@ -57,8 +57,10 @@ enum Extraction {
         let result = try await Archives.extract(
             archive, to: staging, only: roots, quarantine: quarantine, task: job.task, cancel: job.cancelToken,
             progress: job.progressHandler)
+        Timing.mark("extraction: engine returned")
         let report = try SafeExtraction.finalize(staging, quarantine: quarantine,
                                                  alreadyQuarantined: result.quarantined == true)
+        Timing.mark("extraction: finalized")
 
         // A selection: those items. Everything: whatever actually landed in staging.
         var sources = (roots.isEmpty ? SafeExtraction.names(in: staging.path).sorted() : roots)
@@ -92,6 +94,7 @@ enum Extraction {
             try fm.moveItem(at: source, to: target)
             placed.append(target)
         }
+        Timing.mark("extraction: moved into place")
         let complete = roots.isEmpty && (result.skipped ?? []).isEmpty && report.removedLinks.isEmpty && kept == 0
         return Outcome(result: result, placed: placed, removedLinks: report.removedLinks.count,
                        conflictsSkipped: kept, complete: complete)

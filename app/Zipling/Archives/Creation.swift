@@ -71,11 +71,13 @@ enum Creation {
         defer { try? fm.removeItem(at: staging) }
         let target = staging.appending(path: output.lastPathComponent)
         let started = Date()
+        Timing.mark("create: staging ready")
 
         let result: PackResult
         switch options.format {
         case .zlg:
             result = try await Engine.pack(items, into: target, level: options.level, task: task, progress: progress)
+            Timing.mark("create: engine returned")
         case .zip where engineWritesZip(options, password: password):
             let made = try await Engine.zip(items, into: target, level: engineZipLevel,
                                             leaveOutMacFiles: options.leaveOutMacFiles, task: task, progress: progress)
@@ -113,6 +115,7 @@ enum Creation {
             try fm.moveItem(at: file, to: destination)
             placed.append(destination)
         }
+        Timing.mark("create: moved into place")
         return Made(result: result, files: placed)
     }
 

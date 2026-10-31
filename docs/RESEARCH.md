@@ -1301,6 +1301,41 @@ does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
 
+**The app against the engine (2026-10-31, 14:30-15:10,
+`bench/research/appvsengine.py`, timing marks in the app).** The installed app
+was rebuilt on the locked engine (optimised Debug, ad-hoc signed, `ditto` over
+/Applications, the build product unregistered again) and driven through its
+AppleScript commands on the five RAM-disk sets. Measured from outside, the app
+looked 40-100 ms slower to pack and 80-200 ms slower to extract than the engine
+binary. Timing marks inside the app (`Timing` in `Engine.swift`, on with
+`defaults write com.observantsystems.zipling timing -bool true`, read with
+`/usr/bin/log show`; `log` alone is zsh's builtin and prints nothing) showed
+where that time is:
+
+| In the app, best of two | Job | Engine inside it | The app's own time |
+|---|---|---|---|
+| Photos, Fast, pack / extract | 43 / 58 ms | 41 / 28 ms | 2 / 30 ms |
+| Docs, Fast | 61 / 86 | 59 / 54 | 3 / 32 |
+| Source (7,693 files), Fast | 212 / 461 | 205 / 359 | 7 / 102 |
+| Apps (1,324 files), Fast | 121 / 187 | 118 / 130 | 3 / 57 |
+| Silesia, Fast | 162 / 74 | 160 / 46 | 2 / 28 |
+| Photos, Default | 2031 / 666 | 2028 / 633 | 3 / 33 |
+
+Packing: the app adds 2-7 ms. Extracting: about 30 ms before the engine starts
+(the listing call and its JSON decode, the format check, two hops through the
+main actor while the job row renders) and about 9 µs a file after it (the safety
+walk over everything extracted: links, AppleDouble merges). The rest of what the
+outside measurement saw, 60 ms for a round trip with no work and about as much
+again for a command, is AppleScript's transport, not the app's path. The earlier
+2.2 s against 0.9 s was an older app. No row moves: the thinnest app-level
+margin is photos at Fast, 43 ms in the app against Zipgeist's ZIP Fast at 60 ms,
+and extraction is 2-10x ahead of every rival everywhere. Left for later, since it
+costs no row: skip the listing for a whole-archive extract and take the safety
+walk's per-file cost down, worth about 0.1 s on a 7,700-file tree. For the
+published app-against-app run, both apps should be timed the same way, from the
+command to the finished file, since Zipgeist's numbers come from driving its
+window.
+
 **Default with bsc lanes, measured and not taken (2026-10-31, 13:30-14:00).** The
 user asked whether Default could come in under Zipgeist's 7z Normal on size
 everywhere while staying fast. It misses on three sets (source 11.20 vs 10.47 MB,

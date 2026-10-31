@@ -10,6 +10,7 @@ enum Automation {
         _ items: [URL], format: ArchiveFormat = .zlg, level: Level? = nil, password: String? = nil,
         into folder: URL? = nil
     ) async throws -> URL {
+        Timing.begin("compress")
         guard let first = items.first else { throw EngineError(message: "There's nothing to compress.") }
         var options = CreateOptions(format: format, level: level ?? .balanced)
         if level == nil, format == .zlg {
@@ -21,13 +22,16 @@ enum Automation {
         let output = Placement.unique("\(base).\(format.fileExtension)", in: folder ?? first.deletingLastPathComponent())
         let job = Job(title: "Compressing as \(format.title)…")
         JobCenter.shared.track(job)
+        Timing.mark("compress: job tracked")
         do {
             let made = try await Creation.create(items, into: output, options: options,
                                                  password: format.supportsPassword ? password : nil,
                                                  task: job.task, cancel: job.cancelToken,
                                                  check: Preferences.checkNewArchives, progress: job.progressHandler)
+            Timing.mark("compress: created")
             job.finish(nil, outcome: "Made \(made.files.map(\.lastPathComponent).joined(separator: ", ")).", placed: made.files)
             AppRouter.shared.noteCreated(made.files[0])
+            Timing.mark("compress: done")
             return made.files[0]
         } catch {
             job.finish(error)
@@ -38,17 +42,21 @@ enum Automation {
     /// Extract Here, or into `folder`: one item at the top comes out as it is, several
     /// in a folder named after the archive. Names already taken get a number.
     static func extract(_ archive: URL, into folder: URL? = nil, password: String? = nil) async throws -> [URL] {
+        Timing.begin("extract")
         let job = Job(title: "Extracting “\(archive.lastPathComponent)”…")
         JobCenter.shared.track(job)
         let scratch = FileManager.default.temporaryDirectory.appending(path: "Zipling/\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: scratch) }
         do {
             let opened = try await Archives.open(archive, password: password, scratch: scratch, cancel: job.cancelToken)
+            Timing.mark("extract: opened")
             let outcome = try await Extraction.run(
                 opened, only: [], to: folder ?? archive.deletingLastPathComponent(),
                 layout: .smart(folder: Archives.baseName(archive.lastPathComponent)), job: job,
                 quarantine: SafeExtraction.quarantine(of: archive), conflicts: Conflicts(policy: .keepBoth))
+            Timing.mark("extract: run done")
             job.finish(nil, outcome: outcome.summary, placed: outcome.placed)
+            Timing.mark("extract: done")
             return outcome.placed
         } catch let p as PasswordRequired {
             let error = EngineError(message: p.wrong ? "That password didn't work for “\(archive.lastPathComponent)”."
