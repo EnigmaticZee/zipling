@@ -35,9 +35,13 @@ fn main() {
     let mut fb = 273i32;
     let mut files = Vec::new();
     let mut it = args.iter();
+    // --lzt: the table-driven codec instead of the adaptive one
+    let (mut enc, mut dec): (fn(&[u8], &[Token]) -> Vec<u8>, fn(&[u8], usize) -> anyhow::Result<Vec<u8>>) = (lzs::encode, lzs::decode);
+    let mut name = "lzs";
     while let Some(a) = it.next() {
         match a.as_str() {
             "--fb" => fb = it.next().unwrap().parse().unwrap(),
+            "--lzt" => (enc, dec, name) = (arca_core::lzt::encode, arca_core::lzt::decode, "lzt"),
             f => files.push(f.to_string()),
         }
     }
@@ -47,7 +51,7 @@ fn main() {
         let mut best = f64::MAX;
         for _ in 0..10 {
             let t = Instant::now();
-            let back = lzs::decode(&st, orig.len()).unwrap();
+            let back = dec(&st, orig.len()).unwrap();
             best = best.min(t.elapsed().as_secs_f64());
             assert!(back == orig);
         }
@@ -56,7 +60,7 @@ fn main() {
     }
     let save = std::env::var("LZS_SAVE").ok();
     lzma_sdk::set_token_hook(Some(hook));
-    println!("{:<12} {:>7} | {:>8} {:>8} {:>7} | {:>8} {:>8}", "file", "MB", "lzma", "lzs", "vs", "enc s", "dec MB/s");
+    println!("{:<12} {:>7} | {:>8} {:>8} {:>7} | {:>8} {:>8}", "file", "MB", "lzma", name, "vs", "enc s", "dec MB/s");
     let (mut tl, mut ts) = (0usize, 0usize);
     for f in &files {
         let data = std::fs::read(f).unwrap();
@@ -72,7 +76,7 @@ fn main() {
             let (p, l, d) = (t.pos as usize, t.len as usize, t.dist as usize);
             assert!(d >= 1 && d <= p && (0..l).all(|i| data[p + i] == data[p - d + i]), "token does not match the data: {t:?}");
         }
-        let out = lzs::encode(&data, &toks);
+        let out = enc(&data, &toks);
         let enc = t0.elapsed().as_secs_f64();
         if let Some(dir) = &save {
             let name = std::path::Path::new(f).file_name().unwrap().to_string_lossy().into_owned();
@@ -82,7 +86,7 @@ fn main() {
         let mut back = Vec::new();
         for _ in 0..3 {
             let t = Instant::now();
-            back = lzs::decode(&out, data.len()).unwrap();
+            back = dec(&out, data.len()).unwrap();
             best = best.min(t.elapsed().as_secs_f64());
         }
         assert!(back == data, "{f}: round trip differs");
@@ -109,6 +113,6 @@ fn main() {
         );
     }
     if files.len() > 1 {
-        println!("all: lzma {:.3} MB, lzs {:.3} MB ({:+.1}%)", tl as f64 / 1e6, ts as f64 / 1e6, (ts as f64 / tl as f64 - 1.0) * 100.0);
+        println!("all: lzma {:.3} MB, {name} {:.3} MB ({:+.1}%)", tl as f64 / 1e6, ts as f64 / 1e6, (ts as f64 / tl as f64 - 1.0) * 100.0);
     }
 }

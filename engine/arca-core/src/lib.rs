@@ -12,6 +12,7 @@ pub mod format;
 pub mod hash;
 pub mod hooks;
 pub mod lzs;
+pub mod lzt;
 pub mod pack;
 pub mod prof;
 pub mod scan;
