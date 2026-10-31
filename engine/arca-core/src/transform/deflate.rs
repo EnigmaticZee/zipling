@@ -818,16 +818,21 @@ pub fn decode(stored: &[u8], size: u64) -> Result<Vec<u8>> {
             // Re-run lengths are bounded by the stored file's size, so a damaged
             // layout can't ask for more.
             Method::Zlib(params) => {
+                let _p = crate::prof::span(if params.level <= 1 { "rebuild.zlib1" } else { "rebuild.zlib" }, plains[i].len() as u64);
                 ensure!(stream_len[i] <= size, "stream longer than its file");
                 zlib_pinned::deflate(plains[i], params, stream_len[i] as usize).ok_or_else(|| anyhow::anyhow!("zlib re-run gave a different stream"))
             }
             Method::Lzfse(runs) => {
+                let _p = crate::prof::span("rebuild.lzfse", plains[i].len() as u64);
                 ensure!(stream_len[i] <= size, "stream longer than its file");
                 lzfse_pinned::encode(plains[i], runs, stream_len[i] as usize).ok_or_else(|| anyhow::anyhow!("lzfse re-run gave a different stream"))
             }
-            Method::Preflate => catch_unwind(AssertUnwindSafe(|| recreate_whole_deflate_stream(plains[i], corrections[i])))
-                .map_err(|_| anyhow::anyhow!("preflate panicked"))?
-                .map_err(|e| anyhow::anyhow!("deflate recreate failed: {e:?}")),
+            Method::Preflate => {
+                let _p = crate::prof::span("rebuild.preflate", plains[i].len() as u64);
+                catch_unwind(AssertUnwindSafe(|| recreate_whole_deflate_stream(plains[i], corrections[i])))
+                    .map_err(|_| anyhow::anyhow!("preflate panicked"))?
+                    .map_err(|e| anyhow::anyhow!("deflate recreate failed: {e:?}"))
+            }
         })
         .collect::<Result<_>>()?;
 

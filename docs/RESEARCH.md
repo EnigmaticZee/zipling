@@ -1197,6 +1197,38 @@ tar.zst Fast (x1.21), and DMGs against zstd -19 --long (Default extract x2.06).
 The margin on Silesia is thin (0.23 against 0.241); 8 MiB parts or a looser
 split line for lzt lanes would widen it at a small cost in size.
 
+**DMGs against zstd -19 --long: where the 2x is (2026-10-31, 01:40-02:10, RAM
+disk).** The row needs an Arca setting at or under 610.27 MB that extracts in
+under 0.45 s. Default expands the images and extracts in 0.96-1.05 s; its
+rebuild, by method (`ARCA_DEBUG_PROFILE`, spans now in `deflate.rs`): the pinned
+LZFSE 3.73 CPU-s for 454 MB (122 MB/s a thread, performance and efficiency cores
+mixed) and the pinned zlib level 1 2.99 CPU-s for 251 MB (84 MB/s), no preflate at
+all; both encoders are built at -O3 and run their own algorithms, so there is no
+cheap 2x in them. Routes measured:
+
+| Default on the DMGs set | Size | Make | Extract |
+|---|---:|---:|---:|
+| expanding (today) | 560.5 MB | 2.9 s | 1.05 s |
+| expanding zlib chunks only (`ARCA_EXP_NO_LZFSE`) | 601.5 MB | 1.5 s | 0.51 s |
+| not expanding (`--disk-images off`) | 614.5 MB | 0.6 s | 0.21 s |
+| not expanding, image lane at zstd 12 / 15 / 19 | 613.2 / 612.7 / 611.0 MB | 1.7 / 6.2 / 27 s | 0.16 s |
+| zstd -19 --long | 610.27 MB | 24.0 s | 0.45 s |
+
+LZFSE expansion is the better deal (41 MB saved for 3.7 CPU-s against 13 MB for
+3.0), zlib-only is the nearest miss (0.51 against 0.45 s). Not expanding never
+reaches zstd's size: per file the gap is CleanMyMac 0.5% and Nuvio 0.2% at equal
+level, from repeats beyond a 64 MiB block that its 128 MiB window sees. A side
+finding on the way: a 7 MB image on its own compressed 12% worse than it could
+(6.96 against 6.20 MB), because inputs under 64 MiB get blocks sized to busy
+every core (six of 1.2 MB here) and nothing matches across them; zstd's own
+workers with an overlap would keep the ratio and the parallelism, a lead for
+small archives at Default. Two things did not help: long-distance matching in
+`compress_hard`'s quick pass (apps: 0.3% smaller, 38% slower at Default; reverted),
+and the probe is not involved (disk images take the quick-images lane, which it
+does not touch). So the row waits on a rebuild about 15% faster with zlib-only
+expansion, or 2.3x faster with both, or on expanding only what pays: an exact
+LZFSE encoder faster than Apple's is the research question left here.
+
 **Quiet benchmark, every level (2026-10-30, 17:43-19:42,
 `bench/results-2026-10-30-quiet-all.jsonl`, report `results-2026-10-30-quiet.md`).**
 Fast, Default, Max and Ultra, each with and without bsc, against zstd -3,
