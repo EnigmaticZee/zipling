@@ -55,8 +55,8 @@ Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
-and a quiet run of every level, with WinRAR and Zipgeist re-measured, puts the
-board at 137 of 144: Zipgeist's checkpoint times were inflated, and on photos it
+and a quiet run of every level, with WinRAR and Zipgeist re-measured on every set,
+puts the board at 137 of 144: Zipgeist's checkpoint times were inflated, and on photos it
 stores JPEGs in 0.06 s where Fast re-codes them in 0.19 s. The estimate for a
 codec with LZMA's ratio at
 a symbol coder's speed is in, and a first build (`lzs.rs`) matches its size at
@@ -1132,6 +1132,56 @@ on all three at once, Fast would have to pack in under 0.06 s; the light coder's
 parse alone is 1.1 CPU-s, 0.11 s on ten cores. A Fast that stored JPEGs would do it
 (95.1 MB in about 0.04 s), and would then lose the zstd -3 row on size (91.8 MB) and
 give up 21% of its photo compression.
+
+**Zipgeist re-measured on every set (2026-10-30, 21:20-23:15).** All six Zipgeist
+settings (ZIP Fast and Normal, tar.zst Fast, 7z Normal and Best, tar.xz Best) on all
+nine sets, two rounds each, with Arca Fast twice per set for the clock
+(`results-2026-10-30-zipgeist.jsonl`, 108 of 108 Zipgeist round trips identical).
+Zipgeist's only way to compress is its Finder Sync menu (the app has no File menu and
+its URL scheme only extracts), so it was driven through Finder on screen as at the
+checkpoint, but with one batch of synthetic clicks per operation (right-click →
+Compress As → Options… → format → level → Compress) and a stopwatch that lets the
+set-up clicks go by and starts the clock at the click on Compress
+(`bench/research/zipgeist/`: `zg.py`, `stopwatch.swift`, `finder.sh`). Zipgeist's
+dialog comes back as 7-Zip/Normal every time, and the level resets to Normal when the
+format changes, so every run sets both. The overlay of full-screen control keeps
+WindowServer and the Claude app's GPU process at about half a core each, so Zipgeist
+ran with roughly 1.4 cores of background load, as it did at the checkpoint.
+
+Make times, checkpoint → today (seconds, the better of two rounds; extracts moved by
+less than 0.05 s, sizes by less than 20 KB):
+
+| Set | ZIP Fast | ZIP Normal | tar.zst Fast | 7z Normal | 7z Best | tar.xz Best |
+|---|---:|---:|---:|---:|---:|---:|
+| Photos | 0.23 → 0.06 | 0.19 → 0.06 | 0.21 → 0.08 | 2.90 → 2.80 | 2.92 → 2.80 | 3.35 → 3.26 |
+| PDFs | 0.28 → 0.13 | 0.25 → 0.13 | 0.21 → 0.11 | 1.81 → 1.73 | 1.99 → 1.87 | 1.83 → 1.73 |
+| Source | 0.77 → 0.48 | 0.60 → 0.50 | 0.64 → 0.53 | 5.95 → 5.77 | 7.09 → 6.86 | 6.53 → 6.36 |
+| Apple apps | 0.65 → 0.50 | 1.02 → 0.91 | 0.42 → 0.32 | 6.63 → 6.28 | 7.17 → 6.83 | 7.48 → 7.27 |
+| Silesia | 0.53 → 0.40 | 1.18 → 1.06 | 0.23 → 0.13 | 17.94 → 18.65 | 21.58 → 21.85 | 21.60 → 21.37 |
+| Saved mixed | 2.01 → 1.34 | 2.09 → 1.97 | 1.28 → 1.18 | 16.91 → 16.53 | 20.00 → 19.35 | 20.40 → 19.74 |
+| Website mixed | 1.60 → 1.31 | 2.45 → 2.56 | 1.12 → 0.97 | 28.72 → 28.19 | 32.65 → 32.10 | 30.86 → 30.22 |
+| DMGs | 0.37 → 0.26 | 0.36 → 0.26 | 0.35 → 0.23 | 9.58 → 9.15 | 9.72 → 9.22 | 9.65 → 9.29 |
+| Third-party apps | 3.28 → 2.92 | 7.34 → 7.31 | 0.73 → 0.93 | 59.60 → 58.28 | 64.67 → 64.86 | 64.23 → 62.29 |
+
+The quick jobs come out 1.5-2.5x faster than the checkpoint's figures, which that
+session's busy screen had inflated; the CPU-heavy jobs land within 10% either way
+(Silesia's 7z and the third-party tar.zst a little slower today, the rest a little
+faster). The board stays at **137 of 144** (`board.py`, the same either way the files
+are ordered) with a changed make-up: third-party apps against Zipgeist tar.zst Fast is
+settled for Arca (0.93 s against Fast's 0.53 s), and Silesia against Zipgeist tar.zst
+Fast is lost (0.13 s against Fast's 0.16 s; Fast is 11% smaller and extracts 10x
+faster). Fast beats 48 of its 54 fast-class results. The seven left: the three
+Zipgeist rows on photos (Fast + bsc make x2.0-2.7), Silesia against zstd -3 (make
+x1.04), Zipgeist tar.zst Fast (make x1.21) and zstd -19 --long (Max extract x1.61),
+and DMGs against zstd -19 --long (Default extract x2.06).
+
+Two housekeeping notes. Three `.DS_Store` files Finder had dropped into the sets at
+15:51 today (`Mixed/`, `Mixed/source/`, `sets/mixed/source/`), after the checkpoint,
+made the saved set's first two 7z round trips compare unequal (Zipgeist skips
+`.DS_Store`); they were removed (6 KB each; the quiet run of every level had packed
+them, 18 KB in 300 MB) and those two rows carry a note. The Mac's screen locked once
+mid-run: one ZIP Fast round on Apple apps was lost and redone, and Zipgeist's dialog
+came back 15 px lower after the unlock.
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
