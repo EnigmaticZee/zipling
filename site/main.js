@@ -49,8 +49,10 @@ function toolTip(t, ds) {
     (t.sep ? `<br><span>† Measured in a separate session</span>` : "");
 }
 
-// Three bar charts (size, compress, extract) for one dataset.
-function renderCharts(host, ds, ids) {
+// Three bar charts (size, compress, extract) for one dataset. With `grouped`, a label
+// opens each class of settings so a Zipling level sits beside the settings it is
+// compared with.
+function renderCharts(host, ds, ids, grouped) {
   host.innerHTML = "";
   for (const m of METRICS) {
     const fig = document.createElement("figure");
@@ -60,8 +62,16 @@ function renderCharts(host, ds, ids) {
     const bars = document.createElement("div");
     bars.className = "bars";
     bars.setAttribute("role", "list");
+    let group = null;
     ids.forEach((id, i) => {
       const t = TOOL[id], v = ds.r[id][m.key];
+      if (grouped && t.group !== group) {
+        group = t.group;
+        const head = document.createElement("div");
+        head.className = "bar-group";
+        head.textContent = Z.groups[group];
+        bars.appendChild(head);
+      }
       const row = document.createElement("div");
       row.className = `bar-row${t.us ? " us" : ""}`;
       row.style.setProperty("--i", i);
@@ -88,10 +98,16 @@ function grow(host) {
   host.querySelectorAll(".chart").forEach((c) => (growObserver ? growObserver.observe(c) : c.classList.add("grown")));
 }
 
-function renderTable(tbody, ds, ids) {
+function renderTable(tbody, ds, ids, grouped) {
+  let group = null;
   tbody.innerHTML = ids.map((id) => {
     const t = TOOL[id], [s, p, u] = ds.r[id];
-    return `<tr class="${t.us ? "us" : ""}"><td>${t.name}${t.sep ? " †" : ""}</td><td>${fmt(s, "MB")}</td>` +
+    let head = "";
+    if (grouped && t.group !== group) {
+      group = t.group;
+      head = `<tr class="group"><th scope="rowgroup" colspan="5">${Z.groups[group]}</th></tr>`;
+    }
+    return head + `<tr class="${t.us ? "us" : ""}"><td>${t.name}${t.sep ? " †" : ""}</td><td>${fmt(s, "MB")}</td>` +
       `<td>${pct(s, ds.mb)}</td><td>${fmt(p, "s")}</td><td>${fmt(u, "s")}</td></tr>`;
   }).join("");
 }
@@ -161,8 +177,8 @@ function benchmarksPage() {
     const ds = Z.datasets[i];
     tabs.querySelectorAll("button").forEach((b, j) => b.setAttribute("aria-selected", String(i === j)));
     info.innerHTML = `<strong>${ds.name}</strong> · ${ds.mb} MB · ${ds.what}. <span>${ds.why}.</span>`;
-    renderCharts(host, ds, ids);
-    renderTable(tbody, ds, ids);
+    renderCharts(host, ds, ids, true);
+    renderTable(tbody, ds, ids, true);
   }
   tabs.innerHTML = Z.datasets.map((d, i) =>
     `<button type="button" role="tab" aria-selected="false" data-i="${i}">${d.name}</button>`).join("");

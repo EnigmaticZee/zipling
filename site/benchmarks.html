@@ -40,7 +40,7 @@
       <div class="page-hero-inner reveal">
         <p class="kicker">Benchmarks</p>
         <h1 class="page-title">Every number, measured.</h1>
-        <p class="sub">Six datasets, ten tools and settings, every archive extracted and compared byte for byte with the original. Pick a dataset to see how Zipling's Arca engine does against Finder, 7-Zip, Zipgeist, WinRAR, zstd and xz.</p>
+        <p class="sub">Six datasets, five other tools at their fast, normal and strongest settings, every archive extracted and compared byte for byte with the original. Each Zipling level sits beside the settings it competes with: Fast with the fast ones, Default with the normal ones, Max and Ultra with the strongest.</p>
       </div>
     </section>
 
@@ -84,8 +84,8 @@
           <ul class="ticks">
             <li>Apple M1 Pro (8 performance + 2 efficiency cores, 32 GB), macOS 27, warm file cache, two rounds each, the better kept.</li>
             <li>Wall-clock time for every tool, and every round trip compared with the source. All were identical.</li>
-            <li>Versions: 7-Zip 26.02 (<code>7z -mx9</code>), Zipgeist's 7z at its Best setting, WinRAR (<code>rar -m5</code>, solid), zstd 1.5.7, XZ Utils 5.8.4, and macOS's <code>ditto</code>, which is what Finder's Compress uses. Zipling's numbers are the Arca engine's; the app adds a few milliseconds around it.</li>
-            <li>Every tool waited for an idle machine: the other tools on 30 October 2026, Zipling's locked settings on 31 October, with the load checked before each set.</li>
+            <li>Versions: 7-Zip 26.02 (<code>7z -mx9</code>), WinRAR 7.23 (<code>rar -m5</code>, solid), zstd 1.5.7, XZ Utils 5.8.4. Finder is Finder's own Compress command and Archive Utility, timed from the click to the finished file. Zipling's numbers are the Arca engine's; the app adds a few milliseconds around it.</li>
+            <li>Every tool waited for an idle machine: the command-line tools on 30 October 2026, Finder and Zipling's locked settings on 31 October, with the load checked before each set.</li>
             <li>Back-to-back runs vary by about ±10%, so treat small differences as ties.</li>
             <li>Public and system data only. No personal files were read.</li>
           </ul>
@@ -95,8 +95,8 @@
           <h2 class="h2-sm">Where Zipling is still behind.</h2>
           <ul class="behind">
             <li><strong>Max on PDF and PNG folders</strong> takes 10.8 s to compress against 7-Zip's 2.8 s, for an archive 52% smaller: re-creating the compression inside PDFs and PNGs is work the other tools skip.</li>
-            <li><strong>The default setting on apps, code and generic data</strong> trades size for speed. It is 4–32% larger than 7-Zip Ultra there, but 11–21× faster to compress and 3–17× faster to extract. Max beats 7-Zip on all of them.</li>
-            <li><strong>Fast on generic data</strong> ties <code>zstd -3</code> on compression time and trails Zipgeist's zstd -1 setting by 0.02 s, at a file 12% smaller than theirs.</li>
+            <li><strong>The default setting on apps, code and generic data</strong> trades size for speed. It is 4–32% larger than 7-Zip Ultra and 2–22% larger than 7-Zip Normal there, but 11–21× faster to compress and 3–17× faster to extract. Max beats 7-Zip on all of them.</li>
+            <li><strong>Fast on generic data</strong> ties <code>zstd -3</code> on compression time (0.16 against 0.15 s) at a file 2% smaller.</li>
             <li><strong>Ultra</strong> is 1–2% smaller than Max for 25–50% more compression time, so it stays opt-in.</li>
           </ul>
           <p class="fine">Full tables, raw data and the benchmark harness are in the <a href="https://github.com/EnigmaticZee/zipling/blob/main/docs/BENCHMARKS.md">repository</a>.</p>
