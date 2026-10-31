@@ -55,8 +55,9 @@ Checkpoint benchmark done (results below): smallest on every set, fastest to
 extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
-and a quiet run of every level puts the board at 140 of 144 (the photos and
-Silesia zstd -3 rows are within a few hundredths of a second). The estimate for a
+and a quiet run of every level, with WinRAR and Zipgeist re-measured, puts the
+board at 137 of 144: Zipgeist's checkpoint times were inflated, and on photos it
+stores JPEGs in 0.06 s where Fast re-codes them in 0.19 s. The estimate for a
 codec with LZMA's ratio at
 a symbol coder's speed is in, and a first build (`lzs.rs`) matches its size at
 1.1-1.2x LZMA's decode speed, against the 2.5x needed; the next design steps are
@@ -1097,6 +1098,40 @@ every set by 1.2x (photos) to 39x (third-party apps against zstd -3). The four l
 Silesia against zstd -3 was a win this afternoon (0.16 against 0.16) and a loss by
 0.02 s tonight: Fast is zstd -3 plus its own work on a set with nothing to dedupe,
 and the two will trade places from run to run.
+
+**WinRAR and Zipgeist re-measured (2026-10-30, 19:45-20:40).** WinRAR 7.23 (the same
+download, SHA-256 `68b393c0…`), Fastest, Normal and Best on all nine sets with Fast and
+Default alongside (`results-2026-10-30-quiet-rar.jsonl`, 90 of 90 identical): nothing
+moved against Arca; Fast packs 6-10x faster than WinRAR Fastest everywhere and is
+smaller on every set but DMGs (0.26 MB), where Default takes the row.
+
+Zipgeist on photos, driven through Finder on a quiet Mac with the checkpoint's
+stopwatch (from the click to the app's last busy moment, with the archive's write
+time as a floor), two rounds each, Arca Fast between them for the clock
+(`results-2026-10-30-zipgeist.jsonl`):
+
+| | Size | Make | Extract |
+|---|---:|---:|---:|
+| Zipgeist ZIP Normal | 98.47 MB | 0.06 s | 0.53 s |
+| Zipgeist ZIP Fast | 98.47 MB | 0.06-0.09 s | 0.51-0.53 s |
+| Zipgeist tar.zst Fast | 92.06 MB | 0.08-0.09 s | 0.47-0.48 s |
+| Arca Fast, same session | 78.26 MB | 0.19-0.21 s | 0.23-0.28 s |
+
+Zipgeist stores the JPEGs (ZIP Fast and Normal come out the same size) and writes
+98 MB in 0.06 s, 0.11 CPU-s. The checkpoint had it at 0.17-0.23 s: that session's
+screen was busy, and its figures were inflated. Fast spends 0.17-0.21 s re-coding
+the photos to 78 MB, 21% smaller, and extracts 2x faster, but it loses on make by
+2-3x. With the corrected rows the board is **137 of 144**: the three Zipgeist rows
+on photos, Silesia against zstd -3 (level) and zstd -19 --long (extract), DMGs
+against zstd -19 --long (extract), and third-party apps against Zipgeist tar.zst
+Fast, a tie at the checkpoint's adjusted 0.55 s that only a re-measurement settles;
+every Zipgeist row still from the checkpoint carries the same doubt.
+
+The photo rows are a design choice, not a tuning problem. To beat Zipgeist's store
+on all three at once, Fast would have to pack in under 0.06 s; the light coder's
+parse alone is 1.1 CPU-s, 0.11 s on ten cores. A Fast that stored JPEGs would do it
+(95.1 MB in about 0.04 s), and would then lose the zstd -3 row on size (91.8 MB) and
+give up 21% of its photo compression.
 
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
