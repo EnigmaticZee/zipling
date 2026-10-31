@@ -166,7 +166,7 @@ const KIND_START: usize = 6;
 /// zstd-style code for a count: direct below 16, then two codes per octave with
 /// the rest raw. Returns (code, extra bits, extra value).
 #[inline(always)]
-fn code(v: u32) -> (u32, u32, u32) {
+pub(crate) fn code(v: u32) -> (u32, u32, u32) {
     if v < 16 {
         (v, 0, 0)
     } else {
@@ -177,7 +177,7 @@ fn code(v: u32) -> (u32, u32, u32) {
 }
 
 #[inline(always)]
-fn uncode(c: u32, extra: u32) -> u32 {
+pub(crate) fn uncode(c: u32, extra: u32) -> u32 {
     if c < 16 {
         c
     } else {

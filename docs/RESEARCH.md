@@ -59,9 +59,10 @@ and a quiet run of every level, with WinRAR and Zipgeist re-measured on every se
 puts the board at 137 of 144: Zipgeist's checkpoint times were inflated, and on photos it
 stores JPEGs in 0.06 s where Fast re-codes them in 0.19 s. The estimate for a
 codec with LZMA's ratio at
-a symbol coder's speed is in, and a first build (`lzs.rs`) matches its size at
-1.1-1.2x LZMA's decode speed, against the 2.5x needed; the next design steps are
-listed with it. Then the rANS JPEG coder in Default and the Apple slice delta.
+a symbol coder's speed is in, and its table form (`lzt.rs`: LZMA's parse, each
+context a table rebuilt from its own counts) is 5.3% behind LZMA on Silesia, about
+3% ahead of zstd -19 --long, at 1.8-2.4x LZMA's decode speed; wiring it into Max's
+binary lane is next. Then the rANS JPEG coder in Default and the Apple slice delta.
 
 ## Checkpoint benchmark (the user's spec, 2026-10-29)
 
@@ -1062,6 +1063,69 @@ the size cost at 1-2% on binaries, less on text); one symbol for kind and length
 class together, to cut the symbols per match from four or five to three; four
 states instead of two. Each is a day or two; together they are the difference
 between this and an LZNA-class coder, which took its makers years. Not started.
+
+**The codec, table form (`arca-core/src/lzt.rs`, research; `lzsbench --lzt`;
+2026-10-31, 00:00-02:30).** Measured file by file, the adaptive nibble build was
+no faster than LZMA at all: dickens 132 MB/s against 144, x-ray 47 against 52, osdb
+155 against 114. On dickens only 12% of the bytes are literals, and a match token
+cost about 250 cycles: eight adaptive symbols (two nibbles each for run, length and
+distance codes), each a 16-lane compare, a vector update and a dependent chain. The
+estimator settled the way out: with LZMA's contexts, fixed frequencies (its column
+C) come within 1% of adaptive ones (A) on dickens, x-ray, xml and osdb. The contexts
+carry the modelling; adaptation can be coarse. So `lzt` keeps the parse and the
+contexts and makes every model a table: a symbol decodes with one lookup, a
+multiply and an add (symbol, frequency and slot − cum packed in one u32), two rANS
+states interleaved, raw bits in their own stream. Steps, on dickens / x-ray / xml /
+osdb / mozilla against LZMA:
+
+| Step | Size vs LZMA | Decode, dickens |
+|---|---|---|
+| tables fixed per block, frequencies sent ahead | +2.5 / +2.2 / +12.2 / +3.4 / +10.2% | 292 MB/s (2.1x) |
+| compact header, 16-byte match copies with a pattern for distances under 16, kind and length as one symbol | +3.0 / +2.4 / +12.6 / +3.0 / +10.2% | 383 MB/s (2.5x); osdb 2.9x, xml 2.75x |
+| tables per 2 MiB segment built from the previous segments' counts | worse everywhere (+0.5-3%), decode −25% | dropped |
+| each context rebuilds its own table after 32, 64, ... 4096 of its symbols from counts that halve once the cap is reached (LZHAM's way), no header, escape for a symbol unseen, symbols too rare for a table entry escaped, extra bits of lengths 18-129 and runs modelled, bits of distances under 64 modelled | +1.4 / +1.3 / +15.8 / +1.4 / +9.2% | 313 MB/s (2.2x) |
+
+The whole-file static tables lost most on heterogeneous binaries (mozilla: the
+estimator's whole-file C is +17%, chunked C +15%, A +12%, A+ +5.6%), which is what
+the per-context rebuilds are for; the lagging segment tables could not beat a
+table fitted to the whole block. The rebuild cap is not a lever: 1024 gives mozilla
++9.3% and dickens +1.2% at 184 MB/s, 16384 gives +9.7% and +2.0% at 230 MB/s.
+
+The whole set, LZMA against lzt (MB, decode MB/s one core):
+
+| File | LZMA | lzt | | LZMA dec | lzt dec |
+|---|---:|---:|---:|---:|---:|
+| dickens | 2.831 | 2.872 | +1.4% | 148 | 323 |
+| mozilla | 13.313 | 14.534 | +9.2% | 114 | 217 |
+| mr | 2.748 | 2.931 | +6.6% | 104 | 196 |
+| nci | 1.449 | 1.599 | +10.3% | 500 | 970 |
+| ooffice | 2.425 | 2.578 | +6.3% | 83 | 161 |
+| osdb | 2.846 | 2.886 | +1.4% | 119 | 241 |
+| reymont | 1.316 | 1.366 | +3.8% | 184 | 364 |
+| samba | 3.731 | 4.095 | +9.8% | 198 | 453 |
+| sao | 4.414 | 4.533 | +2.7% | 57 | 112 |
+| webster | 8.371 | 8.502 | +1.6% | 172 | 304 |
+| x-ray | 4.480 | 4.536 | +1.3% | 53 | 93 |
+| xml | 0.435 | 0.504 | +15.8% | 368 | 798 |
+| all | 48.358 | 50.936 | +5.3% | | 1.8-2.4x |
+
+Against zstd -19 --long, which the estimate puts 8.7% above LZMA here, lzt is
+about 3% smaller with a decoder twice as fast as LZMA's. Where the bits go
+(`LZT_STATS`): on mozilla literals 30%, matched literals 16%, kind+length 17%,
+distance buckets 10%, far distances' raw bits 16%, escapes 1.6%, nothing else
+raw worth modelling; on dickens the far distances' raw bits are 48% and the
+distance bucket and align models 30%, as for LZMA; on x-ray the matched literals
+are 55%. So the +9% on mozilla, samba and nci is modelling depth on
+high-entropy binaries, where LZMA's bitwise matched-literal coding (each bit
+against the match byte until the first mismatch, then the literal tree) and its
+two-bit distance slots see more than a byte-wide XOR context and a top-bit
+bucket; the estimator's own A+ is +5.6% there. Candidates, in order: a
+matched-literal model in LZMA's shape (the length of the matching prefix as one
+symbol, the remaining bits under the prefix), 64 distance slots, 12-bit literal
+tables. Then the engine: a `Codec::Lzt` in the format, the unpack path, and Max's
+binary lane on it, measured on every set; Max must stay under every rival's size,
+and the Silesia row against zstd -19 --long needs Max under about 52.6 MB with
+its extract under 0.236 s.
 
 **Quiet benchmark, every level (2026-10-30, 17:43-19:42,
 `bench/results-2026-10-30-quiet-all.jsonl`, report `results-2026-10-30-quiet.md`).**
