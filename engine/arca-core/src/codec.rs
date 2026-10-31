@@ -25,6 +25,13 @@ pub struct CodecConfig {
     pub workers: u32,
 }
 
+thread_local! {
+    /// One zstd context per encoder thread. A fresh context for every block
+    /// allocates, page-faults and zeroes its tables again: with 2 MiB blocks on
+    /// Silesia that was 85 contexts, a quarter of a gigabyte of fresh memory.
+    static ZSTD_CCTX: std::cell::RefCell<Option<zstd::bulk::Compressor<'static>>> = const { std::cell::RefCell::new(None) };
+}
+
 /// Bytes one zstd worker takes at a time, each seeing the whole window before it.
 /// With blocks this size a machine can hold only a few at once, so at Default one
 /// 64 MiB block on one core was what the rest waited for: PDFs and screenshots
@@ -122,24 +129,34 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
         Codec::Zstd => {
             let split = cfg.workers > 1 && raw.len() >= 2 * ZSTD_JOB;
             let zstd = |long: bool, split: bool| -> Result<Vec<u8>> {
-                let mut c = zstd::bulk::Compressor::new(cfg.level)?;
-                // Window spans the whole block so long-range repeats inside it are found.
-                let wlog = (usize::BITS - raw.len().max(1 << 20).leading_zeros()).clamp(20, 30);
-                c.set_parameter(CParameter::WindowLog(wlog))?;
-                c.set_parameter(CParameter::EnableLongDistanceMatching(long))?;
-                if split {
-                    c.set_parameter(CParameter::NbWorkers(cfg.workers))?;
-                    c.set_parameter(CParameter::JobSize(ZSTD_JOB as u32))?;
-                    c.set_parameter(CParameter::OverlapSizeLog(9))?;
-                }
-                if !cfg.long && cfg.level == 3 {
-                    let (hash, chain) = FAST_TABLES;
-                    c.set_parameter(CParameter::HashLog(hash.min(wlog)))?;
-                    c.set_parameter(CParameter::ChainLog(chain.min(wlog)))?;
-                } else if !cfg.long && cfg.level < 3 {
-                    c.set_parameter(CParameter::HashLog(QUICK_HASH))?;
-                }
-                Ok(c.compress(raw)?)
+                ZSTD_CCTX.with(|cell| {
+                    let mut slot = cell.borrow_mut();
+                    let c = match slot.as_mut() {
+                        Some(c) => c,
+                        None => slot.insert(zstd::bulk::Compressor::new(0)?),
+                    };
+                    // Every parameter is set each time: the context carries the
+                    // previous block's over.
+                    c.set_parameter(CParameter::CompressionLevel(cfg.level))?;
+                    // Window spans the whole block so long-range repeats inside it are found.
+                    let wlog = (usize::BITS - raw.len().max(1 << 20).leading_zeros()).clamp(20, 30);
+                    c.set_parameter(CParameter::WindowLog(wlog))?;
+                    c.set_parameter(CParameter::EnableLongDistanceMatching(long))?;
+                    c.set_parameter(CParameter::NbWorkers(if split { cfg.workers } else { 0 }))?;
+                    c.set_parameter(CParameter::JobSize(if split { ZSTD_JOB as u32 } else { 0 }))?;
+                    c.set_parameter(CParameter::OverlapSizeLog(if split { 9 } else { 0 }))?;
+                    // 0 is zstd's own size for the level.
+                    let (hash, chain) = if !cfg.long && cfg.level == 3 {
+                        (FAST_TABLES.0.min(wlog), FAST_TABLES.1.min(wlog))
+                    } else if !cfg.long && cfg.level < 3 {
+                        (QUICK_HASH, 0)
+                    } else {
+                        (0, 0)
+                    };
+                    c.set_parameter(CParameter::HashLog(hash))?;
+                    c.set_parameter(CParameter::ChainLog(chain))?;
+                    Ok(c.compress(raw)?)
+                })
             };
             let first = zstd(cfg.long, split)?;
             // Far repeats are what make such a block: worth a second look, and quick

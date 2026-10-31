@@ -1183,6 +1183,30 @@ them, 18 KB in 300 MB) and those two rows carry a note. The Mac's screen locked 
 mid-run: one ZIP Fast round on Apple apps was lost and redone, and Zipgeist's dialog
 came back 15 px lower after the unlock.
 
+**Fast on Silesia: the CPU floor (2026-10-30, late).** The row against Zipgeist tar.zst
+Fast needs make under 0.13 s at or under 66.58 MB (the zstd -3 row); Fast is at 65.18 MB
+in 0.166 s on the RAM disk. Where the time goes (`ARCA_DEBUG_TIMING`, `_PROFILE`): 25
+blocks of 8 MiB, 1.07 CPU-s of zstd and 0.11 of chunking over ten cores; the last blocks
+are queued at 0.11 s and end at 0.17 s. On a single block the engine runs at native
+zstd's speed (mr, webster, mozilla: equal or faster, and smaller, the window spanning the
+file), so the full run's extra CPU is the pipeline under full load, mixed performance
+and efficiency cores included, plus a fresh zstd context for every block. Tried:
+
+| Change | Silesia Fast | Elsewhere | Taken |
+|---|---|---|---|
+| one zstd context per encoder thread (reused) | 0.166 → 0.155 s, same bytes | source, apps unchanged | yes |
+| 2 MiB blocks | 0.133 s, +0.9% | source +2.5% | no |
+| 4 MiB blocks | 0.142 s, +0.5% | | no |
+| 256 KB chunk minimum (was 128) | −0.007 s | third-party apps +0.64% (dedup lost) | no |
+| text lane without long-distance matching | 65.01 MB but +0.1 CPU-s (nci at 11:1 trips the retry) | source +1.5% | no |
+| level 1 or 2 on the hard files | x-ray +15%, sao +12% at level 1; +13% at 2 | | no |
+
+Native zstd on the same bytes: level 3 with the engine's tables 0.78 CPU-s, level 1
+0.47; the engine's text lane pays a third more for long-distance matching (0.36 vs
+0.27 s on text) and gets 3.2% of the text back, which is what source trees need. So at
+8 MiB blocks Fast's floor on Silesia is about 0.15 s, and the row stays a known trade
+until a codec faster than zstd -3 at its ratio exists: the codec track below.
+
 ## Deep research agenda (from the user, 2026-10-28 evening)
 
 The goal is a breakthrough, not tuning: beat every archiver (7-Zip, Zipgeist,
