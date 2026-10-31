@@ -55,6 +55,8 @@ pub enum Codec {
     /// One libbsc block (BWT via libsais, then QLFC); its own header carries
     /// everything the decoder needs.
     Bsc,
+    /// LZMA's parse coded with per-context tables (`lzt`); research.
+    Lzt,
 }
 
 impl Codec {
@@ -66,6 +68,7 @@ impl Codec {
             Codec::Ppmd => 3,
             Codec::Lzma2 => 4,
             Codec::Bsc => 5,
+            Codec::Lzt => 6,
         }
     }
 
@@ -77,6 +80,7 @@ impl Codec {
             3 => Codec::Ppmd,
             4 => Codec::Lzma2,
             5 => Codec::Bsc,
+            6 => Codec::Lzt,
             _ => bail!("unknown codec {t}"),
         })
     }
@@ -89,6 +93,7 @@ impl Codec {
             Codec::Ppmd => "ppmd",
             Codec::Lzma2 => "lzma2",
             Codec::Bsc => "bsc",
+            Codec::Lzt => "lzt",
         }
     }
 }

@@ -210,6 +210,7 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
                 Err(e) => Err(e.into()),
             }
         }
+        Codec::Lzt => lzt_compress(raw, cfg),
         Codec::Ppmd => {
             let order = cfg.level.clamp(2, 64) as u32;
             // Model memory: enough for the block, capped so parallel blocks stay affordable.
@@ -221,6 +222,60 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
             enc.write_all(raw)?;
             Ok(enc.finish(false)?)
         }
+    }
+}
+
+thread_local! {
+    /// The tokens the LZMA encoder reports while `LZT_CAPTURE` is set on this thread.
+    static LZT_TOKENS: std::cell::RefCell<Vec<crate::lzs::Token>> = const { std::cell::RefCell::new(Vec::new()) };
+    static LZT_CAPTURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The LZMA SDK's token tap: one call per decision, on the encoding thread.
+unsafe extern "C" fn lzt_hook(pos: u32, len: u32, dist: u32, reps: *const u32, _state: u32) {
+    if dist == u32::MAX || !LZT_CAPTURE.with(|c| c.get()) {
+        return;
+    }
+    let (kind, d) = if dist < 4 {
+        (if dist == 0 && len == 1 { 5u8 } else { dist as u8 + 1 }, unsafe { *reps.add(dist as usize) })
+    } else {
+        (0, dist - 4 + 1)
+    };
+    LZT_TOKENS.with(|t| {
+        let mut t = t.borrow_mut();
+        // The LZMA2 encoder re-runs a chunk it decides to store raw: drop what
+        // the first run reported from that position on.
+        while t.last().is_some_and(|l| l.pos >= pos) {
+            t.pop();
+        }
+        t.push(crate::lzs::Token { pos, len, kind, dist: d });
+    });
+}
+
+/// `lzt`: LZMA's parse through the token tap, then the table coder. The LZMA
+/// output itself is dropped; the parse is the cost either way.
+fn lzt_compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
+    static HOOK: std::sync::Once = std::sync::Once::new();
+    HOOK.call_once(|| lzma_sdk::set_token_hook(Some(lzt_hook)));
+    let dict = (raw.len() as u32).clamp(1 << 16, 1 << 26);
+    let fb = match (cfg.extreme, cfg.level) {
+        (true, _) => 273,
+        (false, l) if l >= 9 => 64,
+        (false, 8) => 48,
+        _ => 32,
+    };
+    let s = lzma_sdk::Settings { level: 9, dict_size: dict, fb, mc: 0, threads: 2 };
+    LZT_TOKENS.with(|t| t.borrow_mut().clear());
+    LZT_CAPTURE.with(|c| c.set(true));
+    // room enough that the parse always completes; what doesn't shrink is
+    // stored by the caller
+    let res = lzma_sdk::encode(raw, s, raw.len() + raw.len() / 4 + 4096);
+    LZT_CAPTURE.with(|c| c.set(false));
+    let tokens = LZT_TOKENS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+    match res {
+        Ok(_) => Ok(crate::lzt::encode(raw, &tokens)),
+        Err(e) if e.0 == lzma_sdk::ERROR_OUTPUT_EOF => Ok(raw.to_vec()),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -248,6 +303,9 @@ pub fn encoder_memory(cfg: CodecConfig, block: usize) -> u64 {
         // Binary tree of the dictionary (~10x it) plus the threaded match
         // finder's buffers, as 7-Zip estimates for -mx9.
         Codec::Lzma2 => 11 * (block as u64).clamp(1 << 16, 1 << 26) + (64 << 20),
+        // LZMA's encoder, plus the tokens and the coded symbols kept for the
+        // backward pass (about six bytes a byte at worst).
+        Codec::Lzt => 11 * (block as u64).clamp(1 << 16, 1 << 26) + (64 << 20) + 6 * block as u64,
         // Suffix array (4 bytes a byte), the BWT output and LZP's buffer; with the
         // fallback, LZMA2's tables once bsc is done.
         Codec::Bsc => {
@@ -293,6 +351,7 @@ pub fn decompress(comp: &[u8], codec: Codec, raw_len: u64) -> Result<Vec<u8>> {
             ensure!(!comp.is_empty(), "lzma2 block header missing");
             lzma_sdk::decode(&comp[1..], comp[0], raw_len).context("lzma2 block")?
         }
+        Codec::Lzt => crate::lzt::decode(comp, raw_len).context("lzt block")?,
         // One thread per 8 MiB: small blocks come in numbers, and five of 16 MiB on
         // 8 threads each fought over ten cores, taking 0.60 s to their 0.47 s on 3.
         Codec::Bsc => libbsc::decompress_threads(comp, raw_len, (raw_len >> 23).clamp(2, 8) as i32).context("bsc block")?,

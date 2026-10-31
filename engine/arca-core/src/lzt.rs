@@ -738,6 +738,27 @@ mod tests {
     }
 
     #[test]
+    fn engine_codec_round_trip() {
+        // Through the block codec: LZMA's parse from the token tap, then lzt.
+        use crate::codec::{compress, decompress, CodecConfig};
+        use crate::format::Codec;
+        let mut data = Vec::with_capacity(3 << 20);
+        let mut s = 5u64;
+        while data.len() < 3 << 20 {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let word = [b"alpha ", b"beta  ", b"gamma ", b"delta "][(s >> 62) as usize];
+            data.extend_from_slice(word);
+            data.push(b'a' + (s >> 55) as u8 % 26);
+        }
+        for extreme in [false, true] {
+            let cfg = CodecConfig { codec: Codec::Lzt, level: 7, extreme, long: false, workers: 1 };
+            let comp = compress(&data, cfg).unwrap();
+            assert!(comp.len() < data.len() / 4, "lzt did not compress: {}", comp.len());
+            assert_eq!(decompress(&comp, Codec::Lzt, data.len() as u64).unwrap(), data);
+        }
+    }
+
+    #[test]
     fn changing_alphabets_round_trip() {
         // Literals whose alphabet changes every few hundred KB, so tables meet
         // symbols they have never seen long after their first rebuilds.
