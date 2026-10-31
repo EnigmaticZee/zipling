@@ -22,7 +22,7 @@ window.ZIPLING = {
     { id: "zst", group: "best", name: "tar + zstd -19", detail: "tar.zst -19 --long", us: false },
     { id: "xz", group: "best", name: "tar + xz -9e", detail: "tar.xz -9e", us: false },
     { id: "max", group: "best", name: "Zipling Max", detail: "Smallest archives at speed", us: true },
-    { id: "ultra", group: "best", name: "Zipling Ultra", detail: "Smallest archives, opt-in", us: true },
+    { id: "ultra", group: "best", name: "Zipling Ultra*", detail: "Experimental, not in the released app", us: true },
   ],
 
   // [size MB, compress s, extract s] per tool id.

@@ -40,7 +40,7 @@
       <div class="page-hero-inner reveal">
         <p class="kicker">Benchmarks</p>
         <h1 class="page-title">Every number, measured.</h1>
-        <p class="sub">Six datasets, five other tools at their fast, normal and strongest settings, every archive extracted and compared byte for byte with the original. Each Zipling level sits beside the settings it competes with: Fast with the fast ones, Default with the normal ones, Max and Ultra with the strongest.</p>
+        <p class="sub">Six datasets, five other tools at their fast, normal and strongest settings, every archive extracted and compared byte for byte with the original. Each Zipling level sits beside the settings it competes with: Fast with the fast ones, Default with the normal ones, Max and Ultra* with the strongest.</p>
       </div>
     </section>
 
@@ -50,7 +50,7 @@
       <div class="legend reveal" aria-hidden="true">
         <span><i class="sw sw-us"></i>Zipling</span>
         <span><i class="sw sw-them"></i>Other tools</span>
-        <span class="legend-note">Every tool on an idle Mac, 30–31 October 2026</span>
+        <span class="legend-note">Every tool on an idle Mac, 30–31 October 2026 · * Ultra is experimental and not in the released app</span>
       </div>
       <div class="charts" id="bench-charts"></div>
       <details class="table-view reveal">
@@ -97,7 +97,7 @@
             <li><strong>Max on PDF and PNG folders</strong> takes 10.8 s to compress against 7-Zip's 2.8 s, for an archive 52% smaller: re-creating the compression inside PDFs and PNGs is work the other tools skip.</li>
             <li><strong>The default setting on apps, code and generic data</strong> trades size for speed. It is 4–32% larger than 7-Zip Ultra and 2–22% larger than 7-Zip Normal there, but 11–21× faster to compress and 3–17× faster to extract. Max beats 7-Zip on all of them.</li>
             <li><strong>Fast on generic data</strong> ties <code>zstd -3</code> on compression time (0.16 against 0.15 s) at a file 2% smaller.</li>
-            <li><strong>Ultra</strong> is 1–2% smaller than Max for 25–50% more compression time, so it stays opt-in.</li>
+            <li><strong>Ultra*</strong> is 1–4% smaller than Max for 25–50% more compression time. It is experimental and not in the released app.</li>
           </ul>
           <p class="fine">Full tables, raw data and the benchmark harness are in the <a href="https://github.com/EnigmaticZee/zipling/blob/main/docs/BENCHMARKS.md">repository</a>.</p>
         </div>
