@@ -70,6 +70,14 @@ cores and 7% bigger, a dead end with numbers. Our JPEG coefficient coder is in
 the engine from Default up (tag 6, "Our JPEG coder in the engine"): photos 2.7%
 smaller than with Lepton and 1.7x faster to extract, 388 of 388 exact and
 100,000 mutants without a panic; it is the last format change before release.
+The presets are locked for 1.0 ("Presets locked"): bsc on Max's and Ultra's text
+and code lanes, Default on zstd, Fast as it is. Every level on every set, quiet:
+the board stands at **141 of 144** (the bsc Max gives back the Silesia xz -6 row
+by 0.02 s of extraction), and 1:1 by level, Fast against fast settings, Default
+against normal, Max and Ultra against best, **131 of 198**, up from 103 with the
+old presets; the 67 left are Default's size against LZMA-class normal settings on
+code and binaries, Default's make time against Deflate ZIPs, and the time our
+transforms take at Max and Ultra for 19-55% smaller archives.
 Off the board, inputs under 64 MiB
 now keep whole blocks cut into overlapping zstd jobs instead of blocks of a
 core's share: a folder of PDFs 25% smaller, a small disk image 11%. Fast's two
@@ -1246,6 +1254,68 @@ and the probe is not involved (disk images take the quick-images lane, which it
 does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
+
+**Presets locked, every level on every set (2026-10-31, 12:00-13:10,
+`bench/results-2026-10-31-presets.jsonl`).** Agreed with the user as the engine
+for 1.0: Fast as it stands (photos through zstd -1); Default on zstd 15/12 with
+our JPEG coder; Max and Ultra with bsc on the text and code lanes (the
+`--lane text=bsc:1 --lane code=bsc:2e` flags of the Oct 30 run, now the preset:
+PPMd stays behind `--text-codec ppmd`, lzt behind `ARCA_EXP_LZT`). The 52 engine
+tests pass; the app built against this engine passes its 58 tests, and the test
+build was unregistered again. Then every Arca level on all nine sets, two rounds
+each, quiet Mac, RAM disk, every round trip identical, scored against the Oct 30
+rival runs.
+
+| Set | Fast | Default | Max | Ultra |
+|---|---|---|---|---|
+| photos | 89.08 MB, 0.05 / 0.06 s | 69.18 MB, 2.05 / 0.69 s | 69.17 MB, 2.14 / 0.70 s | 69.17 MB, 2.23 / 0.69 s |
+| docs | 41.06, 0.07 / 0.07 | 22.14, 1.35 / 0.23 | 18.20, 10.8 / 0.42 | 17.81, 15.4 / 0.41 |
+| source | 13.55, 0.26 / 0.37 | 11.20, 1.99 / 0.37 | 8.31, 1.62 / 0.69 | 8.09, 1.76 / 0.94 |
+| apps | 72.30, 0.14 / 0.15 | 56.44, 1.45 / 0.22 | 49.15, 12.5 / 0.64 | 48.55, 15.0 / 0.63 |
+| Silesia | 65.18, 0.16 / 0.06 | 57.26, 5.04 / 0.10 | 46.68, 6.55 / 0.57 | 45.92, 13.6 / 0.81 |
+| saved | 311.2, 0.49 / 0.70 | 248.8, 8.11 / 1.57 | 221.7, 16.6 / 2.50 | 218.6, 22.1 / 2.59 |
+| mixed | 281.1, 0.53 / 0.60 | 216.0, 8.54 / 1.32 | 192.6, 19.5 / 2.38 | 189.3, 29.4 / 2.44 |
+| DMGs | 615.5, 0.20 / 0.13 | 601.8, 1.33 / 0.38 | 455.0, 41.3 / 4.26 | 448.0, 55.7 / 4.32 |
+| third-party | 504.4, 0.57 / 0.40 | 402.8, 7.15 / 0.49 | 350.2, 42.3 / 1.74 | 336.2, 61.9 / 1.85 |
+
+**The board** (`board.py`, any Arca setting against each rival result): **141 of
+144**. The two Silesia Fast make rows as before, and one new: tar + xz -6 on
+Silesia, which the old LZMA Max beat by hairs (49.41 vs 49.50 MB, 13.8 vs 14.0 s,
+0.39 vs 0.55 s) and the bsc Max loses on extraction alone, 0.57 against 0.55 s.
+Max+lzt extracts it in 0.23 s but is bigger. Taken, for what bsc wins below.
+
+**1:1 by level** (`bench/research/levels.py`: Fast against the rivals' fast
+settings, Default against their normal ones, Max and Ultra against their best; a
+row is won on size, make and extract at once): **131 of 198**. Fast 42 of 45,
+Default 24 of 45, Max 36 of 54, Ultra 29 of 54. With the Oct 30 presets this view
+was 103 of 198 (Max 24, Ultra 14); bsc is the difference. The 67 rows lost fall
+into kinds, none of them a tuning matter:
+
+- *Default against LZMA-class "normal" settings on size, 11 rows*: 7-Zip normal,
+  Zipgeist 7z Normal and xz -6 are 10-20% smaller than zstd 15/12 on source,
+  apps, Silesia and third-party apps; Default is 5-13x faster to make there.
+- *Default against Deflate-class "normal" ZIPs on make, 10 rows*: Zipgeist's ZIP
+  Normal and WinRAR Normal take 1-3 s where Default takes 1.3-8.5 s, for archives
+  20-50% bigger.
+- *Max and Ultra against "best" settings on make or extract where a transform
+  buys the size, 32 rows*: docs (preflate and pixels: 42-55% smaller, 4x the
+  make time of 7-Zip Ultra), DMGs (expansion: 25% smaller, 41 s against 15-60 s,
+  4.3 s to extract against 0.6-1.6 s), apps (6-10% smaller, 12.5 s against 6.8
+  s for Zipgeist's best), photos (re-coding: 19% smaller, 0.70 s to extract
+  against zstd -19's 0.25 s).
+- *Ultra's make time on the big real folders, 6 rows*: 22-62 s against WinRAR
+  Best and Zipgeist's best at 15-50 s, for 1-6% less size than Max.
+- *Silesia*, 7 rows: Fast's two frontier rows, Default's size against WinRAR
+  Normal and xz -6, and the bsc extraction time against WinRAR Best and xz -6.
+- *DMGs, Fast against WinRAR Fastest on size*, 1 row: 615 against 613 MB.
+
+**Upsets**, a lower Arca level beating a rival's higher class on all three (the
+full list is `levels.py`'s last section): Fast beats Zipgeist ZIP Normal on all
+nine sets and WinRAR Normal on four; Default beats 7-Zip Ultra on photos (19%
+smaller, 3x faster to make, 2.2x to extract), docs (42%, 2.1x, 3.5x), the saved
+folder (9%, 6.4x, 2.6x), the mixed folder (8%, 5.6x, 3.0x) and DMGs (1.3%, 17x,
+5.2x), and beats zstd -19 --long, xz -9e, WinRAR Best and both of Zipgeist's
+best settings on apps, saved, mixed and DMGs as well.
 
 **Our JPEG coder in the engine, pressure-tested (2026-10-31, 11:00-13:30,
 `transform/jpegrans.rs`, tag 6, on from Default up).** Agreed with the user as
