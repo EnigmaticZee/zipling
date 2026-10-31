@@ -497,6 +497,7 @@ fn rebuild_cost(obj: &Object) -> u64 {
     let work = match obj.transform {
         Transform::Lepton => obj.size.saturating_mul(125),
         Transform::JpegLite => obj.size.saturating_mul(17),
+        Transform::JpegRans => obj.size.saturating_mul(40),
         Transform::Deflate => obj.stored_len.saturating_mul(27),
         _ => obj.size,
     };
@@ -699,6 +700,7 @@ impl Extraction<'_> {
                         match obj.transform {
                             Transform::Lepton => "inverse.lepton",
                             Transform::JpegLite => "inverse.jpeglite",
+                            Transform::JpegRans => "inverse.jpegrans",
                             Transform::Deflate => "inverse.deflate",
                             Transform::Arm64 { .. } => "inverse.arm64",
                             Transform::None => "inverse.none",

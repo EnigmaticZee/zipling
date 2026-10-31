@@ -65,8 +65,16 @@ random, and at max level ratio matters more than CPU.
 Each forward transform is followed by its inverse and a byte comparison before it
 is accepted. A transform bug can therefore cost ratio, never data.
 
+* **JPEG coefficient coder** (`jpegrans.rs`, Default and up) — our own: a
+  baseline JPEG's coefficients re-coded with a static model per image (one symbol
+  per value, neighbour-count and magnitude contexts, dense blocks copied by
+  distance, LOCO-I DC) and four interleaved rANS states, tables sent with a small
+  adaptive binary coder. 2.7% smaller than Lepton on the photo set and 1.7x
+  faster to extract. Every result is decoded and compared before it is kept.
 * **Lepton** (`jpeg.rs`) — re-codes JPEG DCT coefficients with an adaptive
-  arithmetic coder. ~22–25% smaller, bit-exact.
+  arithmetic coder. ~22–25% smaller, bit-exact. Takes progressive JPEGs and
+  whatever our coder declines, and competes for photos where ours saves under
+  15% (synthetic textures, where its adaptive model is up to 15% smaller).
 * **Light JPEG** (`jpeglite.rs`; research, `ARCA_EXP_JPEGLITE=1` at Fast) — keeps
   JPEG's own symbols and raw bits and re-codes the symbols with static Huffman
   tables per image and per context (band of the next position, neighbours' nonzero

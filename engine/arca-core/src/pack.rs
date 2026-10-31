@@ -139,6 +139,9 @@ impl PackOptions {
                 // photos: 12% smaller than storing them, at 4x the time (see
                 // `quick_photos`).
                 jpeg_lite: level == Level::Fast && std::env::var_os("ARCA_EXP_JPEGLITE").is_some(),
+                // Our coefficient coder ahead of Lepton from Default up; ARCA_EXP_LEPTON=1
+                // leaves photos to Lepton alone, for comparison.
+                jpeg_rans: heavy && std::env::var_os("ARCA_EXP_LEPTON").is_none(),
                 deflate: heavy,
                 arm64: true,
                 verify: true,

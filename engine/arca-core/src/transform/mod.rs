@@ -8,6 +8,7 @@ pub mod arm64;
 pub mod deflate;
 pub mod jpeg;
 pub mod jpeglite;
+pub mod jpegrans;
 pub mod pixels;
 
 use crate::classify::{Class, Lane};
@@ -21,6 +22,9 @@ pub struct TransformOpts {
     /// JPEG's own symbols re-coded with per-image context tables (Fast): ~16%
     /// smaller at Huffman speed; `jpeg` (Lepton) wins when both are on.
     pub jpeg_lite: bool,
+    /// Our coefficient coder (`jpegrans`): tried before Lepton when both are on,
+    /// about 2.5% smaller and 2-3x faster to decode. Lepton takes what it declines.
+    pub jpeg_rans: bool,
     pub deflate: bool,
     pub arm64: bool,
     pub verify: bool,
@@ -63,7 +67,7 @@ pub struct Prepared<'a> {
 /// Whether `forward` will attempt a transform for this class.
 pub fn applies(class: Class, opts: &TransformOpts) -> bool {
     match class {
-        Class::Jpeg => opts.jpeg || opts.jpeg_lite,
+        Class::Jpeg => opts.jpeg || opts.jpeg_lite || opts.jpeg_rans,
         Class::DeflateContainer(crate::classify::DeflateKind::AssetCatalog) => opts.deflate && opts.asset_catalogs,
         Class::DeflateContainer(crate::classify::DeflateKind::Dmg) => opts.disk_images,
         Class::DeflateContainer(_) => opts.deflate,
@@ -90,6 +94,7 @@ pub fn plain_lane(class: Class) -> Lane {
 pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepared<'a> {
     let fwd = prof::span(
         match class {
+            Class::Jpeg if opts.jpeg_rans => "fwd.jpegrans",
             Class::Jpeg if opts.jpeg => "fwd.lepton(+verify)",
             Class::Jpeg if opts.jpeg_lite => "fwd.jpeglite",
             Class::DeflateContainer(crate::classify::DeflateKind::Png) if opts.deflate => "fwd.deflate.png",
@@ -102,13 +107,45 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
     );
     let mut store_from = None;
     let attempt: Option<(Transform, Vec<u8>, Lane)> = match class {
-        Class::Jpeg if opts.jpeg => jpeg::encode(data).map(|out| (Transform::Lepton, out, Lane::Store)),
-        // Headers and tables compress with other files' in the binary lane; the
-        // coded scans are stored.
-        Class::Jpeg if opts.jpeg_lite => jpeglite::encode(data).map(|(out, from)| {
-            store_from = Some(from);
-            (Transform::JpegLite, out, Lane::Binary)
-        }),
+        // Our coder first, Lepton for what it declines (progressive JPEGs), then the
+        // light coder. Headers and tables compress with other files' in the binary
+        // lane; the coded scans are stored.
+        Class::Jpeg => {
+            let mut r = None;
+            if opts.jpeg_rans {
+                r = jpegrans::encode_verified(data).map(|(out, from)| {
+                    store_from = Some(from);
+                    (Transform::JpegRans, out, Lane::Binary)
+                });
+            }
+            // Our static model is built for photos; on synthetic textures (an app's
+            // chess pieces, which it shrinks by 9.5-15%) Lepton's adaptive one was 15%
+            // smaller. When ours saves less than 15%, Lepton runs too and the smaller
+            // result wins, our prefix counted at what zstd makes of it alone, since it
+            // compresses further in the binary lane (a plain length comparison lost on
+            // apps). Lepton then runs on a quarter of the photo set, a fifth more make
+            // time there for 0.17% less size; at 12% the apps set stayed 0.1% bigger.
+            let weak = r.as_ref().is_some_and(|(_, out, _)| out.len() * 100 > data.len() * 85);
+            if opts.jpeg && (r.is_none() || weak) {
+                if let Some(out) = jpeg::encode(data) {
+                    let ours = r.as_ref().map(|(_, o, _)| {
+                        let prefix = store_from.unwrap_or(o.len());
+                        o.len() - prefix + zstd::bulk::compress(&o[..prefix], 1).map_or(prefix, |z| z.len())
+                    });
+                    if ours.is_none_or(|n| out.len() < n) {
+                        store_from = None;
+                        r = Some((Transform::Lepton, out, Lane::Store));
+                    }
+                }
+            }
+            if r.is_none() && opts.jpeg_lite {
+                r = jpeglite::encode(data).map(|(out, from)| {
+                    store_from = Some(from);
+                    (Transform::JpegLite, out, Lane::Binary)
+                });
+            }
+            r
+        }
         Class::DeflateContainer(kind) if applies(class, opts) => {
             let png = kind == crate::classify::DeflateKind::Png;
             deflate::encode(data, kind, opts.deflate_chain, opts.deflate_steps_per_byte, !opts.verify, opts.png_pixels.then_some(opts.png_pixels_per_byte_saved)).map(
@@ -143,11 +180,14 @@ pub fn forward<'a>(data: &'a [u8], class: Class, opts: &TransformOpts) -> Prepar
             },
             data.len() as u64,
         );
-        // Lepton verifies its own round trip internally; the light JPEG coder
-        // accounts for every bit of every scan while encoding (`jpeglite::encode`).
+        // Lepton verifies its own round trip internally; our coefficient coder was
+        // decoded and compared in `jpegrans::encode_verified` (so Lepton could take
+        // a photo it does not bring back); the light JPEG coder accounts for every
+        // bit of every scan while encoding (`jpeglite::encode`).
         let ok = !opts.verify
             || (matches!(transform, Transform::Arm64 { .. }) && !opts.verify_filters)
             || transform == Transform::Lepton
+            || transform == Transform::JpegRans
             || transform == Transform::JpegLite
             || verify(&out, &transform, data);
         if ok {
@@ -177,6 +217,7 @@ pub fn inverse(stored: Vec<u8>, transform: &Transform, size: u64) -> anyhow::Res
         }
         Transform::Lepton => jpeg::decode(&stored, size)?,
         Transform::JpegLite => jpeglite::decode(&stored, size)?,
+        Transform::JpegRans => jpegrans::decode(&stored, size)?,
         Transform::Deflate => deflate::decode(&stored, size)?,
     };
     anyhow::ensure!(out.len() as u64 == size, "transform produced {} bytes, expected {size}", out.len());
