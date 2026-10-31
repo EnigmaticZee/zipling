@@ -56,8 +56,10 @@ extract on every set, fastest to make on six of nine; one Arca setting beats
 96 of 144 rival results on all three measures at once. Next: the build order
 in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
 and a quiet run of every level, with WinRAR and Zipgeist re-measured on every set,
-puts the board at 137 of 144: Zipgeist's checkpoint times were inflated, and on photos it
-stores JPEGs in 0.06 s where Fast re-codes them in 0.19 s. The estimate for a
+put the board at 137 of 144: Zipgeist's checkpoint times were inflated, and on photos it
+stores JPEGs in 0.06 s where Fast re-codes them in 0.19 s. Since then a Max with
+the table codec's lanes took the Silesia extract row and Default's rebuild budget
+for disk images the DMGs row: **139 of 144**. The estimate for a
 codec with LZMA's ratio at
 a symbol coder's speed is in, and its table form (`lzt.rs`: LZMA's parse, each
 context a table rebuilt from its own counts) is 5.3% behind LZMA on Silesia, about
@@ -1250,7 +1252,10 @@ Default's only). On the DMGs set, RAM disk:
 4.5 ms keeps a 23% margin on the extract time and takes the row; what Default
 gives up against expanding everything is 7% on disk images in exchange for
 extracting them 3x faster, which is what a Default is for. The 4 Deflate tests
-and the 8 round trips pass; the quiet run of Default on the set follows.
+and the 8 round trips pass. Quiet run (`results-2026-10-31-dmg-budget.jsonl`,
+02:01): 601.83 MB, make 1.04-1.25 s, extract 0.35-0.37 s, identical. The board
+is **139 of 144**, DMGs a clean sweep: left are the three photo rows and Silesia
+against zstd -3 (Fast make x1.04) and Zipgeist tar.zst Fast (x1.21).
 
 **Quiet benchmark, every level (2026-10-30, 17:43-19:42,
 `bench/results-2026-10-30-quiet-all.jsonl`, report `results-2026-10-30-quiet.md`).**
