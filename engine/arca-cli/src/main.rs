@@ -137,6 +137,15 @@ fn human(n: u64) -> String {
     }
 }
 
+/// Ends the process once the archive is complete and reported: freeing a few
+/// hundred MB of buffers took 4 ms of Fast's 0.14 s on Silesia, and the system
+/// reclaims them anyway.
+fn done() -> ! {
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    std::process::exit(0)
+}
+
 fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, code_block_mib, image_block_mib, deflate_chain, disk_images, lane, json } => {
@@ -229,7 +238,7 @@ fn main() -> Result<()> {
                     "{{\"input\":{},\"output\":{},\"seconds\":{:.3},\"files\":{}}}",
                     s.input_bytes, s.output_bytes, s.seconds, s.files
                 );
-                return Ok(());
+                done();
             }
             let ratio = s.output_bytes as f64 / s.input_bytes.max(1) as f64;
             println!("{} files, {} dirs, {} → {} ({:.2}% of original) in {:.2}s ({}/s)",
@@ -245,6 +254,7 @@ fn main() -> Result<()> {
                 }
             }
             println!("  {} blocks, index {}", s.blocks, human(s.index_bytes));
+            done();
         }
         Cmd::Unpack { archive, dest, threads, force, only, json } => {
             let a = Archive::open(&archive)?;

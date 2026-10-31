@@ -1,0 +1,6 @@
+06:28:58 silesia: start (load 2.4), 2 tools x 2 rounds
+06:28:58 silesia r1 arca-fast: 65788138 0.16s / 0.09s
+06:28:58 silesia r1 zstd-3: 66580776 0.15s / 0.21s
+06:28:59 silesia r2 zstd-3: 66580776 0.15s / 0.21s
+06:28:59 silesia r2 arca-fast: 65788140 0.15s / 0.08s
+06:28:59 done
