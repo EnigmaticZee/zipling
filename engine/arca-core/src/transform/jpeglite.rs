@@ -814,7 +814,11 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
                 return None;
             }
             let tabs: Vec<(JTable, JTable)> = sc.comps.iter().map(|(_, dc, ac)| (JTable::new(dc), JTable::new(ac))).collect();
-            let (clean, ends) = unstuff(d, sc.start, sc.end, l.dri > 0)?;
+            let (clean, ends) = {
+                let _p = crate::prof::span("jl.unstuff", (sc.end - sc.start) as u64);
+                unstuff(d, sc.start, sc.end, l.dri > 0)?
+            };
+            let _parse = crate::prof::span("jl.parse", clean.len() as u64);
             let (dcn, acn) = (cnt_dc.as_mut_ptr(), cnt_ac.as_mut_ptr());
             let mut io = ParseIo { clean: clean.as_ptr(), raw: rbp, events: evs.as_mut_ptr(), dc: dcn, ac: acn };
             (st.acc, st.n, st.p) = (0, 0, 0);
@@ -858,6 +862,7 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
     }
     rawbuf.truncate(st.rlen);
     // tables, then the code stream
+    let _tables = crate::prof::span("jl.tables", st.nev as u64);
     let mut tables = Vec::new();
     let mut codes: Vec<[(u16, u8); 256]> = Vec::with_capacity(CTX_DC + CTX_AC);
     for c in cnt_dc.iter().chain(cnt_ac.iter()) {
@@ -880,6 +885,8 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
         tables.extend_from_slice(&order[..used]);
         codes.push(codes_of(&len));
     }
+    drop(_tables);
+    let _write = crate::prof::span("jl.write", evs.len() as u64);
     let mut w = LWriter::with_capacity(evs.len() * 2 + 64);
     // Four symbols of at most 11 bits go in one write. Contexts are in range: they
     // come from `parse_block`, and `codes` has a table for each.
@@ -895,6 +902,7 @@ pub fn encode(d: &[u8]) -> Option<(Vec<u8>, usize)> {
         w.put(c as u64, cl as u32);
     }
     let body = w.finish();
+    drop(_write);
     let raw = rawbuf;
     // the file without its scan data
     let mut hdr = Vec::with_capacity(4096);

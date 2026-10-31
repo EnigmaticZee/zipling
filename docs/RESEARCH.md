@@ -58,8 +58,11 @@ in "After the checkpoint". The light JPEG coder and Fast's overhead are done,
 and a quiet run of every level, with WinRAR and Zipgeist re-measured on every set,
 put the board at 137 of 144: Zipgeist's checkpoint times were inflated, and on photos it
 stores JPEGs in 0.06 s where Fast re-codes them in 0.19 s. Since then a Max with
-the table codec's lanes took the Silesia extract row and Default's rebuild budget
-for disk images the DMGs row: **139 of 144**. Off the board, inputs under 64 MiB
+the table codec's lanes took the Silesia extract row, Default's rebuild budget
+for disk images the DMGs row, and Fast now stores photos through zstd -1 in the
+image lane instead of re-coding them (nothing that reads JPEG symbols fits in the
+rows' time, see "Photos at Fast"): 89 MB in 0.035 s against 78 MB in 0.148 s, the
+three photo rows in the quiet run: **142 of 144**. Off the board, inputs under 64 MiB
 now keep whole blocks cut into overlapping zstd jobs instead of blocks of a
 core's share: a folder of PDFs 25% smaller, a small disk image 11%. Fast's two
 Silesia make rows are at the machine's floor for zstd -3's ratio (see "Fast on
@@ -1235,6 +1238,67 @@ and the probe is not involved (disk images take the quick-images lane, which it
 does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
+
+**Photos at Fast: stored through zstd -1, not re-coded (2026-10-31, 08:15-09:30,
+in the engine).** The user asked how Zipgeist wins the three photo rows and
+whether tuning or something new could take them with the re-coder. Zipgeist does
+not look at the content: tar, then zstd -1 over the bytes, 0.06-0.08 s for the
+set. That still gains 6.4% here because the set has 15 duplicate photos (3.32 MB
+of 98.40) and 174 of its 400 files are wallpapers and gradients whose coded bytes
+repeat (one sine gradient 1.18 → 0.17 MB); zstd -1 on each unique file alone
+gives 90.08 MB, zstd -3 over the tar 91.84 MB.
+
+The re-coder, profiled with phase timers now in `jpeglite.rs` (`jl.unstuff`,
+`jl.parse`, `jl.tables`, `jl.write`, under `ARCA_DEBUG_PROFILE`): parse 0.97-1.10
+CPU-s (157.3M symbols at 20 cycles, 97 MB/s on one core alone, 15% more under ten
+threads), code stream 0.14, tables 0.07, stuffing 0.02; 1.26 CPU-s for 0.148 s of
+wall, 8.2x parallel over ten cores (the 4.74 MB wallpaper alone is 0.05 s). The
+rows need the whole pack under 0.06 s (Zipgeist's ZIPs) and 0.08 s (its tar.zst).
+At the dependency chain's floor of 8 cycles a symbol the parse would still be 0.39
+CPU-s, 0.6 with the code stream and tables: 0.07 s on ten cores before the 0.023 s
+the rest of the pack takes. The known speedups fall short of that floor besides: a
+two-symbol table lookup (zstd's Huffman trick) attacks the chain's 8 of the 20
+cycles (about 1.3x on the parse); interleaving two restart intervals per thread
+(244 of the 400 photos restart every MCU row) overlaps two chains (about 1.5x on
+the chain, a format change). Nothing that reads symbols fits in the rows' time:
+only byte-level LZ does. And Fast's store path as it was did not win them either:
+a photo the coder left alone went to the store lane whole, 95.10 MB in 0.023 s,
+dedup and nothing else, 3% behind Zipgeist.
+
+Built: `PackOptions::quick_photos` (Fast). A photo no coder touched goes to the
+image lane, whose codec at Fast is now zstd -1 without long matches (the lane was
+unused at Fast); no probe, since Fast has none. The light coder is off at Fast by
+default; `ARCA_EXP_JPEGLITE=1` puts it back (`ARCA_EXP_NO_JPEGLITE` is gone). The
+rule it follows: a transform runs at Fast only if it keeps up with Fast's own codec,
+about 4-5 ns a byte for zstd -3; the arm64 filter does, the light coder at 13 ns a
+byte does not, and disk-image expansion is off at Fast for the same reason.
+
+Measured on the RAM disk (load 3.5): the photo set 89,078,183 B in 0.035 s (was
+78,261,816 B in 0.148 s), unpack 0.039 s of process wall (was 0.192), `verify` OK and
+the round trip identical. 3.0 MB under Zipgeist's 92.06 MB: zstd -1's window is 512
+KiB and misses the duplicates, dedup finds all 15. Every set at Fast, old engine
+against new: photos +13.8%; saved +3.62% (300.31 → 311.18 MB, zstd -3 at 329.54) and
+mixed +4.03% (270.22 → 281.11 MB, zstd -3 at 296.10), both from their photos; apps
++0.10%; the other five identical. The light coder stays in the engine for the day
+a setting wants photos 12% smaller at 4x the time; the speedups above are its
+first moves.
+
+Quiet run (`bench/results-2026-10-31-photo-lane.jsonl`, load 2.2-2.4 except the
+saved set's second round at 4.5; `CHECKPOINT_TOOLS=arca-fast,zstd-3`, four sets,
+two rounds, every round trip identical):
+
+| Set | Fast | zstd -3 |
+|---|---|---|
+| photos | 89.08 MB, make 0.050 / 0.083 s, extract 0.050 / 0.068 s | 91.84 MB, 0.232 / 0.239, 0.211 / 0.213 |
+| saved | 311.18 MB, 0.50 / 0.58, 0.72 / 0.87 | 329.66 MB, 6.56 / 7.12, 10.03 / 10.06 |
+| mixed | 281.11 MB, 0.51 / 0.56, 0.60 / 0.65 | 296.09 MB, 5.49 / 5.52, 4.82 / 4.83 |
+| apps | 72.30 MB, 0.117 / 0.134, 0.148 / 0.152 | 77.25 MB, 1.09 / 1.09, 1.02 / 1.06 |
+
+Board with this file added: **142 of 144**, the photo rows all won. The make row
+against Zipgeist's ZIP Fast and Normal (0.06 s) is the thinnest on the board:
+0.050 s in the warm round, 0.083 s in the cold first one, so it needs the
+harness's best-of-two to stand. Left: Silesia Fast make against zstd -3 and
+against Zipgeist's zstd -1, the frontier rows of "Fast on Silesia" below.
 
 **Fast on Silesia: where the 0.15 s is, and zstd's own tables (2026-10-31,
 02:35-07:00, in the engine).** The two Silesia rows left at Fast are the make

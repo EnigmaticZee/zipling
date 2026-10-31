@@ -71,6 +71,12 @@ pub struct PackOptions {
     /// bytes and hold the least for level 3 to find. Third-party apps 1.05 → 0.57 s,
     /// for 10% in size, which still leaves them under zstd -3's.
     pub quick_binaries: bool,
+    /// Send photos no coder touched to the image lane instead of the store lane,
+    /// when it runs zstd. Fast's lane there is zstd -1: a camera JPEG holds under
+    /// 1% for it but a wallpaper or gradient 10-85%, and the 400-photo set goes
+    /// 98.4 → 89 MB in the time copying takes, where re-coding the symbols took
+    /// 4x as long for 78 MB (see RESEARCH.md, "Photos at Fast").
+    pub quick_photos: bool,
     /// Block size for the image lane (PNG rows).
     pub image_block_size: usize,
     /// zstd level for the index. 19 costs ~0.3 s on one thread for a 10,000-file
@@ -129,7 +135,10 @@ impl PackOptions {
             large_input_block: if level == Level::Max { 32 << 20 } else { 0 },
             transforms: TransformOpts {
                 jpeg: heavy,
-                jpeg_lite: level == Level::Fast && std::env::var_os("ARCA_EXP_NO_JPEGLITE").is_none(),
+                // Research: ARCA_EXP_JPEGLITE puts the light coder back on Fast's
+                // photos: 12% smaller than storing them, at 4x the time (see
+                // `quick_photos`).
+                jpeg_lite: level == Level::Fast && std::env::var_os("ARCA_EXP_JPEGLITE").is_some(),
                 deflate: heavy,
                 arm64: true,
                 verify: true,
@@ -155,7 +164,8 @@ impl PackOptions {
             probe: level == Level::Balanced,
             text_codec: text,
             binary_codec: binary,
-            image_codec: binary,
+            // Fast's image lane holds stored photos (see `quick_photos`).
+            image_codec: if level == Level::Fast { CodecConfig { long: false, ..zstd(1) } } else { binary },
             // At Max and Ultra code and text get long matches: what makes source
             // trees and apps small (7-Zip Ultra is the bar there).
             code_lane: matches!(level, Level::Max | Level::Ultra),
@@ -166,6 +176,7 @@ impl PackOptions {
                 Level::Balanced => zstd(5),
             },
             quick_binaries: level == Level::Fast,
+            quick_photos: level == Level::Fast,
             quick_images: level == Level::Balanced,
             code_block_size: block,
             image_block_size: block,
@@ -1219,6 +1230,8 @@ fn process_file_inner(
     let lane = if opts.quick_binaries && (matches!(transform, Transform::Arm64 { .. }) || packed) { Lane::Code } else { lane };
     let image = matches!(class, Class::DeflateContainer(Kind::Dmg));
     let lane = if image && opts.quick_images && opts.code_codec.codec == Codec::Zstd { Lane::Code } else { lane };
+    let photo = matches!(class, Class::Jpeg) && matches!(transform, Transform::None);
+    let lane = if photo && opts.quick_photos && opts.image_codec.codec == Codec::Zstd { Lane::Image } else { lane };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);
     let route = |(off, len, hash): (usize, usize, [u8; 16])| {
         if store_from.is_some_and(|k| off >= k) {
