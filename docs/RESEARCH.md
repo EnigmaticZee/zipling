@@ -9,7 +9,10 @@ everything below it is the record.
 ## Where everything is (index for coming back later)
 
 Frozen on 2026-10-31 as branch `backup/arca-research-2026-10-31` and tag
-`arca-research-2026-10-31`. The engine as built, by file:
+`arca-research-2026-10-31`. Commit hashes cited in this log are from that
+history: before the merge into main the branch was rewritten to drop a build
+directory committed by mistake (`engine/target-dev`, 1,560 files), which gave
+every commit after 2026-10-28 a new hash. The engine as built, by file:
 
 - **Pipeline** `engine/arca-core/src/pack.rs`: file tasks on every core, content
   classes (`classify.rs`), content-defined chunks and keyed POLYVAL dedup

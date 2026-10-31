@@ -1,4 +1,6 @@
 engine/target/
+engine/target-dev/
+engine/target-*/
 app/build/
 app/Zipling.xcodeproj/xcuserdata/
 app/Zipling.xcodeproj/project.xcworkspace/xcuserdata/
