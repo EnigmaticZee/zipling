@@ -203,6 +203,7 @@ fn main() -> Result<()> {
                         "zstd" => arca_core::Codec::Zstd,
                         "xz" => arca_core::Codec::Xz,
                         "lzma2" => arca_core::Codec::Lzma2,
+                        "lzt" => arca_core::Codec::Lzt,
                         "ppmd" => arca_core::Codec::Ppmd,
                         "bsc" => arca_core::Codec::Bsc,
                         "store" => arca_core::Codec::Store,

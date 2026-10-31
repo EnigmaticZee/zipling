@@ -101,6 +101,15 @@ impl PackOptions {
             // CPU of 273-byte ones for 1-6% more output) for binaries and pixels,
             // while text and code (the code lane below) get the longest matches in
             // 64 MiB blocks: what source trees and Silesia need to beat 7-Zip Ultra.
+            // Research: ARCA_EXP_LZT puts the table coder on Max's lanes in
+            // LZMA2's place, same parse.
+            Level::Max if std::env::var_os("ARCA_EXP_LZT").is_some() => (
+                CodecConfig { codec: Codec::Lzt, ..lzma2(9, true) },
+                CodecConfig { codec: Codec::Lzt, ..lzma2(7, false) },
+                64 << 20,
+                64 << 20,
+                0,
+            ),
             Level::Max => (lzma2(9, true), lzma2(7, false), 64 << 20, 64 << 20, 0),
             // Ultra is the smallest: context modelling for text (it beats LZ on
             // prose and source code, at the cost of decode speed) and the longest
@@ -481,7 +490,7 @@ impl BlockSink {
         let (start, key, busy, cores) = (self.start, self.key.clone(), self.busy.clone(), self.cores);
         let queued = start.map(|s| s.elapsed().as_secs_f64());
         let (lanes, splits, queue) = (self.lanes.clone(), self.splits.clone(), self.queue.clone());
-        let may_split = self.split && matches!(cfg.codec, Codec::Lzma2 | Codec::Bsc) && block.buf.len() >= SPLIT_MIN;
+        let may_split = self.split && matches!(cfg.codec, Codec::Lzma2 | Codec::Bsc | Codec::Lzt) && block.buf.len() >= SPLIT_MIN;
         self.pool.spawn(move || {
             let began = start.map(|s| s.elapsed().as_secs_f64());
             let _timeline = Timeline { start, id: block.id, lane: block.lane, len: block.buf.len(), queued, began };
@@ -541,7 +550,7 @@ impl BlockSink {
             }
             // A block that split has no far repeats to speak of, so long matches
             // buy little in it: Silesia 15% less CPU for 0.3%.
-            let long = cfg.codec == Codec::Lzma2 && cfg.extreme;
+            let long = matches!(cfg.codec, Codec::Lzma2 | Codec::Lzt) && cfg.extreme;
             let cfg = if parts.len() > 1 && long { CodecConfig { extreme: false, level: 9, ..cfg } } else { cfg };
             // The longest first: with a fixed amount of work, what decides the time
             // is whether a long part starts last. Silesia at Max took 10.5 or 13.3 s
@@ -773,7 +782,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     // first blocks: six on 10 cores made Max 4-6% faster than ten. A small input
     // has only a few full blocks, so its memory stays bounded, and it runs eight:
     // Silesia 11% and a source tree 11% faster than six, and ten is no better.
-    if [opts.text_codec, opts.binary_codec, opts.image_codec, opts.code_codec].iter().any(|c| c.codec == Codec::Lzma2) {
+    if [opts.text_codec, opts.binary_codec, opts.image_codec, opts.code_codec].iter().any(|c| matches!(c.codec, Codec::Lzma2 | Codec::Lzt)) {
         block_threads = block_threads.min(match stats.input_bytes {
             n if n < FEW_BLOCKS_BELOW => (opts.threads * 4 / 5).max(1),
             _ => opts.threads.max(1) / 2 + 1,

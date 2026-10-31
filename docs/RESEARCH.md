@@ -1127,6 +1127,31 @@ binary lane on it, measured on every set; Max must stay under every rival's size
 and the Silesia row against zstd -19 --long needs Max under about 52.6 MB with
 its extract under 0.236 s.
 
+**In the engine (2026-10-31, 02:30-03:10).** `Codec::Lzt` (tag 6) is in the
+format, the block codec (the LZMA encoder runs with the token tap capturing on the
+encoding thread, its own output dropped) and the decode path; `ARCA_EXP_LZT` puts
+it on Max's text and binary lanes in LZMA2's place, same parse. Silesia on the RAM
+disk, two rounds, against the quiet run's zstd -19 --long (52.65 MB, 28.3 s make,
+0.241 s extract):
+
+| Max | Size | Make | Extract |
+|---|---:|---:|---:|
+| LZMA2, 64 MiB blocks (today's Max) | 49.41 MB | 13.2 s | 0.362 s |
+| lzt, 64 MiB blocks | 50.52 MB | 14.3 s | 0.320 s |
+| lzt, 32 MiB blocks | 50.23 MB | 18.0 s | 0.254 s |
+| **lzt, 16 MiB blocks** | **50.18 MB** | 12.3 s | **0.222 s** |
+| LZMA2, 16 MiB blocks | 49.15 MB | 12.1 s | 0.341 s |
+
+At 64 MiB the per-core gain hardly showed: a block split in two leaves a 32 MiB
+part as the critical path and half the cores idle. At 16 MiB every core has a
+block and lzt extracts Silesia in 0.222 s, under zstd -19's 0.241 s, at 50.18 MB
+against its 52.65 and today's Max's 49.41 (+1.6%): the row is won by a Max
+setting with lzt lanes and 16 MiB blocks. What it costs elsewhere is the next
+measurement (Max's margins over the smallest rivals are 7% on third-party apps,
+where lzt's binary-lane loss is largest), and whether that setting replaces Max
+or stands beside it is the user's call: a Max that extracts 1.6x faster for 1.6%
+in size, or the smallest Max.
+
 **Quiet benchmark, every level (2026-10-30, 17:43-19:42,
 `bench/results-2026-10-30-quiet-all.jsonl`, report `results-2026-10-30-quiet.md`).**
 Fast, Default, Max and Ultra, each with and without bsc, against zstd -3,
