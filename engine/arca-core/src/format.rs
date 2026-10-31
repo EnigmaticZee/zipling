@@ -111,6 +111,8 @@ pub enum Transform {
     JpegLite,
     /// Deflate streams expanded with preflate (ZIP/Office/PNG/PDF/gzip).
     Deflate,
+    /// JPEG coefficients re-coded with our static-table rANS coder (`transform::jpegrans`).
+    JpegRans,
 }
 
 impl Transform {
@@ -120,6 +122,7 @@ impl Transform {
             Transform::Arm64 { .. } => "arm64",
             Transform::Lepton => "lepton",
             Transform::JpegLite => "jpeglite",
+            Transform::JpegRans => "jpegrans",
             Transform::Deflate => "deflate",
         }
     }
@@ -321,6 +324,7 @@ impl Index {
                 Transform::Lepton => w.u8(2),
                 Transform::Deflate => w.u8(3),
                 Transform::JpegLite => w.u8(5),
+                Transform::JpegRans => w.u8(6),
             }
             if o.transform != Transform::None {
                 w.raw(&o.hash.expect("transformed objects carry a hash"));
@@ -469,6 +473,7 @@ impl Index {
                 2 => Transform::Lepton,
                 3 => Transform::Deflate,
                 5 => Transform::JpegLite,
+                6 => Transform::JpegRans,
                 t => bail!("unknown transform {t}"),
             };
             let hash = if transform == Transform::None { None } else { Some(r.array::<16>()?) };
@@ -552,6 +557,7 @@ impl Index {
                 Transform::Lepton => 2,
                 Transform::Deflate => 3,
                 Transform::JpegLite => 5,
+                Transform::JpegRans => 6,
             };
             let ext = extension[i].as_deref().unwrap_or("");
             for &c in &o.chunks {

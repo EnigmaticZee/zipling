@@ -66,7 +66,11 @@ three photo rows in the quiet run: **142 of 144**. The two rows left are Silesia
 Fast make times, where Fast ties zstd -3 and trails Zipgeist's zstd -1 by 0.02 s
 at a file 12.5% smaller; a GPU matchfinder feeding zstd's frame was built and
 measured for them ("A GPU matchfinder for Fast"): 4x slower than the ten CPU
-cores and 7% bigger, a dead end with numbers. Off the board, inputs under 64 MiB
+cores and 7% bigger, a dead end with numbers. Our JPEG coefficient coder is in
+the engine from Default up (tag 6, "Our JPEG coder in the engine"): photos 2.7%
+smaller than with Lepton and 1.7x faster to extract, 388 of 388 exact and
+100,000 mutants without a panic; it is the last format change before release.
+Off the board, inputs under 64 MiB
 now keep whole blocks cut into overlapping zstd jobs instead of blocks of a
 core's share: a folder of PDFs 25% smaller, a small disk image 11%. Fast's two
 Silesia make rows are at the machine's floor for zstd -3's ratio (see "Fast on
@@ -1242,6 +1246,60 @@ and the probe is not involved (disk images take the quick-images lane, which it
 does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
+
+**Our JPEG coder in the engine, pressure-tested (2026-10-31, 11:00-13:30,
+`transform/jpegrans.rs`, tag 6, on from Default up).** Agreed with the user as
+the last format change before release: the research coder of rounds 3-5
+(`examples/jpegmodel/fast.rs`) ported as a transform, with the parser, the
+scan writer and the model walk shared between directions as before, and three
+things the research version did not need: bounds checks on every read of the
+stored stream (a damaged archive is an error, never undefined behaviour), a
+scalar twin of the NEON context arithmetic for other targets, and a decline for
+anything over 4M blocks. Stored layout as for the light coder: the file without
+its scans and the scan offsets as a compressible prefix, then the side tables,
+raw bits and rANS words stored. `encode_verified` decodes its own output and
+compares before the engine keeps it, so Lepton takes any photo that does not
+come back exactly; Lepton also takes progressive JPEGs and the few tiny ones
+where our tables cost more than they save.
+
+Two traps on the way. The raw-bit reader refills eight bytes and takes up to
+seven, so at the end of its data it stands seven bytes past it and reads eight
+more: the research buffer's eight bytes of padding were not enough and its
+unchecked read happened to work; with checked reads 70% of the photos failed
+until the padding was sixteen. And when the first round trip failed, the engine
+stored the photo raw instead of trying Lepton, which is how an 83 MB archive
+showed the fault.
+
+Synthetic textures found the model's limit: the Chess app's piece textures
+(ambient-occlusion maps, 210-240 KB) shrink 9.5-15% with our static tables and
+24% with Lepton's adaptive model, and the apps set came out 0.24% bigger. A
+plain "shorter output wins" rule for small photos lost 0.3% more, because our
+prefix compresses further in the binary lane than its length shows. The rule
+that holds: when ours saves under 15%, Lepton runs too and the smaller wins,
+our prefix counted at what zstd -1 makes of it alone. Lepton then runs on a
+quarter of the photo set.
+
+| Default, RAM disk | Lepton (`ARCA_EXP_LEPTON=1`) | Ours | |
+|---|---|---|---|
+| Photos, 98.4 MB | 71.10 MB, make 2.19 s, unpack 1.20 s | 69.18 MB, make 2.10 s, unpack 0.71 s | 2.7% smaller, 1.7x faster out |
+| Apps | 56.44 MB | 56.44 MB | 0.00% |
+| Apps, Max | 49.16 MB | 49.16 MB | 0.00% |
+| Saved folder | 250.73 MB | 248.82 MB | 0.76% smaller |
+| Mixed folder | 217.88 MB | 215.97 MB | 0.88% smaller |
+| Third-party apps | 402.98 MB | 402.98 MB | no JPEGs it takes |
+
+Make time at Default is the coder plus its own full decode; without the Lepton
+runs on weak photos it was 1.53 s. Of the 400 photos, 373 take our coder, 12
+Lepton (3 progressive, 9 tiny), 15 are duplicates stored once.
+
+Pressure test (`fuzz_folder`, 250 rounds a photo scaled down for big files, ten
+threads, 331 s): 388 of 388 baseline photos exact; about 100,000 mutated photos
+through the parser, of which 52,406 parsed, 24,485 of those refused by the
+round-trip check (a damaged scan that still parses rarely writes back to the
+same bytes) and the rest exact; about 13,000 mutated stored streams decoded
+without a panic. The 52 engine tests pass. Round trips of the four sets above
+verified through `arca verify` on the photo set and the engine's own check on
+every pack.
 
 **A GPU matchfinder for Fast, measured (2026-10-31, 09:45-10:45,
 `bench/research/gpumatch/gpumatch.mm`).** The user asked why the two Silesia
