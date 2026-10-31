@@ -6,6 +6,52 @@ Started 2026-10-28 on branch `zee/arca-research-77726f`. Backup: tag
 **Resuming?** Read this file top to bottom first. "State" says where the work is;
 everything below it is the record.
 
+## Where everything is (index for coming back later)
+
+Frozen on 2026-10-31 as branch `backup/arca-research-2026-10-31` and tag
+`arca-research-2026-10-31`. The engine as built, by file:
+
+- **Pipeline** `engine/arca-core/src/pack.rs`: file tasks on every core, content
+  classes (`classify.rs`), content-defined chunks and keyed POLYVAL dedup
+  (`hash.rs`), lanes (text, binary, image, code, store) filling blocks, presets per
+  level in `PackOptions::preset`. Extraction and its scheduler: `unpack.rs`.
+  Format 3: `format.rs`, `wire.rs`. ZIP reader and writer: `zip.rs`, `zipwrite.rs`.
+- **Codecs** `codec.rs`: zstd (tables and job cuts per block size), LZMA2 (vendored
+  liblzma with two speed patches), bsc (libbsc, LZP + BWT), PPMd, and our own
+  `lzt.rs` (LZMA's parse, per-context tables, rANS; research switch `ARCA_EXP_LZT`).
+- **Transforms** `transform/`: `jpegrans.rs` (our JPEG coefficient coder, Default
+  and up), `jpeg.rs` (Lepton, fallback), `jpeglite.rs` (light JPEG coder, research
+  switch `ARCA_EXP_JPEGLITE` at Fast), `deflate.rs` (preflate expansion of
+  ZIP/Office/PNG/PDF/gzip, zlib and LZFSE replay, disk images with a rebuild
+  budget), `arm64.rs` (arm64 and x86 code filters), `pixels.rs` (PNG pixel codec,
+  Max and Ultra).
+- **Presets** (locked for 1.0): Fast zstd 3 lanes, photos through zstd -1; Default
+  zstd 15 text / 12 binary, every transform, JPEG coder; Max bsc text and code,
+  LZMA2 7 binaries; Ultra bsc text and code, LZMA2 9e. Research switches:
+  `ARCA_EXP_LZT`, `ARCA_EXP_JPEGLITE`, `ARCA_EXP_LEPTON`, `ARCA_EXP_CODE_LANE`,
+  `ARCA_EXP_FAST_TABLES`, `ARCA_EXP_OVLOG`, `ARCA_EXP_PIXELS`, `ARCA_EXP_CAR`;
+  `--lane`, `--text-codec`, `--block-mib`, `--disk-images` on the CLI.
+- **Benchmarks** `bench/`: `checkpoint.py` (every tool on every set, waits for a
+  quiet Mac), `checkpoint_report.py`, `research/board.py` (any Arca setting against
+  each rival result), `research/levels.py` (1:1 by level and the upsets),
+  `research/zipgeist` (driving its window), results in `bench/results-*.jsonl`
+  with `.log` files; the final engine run is `results-2026-10-31-presets.jsonl`,
+  the rivals' quiet runs `results-2026-10-30-{quiet-all,quiet-rar,zipgeist}.jsonl`.
+  The test sets live outside the repo (`research_notes/engine-bench.noindex`).
+- **Research code**: `engine/arca-core/examples/` (jpegmodel rounds, lzsbench and
+  lztok for the codec, pixbench, lrp, bscbench), `bench/research/gpumatch` (GPU
+  matchfinder, dead end).
+
+Tracks and verdicts, newest first (each has an entry below): GPU matchfinder, 4x
+slower than the CPU cores, dead end. Fast's make time on Silesia, at the CPU floor
+for zstd -3's ratio; zstd's own tables 9% faster for 0.9% size, not taken. lzt,
+LZMA's ratio within 5% at 2x the decode speed, behind a flag because it is 15-21%
+bigger on PDFs, source and apps. Disk images at Default, rebuild budget, taken.
+Small inputs, whole blocks cut into zstd jobs, taken. Photos at Fast, stored
+through zstd -1, taken. Our JPEG coder, taken, Lepton kept as fallback. bsc lanes
+at Max and Ultra, taken; at Default, not taken (extraction and DMG make time).
+Earlier dead ends are listed under "State".
+
 ## State
 
 Saved folder, CLI, busy Mac (load 9-12), 2026-10-28 late evening; rivals from the
@@ -1254,6 +1300,28 @@ and the probe is not involved (disk images take the quick-images lane, which it
 does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
+
+**Default with bsc lanes, measured and not taken (2026-10-31, 13:30-14:00).** The
+user asked whether Default could come in under Zipgeist's 7z Normal on size
+everywhere while staying fast. It misses on three sets (source 11.20 vs 10.47 MB,
+Silesia 57.3 vs 50.0, third-party apps 403 vs 380). With bsc on Default's text
+lane alone (`--lane text=bsc:1`, Oct 30 run): source 10.21 MB in 0.95 s (under
+Zipgeist, over 7-Zip's 9.15), Silesia 53.1 (still over), mixed 212.8 MB in 5.4 s
+but 2.16 s to extract against 1.28, DMGs 550 MB but 5.1 s to make against 1.05.
+With text and code lanes as Max has them (`ARCA_EXP_CODE_LANE=1 --lane text=bsc:1
+--lane code=bsc:2e`, research switch kept in `pack.rs`): source 8.47 MB in 0.88 s,
+Silesia 48.99 MB but 13.4 s to make and 0.75 s to extract against 4.8 and 0.09,
+mixed 204 MB but 23 s against 9.2, the code lane's LZMA2 fallback doing the
+damage; apps, DMGs and third-party apps unchanged. Third-party apps and Silesia's
+binaries only go under Zipgeist with LZMA-class codecs on the binary lane, at 2-6x
+the time. Verdict with the user: Default stays as it is. Against Zipgeist's 7z
+Normal it wins make and extract on every set and size on six; against the plain
+ZIP Normal it wins size on every set by 20-50% and extract on eight, and loses
+make on eight because a Deflate ZIP does less work than anything smaller than
+LZMA; no setting can be smaller than their 7z and faster than their ZIP at once
+(photos: store in 0.06 s against 86 MB in 2.8 s). Counted against Zipgeist
+alone: 53 of 54 of its results beaten by some Arca setting, 36 of 54 level for
+level by name.
 
 **Presets locked, every level on every set (2026-10-31, 12:00-13:10,
 `bench/results-2026-10-31-presets.jsonl`).** Agreed with the user as the engine

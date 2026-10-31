@@ -179,7 +179,7 @@ impl PackOptions {
             image_codec: if level == Level::Fast { CodecConfig { long: false, ..zstd(1) } } else { binary },
             // At Max and Ultra code and text get long matches: what makes source
             // trees and apps small (7-Zip Ultra is the bar there).
-            code_lane: matches!(level, Level::Max | Level::Ultra),
+            code_lane: matches!(level, Level::Max | Level::Ultra) || (level == Level::Balanced && std::env::var_os("ARCA_EXP_CODE_LANE").is_some()),
             code_codec: match level {
                 Level::Max | Level::Ultra if lzt_lanes => lzma2(9, true),
                 Level::Max | Level::Ultra => bsc(2, true),
