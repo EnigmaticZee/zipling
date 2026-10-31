@@ -62,7 +62,11 @@ the table codec's lanes took the Silesia extract row, Default's rebuild budget
 for disk images the DMGs row, and Fast now stores photos through zstd -1 in the
 image lane instead of re-coding them (nothing that reads JPEG symbols fits in the
 rows' time, see "Photos at Fast"): 89 MB in 0.035 s against 78 MB in 0.148 s, the
-three photo rows in the quiet run: **142 of 144**. Off the board, inputs under 64 MiB
+three photo rows in the quiet run: **142 of 144**. The two rows left are Silesia's
+Fast make times, where Fast ties zstd -3 and trails Zipgeist's zstd -1 by 0.02 s
+at a file 12.5% smaller; a GPU matchfinder feeding zstd's frame was built and
+measured for them ("A GPU matchfinder for Fast"): 4x slower than the ten CPU
+cores and 7% bigger, a dead end with numbers. Off the board, inputs under 64 MiB
 now keep whole blocks cut into overlapping zstd jobs instead of blocks of a
 core's share: a folder of PDFs 25% smaller, a small disk image 11%. Fast's two
 Silesia make rows are at the machine's floor for zstd -3's ratio (see "Fast on
@@ -1238,6 +1242,60 @@ and the probe is not involved (disk images take the quick-images lane, which it
 does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
+
+**A GPU matchfinder for Fast, measured (2026-10-31, 09:45-10:45,
+`bench/research/gpumatch/gpumatch.mm`).** The user asked why the two Silesia
+rows were being treated as a frontier instead of attacked with something new.
+The one route not yet measured was the GPU: the earlier note ("Apple Silicon
+GPU: no stage worth moving") ruled out the adaptive coders, which are serial by
+nature, but zstd's match finder is a hash-table search that is parallel per
+position, and its entropy stage builds static tables per block. On a Mac the
+GPU shares memory with the CPU, so there is nothing to copy, and zstd 1.5.7's
+`ZSTD_compressSequences` takes an external parse and writes an ordinary zstd
+frame, so the archive format and the decoder would not change.
+
+Built in a morning as an Objective-C++ tool with the kernel in Metal: every
+8 MiB block is split into G segments, each walked by a 1024-thread group in
+windows of 1024 to 8192 positions; a position hashes 8 bytes with zstd's long
+and short hashes into two per-block tables (2^17 and 2^16 entries) holding the
+history so far, plus a threadgroup table of the earliest same-hash position in
+the window; the longest of the three candidates (verified, at most 511 bytes,
+offsets under 8 MiB) is written per position. The CPU then runs a lazy parse
+over the per-position array and calls `ZSTD_compressSequences` (level 3,
+window 2^23, no block delimiters), decompresses and compares. One format trap:
+with no block delimiters the trailing literals are implied, and a final sequence
+with matchLength 0 is read as a delimiter and fails validation (six blocks
+decoded wrong before `ZSTD_c_validateSequences` named it). After the fix every
+round trip is identical. All of Silesia, 212 MB in 31 blocks, M1 Pro (16 GPU
+cores), best of three:
+
+| Groups per block | Positions per thread | GPU kernel | Output vs zstd -3 (66.16 MB) |
+|---|---|---:|---:|
+| 4 | 1 | 241-270 ms | +7.0% |
+| 16 | 1 | 191 ms | +13.2% |
+| 32 | 1 | 187 ms | +15.6% |
+| 4 | 4 | 226 ms | +9.5% |
+| 4 | 8 | 213 ms | +11.4% |
+
+CPU work left over, summed over blocks: the parse over the match array 420-450
+ms (2 ns a byte: 848 MB of candidates to read), `ZSTD_compressSequences` 290-320
+ms; plain zstd -3 on the same blocks 740-790 ms in all, of which the matcher is
+therefore about 60% and the entropy stage 40%.
+
+What this says. The kernel is bound by random memory access, not by the window
+loop: four to eight times fewer iterations saved 20%, and more segments saved
+25% while losing 6-9% in size (a segment cannot see history its neighbour has
+not inserted yet). Around a billion random reads and writes into tables and
+block data that do not fit the GPU's caches run at about 5 G accesses a second
+here, where each CPU core keeps its block's recent window and tables in L2 and
+ten of them do zstd -3's matching in about 55 ms of wall. So the GPU is 4x slower
+at the job, 7% bigger with a simple parse, and even a free matcher would leave
+the entropy stage (40% of zstd -3) and the parse on the CPU: at most 1.6x on the
+lanes' CPU when the Zipgeist row needs 2x in all. A smarter design (one parallel
+insert pass with earliest-position tables, hierarchical windows) trades more
+size for less sequencing, in the direction the table already shows. Dead end for
+Fast at zstd -3's ratio; the tool stays for the record and for any future codec
+whose matcher is the whole cost.
 
 **Photos at Fast: stored through zstd -1, not re-coded (2026-10-31, 08:15-09:30,
 in the engine).** The user asked how Zipgeist wins the three photo rows and
