@@ -10,13 +10,13 @@
     "appearance": "dark"
   },
   "tools": {
-    "zipling": {"version": "0.1.0 (1)", "engine": "Arca, archive format 3, locked presets of 2026-10-31", "how": "the installed /Applications/Zipling.app, driven through its AppleScript compress and extract commands; timed from the command's start to its return, minus a measured no-work AppleScript round trip; CPU and peak footprint of the app process sampled through proc_pid_rusage"},
+    "zipling": {"version": "0.1.0 (1)", "engine": "Arca, archive format 3, locked presets of 2026-10-31", "how": "the installed /Applications/Zipling.app, driven through its AppleScript compress and extract commands; the row's time is the app's own clock (its timing log, from the command's arrival in the app to the finished file; make_s_app); the AppleScript wall time minus a measured no-work round trip (make_s_osa) and the raw wall time (make_s_raw) are kept beside it; CPU and peak footprint of the app process sampled through proc_pid_rusage"},
     "zipgeist": {"version": "1.0.0 (1)", "how": "the installed app, driven through its Finder menu (Compress As > Options), the only way it compresses; timed by a stopwatch from the click on Compress to the last busy moment of its processes, with the archive's write time as a floor; six settings: ZIP Fast, ZIP Normal, tar.zst Fast, 7z Normal, 7z Best, tar.xz Best"},
     "finder": {"version": "macOS 27.0.1", "how": "Finder's Compress command and double-click to expand (Archive Utility), timed by the same stopwatch on Archive Utility's processes; also ditto -c -k --sequesterRsrc --keepParent / ditto -x -k from the command line, which is the same engine (finder-zip rows)"},
     "7zip": {"version": "7-Zip (z) 26.05 arm64, 2026-10-21", "how": "7zz a -t7z -mx=5 (Normal) and -mx=9 (Ultra), symbolic links kept (-snl); extract with -snld20. Stands in for Keka and BetterZip, which use 7-Zip's code; neither has its own engine"},
     "winrar": {"version": "RAR 7.23 for macOS (command line; WinRAR has no Mac app)", "how": "rar a -m1 (Fastest), -m3 (Normal, its default), -m5 -s (Best, solid); links kept (-ol); all cores"},
-    "zstd": {"version": "1.5.6", "how": "tar | zstd -3 -T0 and zstd -19 --long=27 -T0"},
-    "xz": {"version": "XZ Utils 5.6.4", "how": "tar | xz -6 -T0 and xz -9e -T0"}
+    "zstd": {"version": "1.5.7 (Homebrew; the second pass, results-2026-10-31-apps-zx.jsonl, which the report and the website use). The main run's rows are zstd 1.5.6 from a conda environment that sat first in the harness's PATH", "how": "tar | zstd -3 -T0 and zstd -19 --long=27 -T0"},
+    "xz": {"version": "XZ Utils 5.8.4 (Homebrew; the second pass, results-2026-10-31-apps-zx.jsonl, which the report and the website use). The main run's rows are XZ Utils 5.6.4 from the same conda environment", "how": "tar | xz -6 -T0 and xz -9e -T0"}
   },
   "sets": {
     "jpeg": {"title": "Photos", "mb": 95, "files": 400, "note": "400 JPEGs, 3.3 MB of exact duplicates"},
@@ -32,13 +32,16 @@
   "method": [
     "Every tool runs on every set twice, the second round in reverse order; the better of the two rounds counts; the first round's extracted tree is compared with the source byte for byte (names, types, bytes, link targets).",
     "Each set is read once (tar to /dev/null) before its runs, so every tool starts with the files in the page cache.",
-    "A set's runs start only when the 1-minute load is under 2.5 (the Mac otherwise idle).",
-    "Zipling and the command-line rivals alternate within a set (bench/research/apprun.py).",
+    "A set's runs start only when the 1-minute load is under 2.5 (the Mac otherwise idle), waiting up to ten minutes. In the main run the last two sets (disk images, third-party apps) went on after the wait at 3.7: an animated wallpaper and a background app kept the idle load there; their rows match the quiet engine run of the same presets within noise.",
+    "Zipling and the command-line rivals alternate within a set (bench/research/apprun.py). The main run (phase 3) ran unattended from 00:05 to 02:32 on 1 November 2026; the log's clock jumps back an hour between the disk images and the third-party apps because daylight saving time ended at 02:00.",
+    "zstd and xz were measured twice: the main run picked up zstd 1.5.6 and XZ Utils 5.6.4 from a conda environment first in the harness's PATH; a second pass of the same four settings on all nine sets with the Homebrew releases (zstd 1.5.7, XZ Utils 5.8.4; APPRUN_LOAD=4, same night) replaces those rows in the report and on the website. The first-pass rows stay in the main file for the record.",
     "Zipgeist and Finder's Compress need the screen: they ran under full-screen control, which keeps WindowServer and the Claude app at about one core together; one Zipling Fast run per set in the same session (arca-fast-clock) shows the effect on the clock.",
     "A row is won when Zipling is smaller, faster to make and faster to extract at once; 1:1 by level (Fast against the fast settings, Default against the normal ones, Max and Ultra against the best), upsets listed separately (bench/research/levels.py)."
   ],
   "files": {
     "zipling_and_cli_rivals": "bench/results-2026-10-31-apps.jsonl",
+    "zstd_xz_second_pass": "bench/results-2026-10-31-apps-zx.jsonl",
+    "report": "bench/report-2026-10-31-apps.md",
     "zipgeist": "bench/results-2026-10-31-apps-zipgeist.jsonl",
     "finder_gui": "bench/results-2026-10-31-apps-finder.jsonl"
   }

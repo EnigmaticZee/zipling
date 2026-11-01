@@ -48,7 +48,7 @@ NAMES = {"arca-fast": "Arca Fast", "arca-fast-bsc": "Arca Fast + bsc", "arca-bal
          "arca-balanced-bsc": "Arca Default + bsc", "arca-max": "Arca Max", "arca-max-bsc": "Arca Max + bsc",
          "arca-ultra": "Arca Ultra", "arca-ultra-bsc": "Arca Ultra + bsc", "arca-max-lzt": "Arca Max, fast extract (lzt)",
          "arca-fast-dmg": "Arca Fast + DMG expansion", "arca-balanced-dmg": "Arca Default + DMG expansion",
-         "finder-zip": "Finder (ditto zip)", "7z-normal": "7-Zip normal (-mx5)", "7z-ultra": "7-Zip Ultra (-mx9)",
+         "finder-zip": "Finder (ditto zip)", "finder-app": "Finder Compress / Expand", "7z-normal": "7-Zip normal (-mx5)", "7z-ultra": "7-Zip Ultra (-mx9)",
          "zstd-3": "tar + zstd -3", "zstd-19-long": "tar + zstd -19 --long", "xz-6": "tar + xz -6", "xz-9e": "tar + xz -9e",
          "zg-zip-fast": "Zipgeist ZIP Fast", "zg-tzst-fast": "Zipgeist tar.zst Fast", "zg-zip-normal": "Zipgeist ZIP Normal",
          "zg-7z-normal": "Zipgeist 7z Normal", "zg-7z-best": "Zipgeist 7z Best", "zg-txz-best": "Zipgeist tar.xz Best",

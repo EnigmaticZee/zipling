@@ -1,210 +1,220 @@
 # Benchmarks
 
-Measured on an Apple M1 Pro (8P + 2E cores, 32 GB RAM) running macOS 27.0.1, with a warm page cache. Every number is wall-clock time, and every tool's output was extracted and compared with `diff -r` against the source. **Every round trip was byte-identical.** Back-to-back runs vary by about ±10% (thermal and scheduling noise), so treat small time differences as ties.
+Zipling, the app, against Finder, 7-Zip, WinRAR, zstd and xz on six public datasets: archive size,
+time to compress, time to extract, peak memory. Every archive from every tool was extracted and
+compared with the source byte for byte (names, types, bytes, link targets). **Every round trip was
+identical.**
 
-The Arca and 7-Zip numbers were measured together on 2026-10-26 on an otherwise idle machine. The Finder zip and tar rows are from 2026-10-25. That session ran LZMA-heavy jobs about 20% faster: the same Arca build packed the mixed folder at max in 56.8 s then and 68.6 s on 2026-10-26. So compare times only within one session.
+**Machine.** MacBook Pro, Apple M1 Pro (8 performance + 2 efficiency cores), 32 GB, internal SSD,
+macOS 27.0.1. Each dataset is read once before its runs, so every tool starts with the files in the
+page cache. Two rounds per tool, the second in reverse order, the better kept. A dataset's runs start
+only when the 1-minute load is under 2.5. Back-to-back runs vary by about ±10%, so treat small
+differences as ties.
 
-The raw data is in `bench/results-2026-10-25-*.json` (`all` holds the competitors, `speed-a`/`speed-b` the first speed pass) and `bench/results-2026-10-26-max-speed.json` (the max-level pass, before and after, plus 7-Zip). The harness is `bench/bench.py`.
+**When.** Finder on 31 October 2026, driven in Finder itself (its Compress command, and Archive
+Utility by double-click), timed from the click to the finished file. Zipling and the command-line
+tools in one unattended session the night of 31 October to 1 November 2026, alternating within each
+dataset so that no tool gets a quieter machine than another. zstd and xz were re-measured in a second
+pass the same night with the current Homebrew releases, after the first pass had picked up older
+copies; the second pass is what the tables show.
 
-Versions: Arca engine 0.1 (this repo), 7-Zip 26.02 (`7zz`), zstd 1.5.7, XZ Utils 5.8.4, and `ditto` from macOS 27, which is what Finder's *Compress* uses. Keka and BetterZip create 7z through the 7-Zip engine, and Archive Utility and MacPacker create ZIP (Deflate), so those rows stand in for them.
+**Versions.** Zipling 0.1.0 (Arca engine, archive format 3, the presets locked on 31 October 2026);
+7-Zip 26.05 (`7zz -mx5` Normal and `-mx9` Ultra, links kept); WinRAR 7.23 for macOS, command line
+(`rar -m1`, `-m3`, `-m5 -s`); zstd 1.5.7 (`tar | zstd -3 -T0` and `-19 --long=27 -T0`); XZ Utils 5.8.4
+(`tar | xz -6 -T0` and `-9e -T0`); Finder from macOS 27.0.1. Keka and BetterZip compress 7z through
+7-Zip's code, so the 7-Zip rows stand in for them; Archive Utility and MacPacker make Deflate ZIPs,
+as Finder does.
+
+**How Zipling was timed.** The installed app, driven through its AppleScript `compress` and `extract`
+commands, timed by its own clock from the command's arrival in the app to the finished file (the
+app's timing log). That includes the app's listing decode, its safety walk over the extracted tree and
+its main-actor hops, about 30 ms plus a few microseconds per file on an extraction, and it is what a
+user gets. The AppleScript round trip itself (50 to 60 ms of osascript start-up, measured before each
+dataset) is not charged to the app. Peak memory is the app process's physical footprint, sampled every
+20 ms; for the command-line tools it is `/usr/bin/time -l`'s maximum resident set size.
+
+Raw rows: `bench/results-2026-10-31-apps.jsonl` (Zipling, 7-Zip, WinRAR, and the first zstd and xz
+pass), `bench/results-2026-10-31-apps-zx.jsonl` (zstd and xz, second pass),
+`bench/results-2026-10-31-apps-finder.jsonl` (Finder), `bench/results-2026-10-31-apps-machine.json`
+(machine, versions, method). Harness: `bench/research/apprun.py`; scoring: `bench/research/levels.py`.
 
 ## Datasets
 
-All sets use public or system data only; no personal files were read.
+Public and system data only; no personal files were read. Sizes are the folders' decimal megabytes.
 
 | Set | What | Why it matters |
 |---|---|---|
-| mixed | All five sets below in one folder | A realistic "compress this folder" job |
-| docs | 250 PDFs + 600 PNGs from system and Xcode resources | Office, PDF and screenshot-heavy folders |
-| jpeg | 400 JPEGs from system and Xcode resources | Photo folders |
-| apps | 8 apps from `/System/Applications` (universal Mach-O, asset catalogs, nibs, strings) | Software, `.app` bundles |
-| source | 89 Rust crates incl. vendored C (zstd, xz) | Code repositories |
-| silesia | The standard Silesia corpus | Generic data; there are no transform opportunities here |
+| Mixed folder (736 MB) | All five sets below in one folder | A realistic "compress this folder" job |
+| PDFs and screenshots (89 MB) | 250 PDFs and 600 PNGs from system and Xcode resources | Office, PDF and screenshot-heavy folders |
+| Photos (98 MB) | 400 JPEGs from system and Xcode resources | Photo folders |
+| Mac apps (174 MB) | 8 apps from `/System/Applications`: universal Mach-O, asset catalogs, nibs, strings | Software and `.app` bundles |
+| Source code (162 MB) | 89 Rust crates, including vendored C (zstd, xz) | Code repositories |
+| Generic data (212 MB) | The standard Silesia compression corpus | Data with no file-type tricks to exploit |
 
 ## Headline (mixed folder, 736 MB)
 
-* **Arca balanced (the default) vs 7-Zip Ultra:** **5% smaller, 5.1× faster to compress, 1.7× faster to extract.**
-* **Arca max vs 7-Zip Ultra:** **17% smaller and 1.1× faster to extract** (3.50 s vs 3.84 s); compression is within 5% (51.6 s vs 49.3 s). Before the max-level speed pass, Arca max was 1.2× slower to extract and 1.4× slower to compress.
-* **Arca balanced vs Finder's Compress:** **31% smaller, 2× faster to compress, 4× faster to extract.**
-* **Arca fast vs Finder's Compress:** 11% smaller, **14× faster to compress, 10× faster to extract.**
-* **PDF/PNG folders:** balanced is **43% smaller than 7-Zip Ultra and faster too** (2.0 s vs 2.7 s). Max is 55% smaller.
-* **JPEG photos:** **17% smaller than 7-Zip Ultra**, losslessly, because of Lepton, and faster to extract (1.25 s vs 1.58 s). Every other tool is stuck at 87–95%.
-* **Generic data (Silesia):** max ties 7-Zip Ultra on size, compresses 1.5× faster and extracts 1.7× faster. Ultra is 3% smaller than 7-Zip.
+- **Zipling Default against 7-Zip Ultra:** 8% smaller, 5.8× faster to compress, 2.6× faster to extract (1.49 against 3.84 s).
+- **Zipling Max against 7-Zip Ultra:** 18% smaller (192.6 against 235.0 MB) in 40% of the compression time, 1.5× faster to extract.
+- **Zipling Default against Finder's Compress:** 33% smaller, 2.9× faster to compress, 5.3× faster to extract.
+- **Zipling Fast against Finder's Compress:** 13% smaller, 47× faster to compress, 10× faster to extract.
+- **Zipling Fast against `tar | zstd -3`:** 5% smaller, 11× faster to compress, 7× faster to extract.
+- **PDFs and screenshots:** Default is 42% smaller than 7-Zip Ultra and 2.1× faster to compress; Max is 52% smaller.
+- **Photos:** Default is 19% smaller than 7-Zip Ultra (69.18 against 85.29 MB), with every JPEG restored bit for bit; the other tools get 5% to 13% off the originals.
 
-## Speed work, part 2: the max level
+## Where Zipling is behind
 
-The rule was the same as in part 1: faster, with no archive larger. None of these changes alters an archive. Items 1–3 only touch extraction, and items 4–5 produce byte-identical compressed blocks. The sizes below differ by at most +0.0001%, a few bytes of index timestamp.
+- **Default on Mac apps** is 4% larger than 7-Zip Ultra and 2% larger than 7-Zip Normal, for 12× to 20× less compression time and 5× to 6× less extraction time. Max is 9% smaller than 7-Zip Ultra there, in 12.1 s against 27.7 s.
+- **Default on source code** is 32% larger than 7-Zip Ultra and 22% larger than 7-Zip Normal, for 7× to 12× less compression time and 2× less extraction time. Max is 2% smaller than 7-Zip Ultra there, in 1.55 s against 21.9 s.
+- **Default on generic data** is 18% larger than 7-Zip Ultra and 15% larger than 7-Zip Normal, for 5× to 10× less compression time and 7× to 12× less extraction time. Max is 4% smaller than 7-Zip Ultra there, in 6.22 s against 48.2 s.
+- **Max on PDFs and screenshots** takes 10.5 s to compress against 7-Zip Ultra's 2.86 s, for an archive 52% smaller: re-creating the compression inside PDFs and PNGs is work the other tools skip. Default is 42% smaller than 7-Zip Ultra on the same folder in 1.38 s.
+- **Fast on generic data** loses to `zstd -3` on compression time (0.17 against 0.15 s) at a file 2% smaller that extracts 1.9× faster.
+- **Ultra*** is 0 to 3% smaller than Max for 5 to 117% more compression time. It is experimental and not in the released app.
 
-1. **Extraction is a dependency graph, not a series of waves.** A trace of the old code showed why max extraction trailed 7-Zip. Blocks decoded in waves of one per core, each wave waiting for its slowest block, and the stored blocks holding the Lepton data came last. The JPEGs, the largest share of the work (12.5 s of CPU on the mixed folder), therefore only started at 2.9 s of 4.7 s. Now every core takes the best ready item from one priority queue: block decodes first (cheap stored blocks before LZMA ones), then the costliest work, largest JPEG first. An object is rebuilt the moment its last block decodes. On the mixed folder all 10 cores stay busy from 0.2 s to the end. Decoded blocks are capped at two per core, and peak memory is unchanged (1.9 → 2.0 GB).
-2. **Directories are created by the first file that needs them.** APFS serialises `mkdir`, so creating the mixed folder's 2,112 directories took ~0.1 s even on 10 threads. Done as a separate step overlapping the decodes, it took 0.6–1.2 s on one core while every write waited for it. Path checks and directory metadata now run in parallel too.
-3. **Costs are estimated from what the work actually is.** Re-creating Deflate scales with the expanded size, which can be 50× the file's. A 0.5 MB PNG holding one huge image takes 0.9 s, so it has to start early, not after the JPEGs.
-4. **liblzma is built the way xz's own build does.** The `liblzma-sys` crate compiles xz with a hand-written `config.h` that leaves out `TUKLIB_FAST_UNALIGNED_ACCESS`, so the BT4 match finder, 77% of LZMA's time, compared match lengths byte by byte. With the flag, a 64 MiB `-9e` block compresses **1.31× faster on text (28.7 → 21.9 s) and 1.45× faster on binaries (24.4 → 16.8 s)**, with identical bytes.
-5. **The match finder prefetches the hash bucket four positions ahead.** That is a random access into a table of up to 64 MiB. With 10 encoders sharing memory, which is how a max archive is packed, it saves ~5% of cycles (804–811 → 767–770 billion over 10 concurrent blocks; 32.6–34.5 → 31.0–31.4 s), with identical bytes. Items 4 and 5 live in a vendored copy of `liblzma-sys` (`engine/vendor/liblzma-sys/ARCA-PATCHES.md`).
+## Every dataset, every tool
 
-Best of two runs per cell, alternating old and new builds:
+Each Zipling level sits with the settings it competes with. Ultra* is experimental and not in the
+released app.
 
-| Set | Level | Size before → after (MB) | Pack before → after (s) | Speed-up | Extract before → after (s) | Speed-up |
-|---|---|---:|---:|---:|---:|---:|
-| mixed | balanced | 221.46 → 221.46 | 9.3 → 9.7 | 0.96× | 2.63 → 2.30 | 1.15× |
-| mixed | max | 192.80 → 192.80 | 68.6 → 51.6 | **1.33×** | 4.58 → 3.50 | **1.31×** |
-| docs | balanced | 20.79 → 20.79 | 2.0 → 2.0 | 1.00× | 0.30 → 0.26 | 1.17× |
-| docs | max | 16.46 → 16.46 | 36.6 → 29.3 | 1.25× | 1.63 → 1.20 | 1.36× |
-| jpeg | balanced | 71.02 → 71.02 | 2.5 → 2.4 | 1.01× | 1.51 → 1.24 | 1.22× |
-| jpeg | max | 71.02 → 71.02 | 2.5 → 2.5 | 1.00× | 1.42 → 1.25 | 1.14× |
-| apps | balanced | 62.43 → 62.43 | 2.4 → 2.4 | 1.00× | 0.47 → 0.28 | 1.65× |
-| apps | max | 49.84 → 49.84 | 28.8 → 23.5 | 1.23× | 1.17 → 1.04 | 1.13× |
-| source | balanced | 11.22 → 11.22 | 2.0 → 2.1 | 0.96× | 0.58 → 0.51 | 1.14× |
-| source | max | 8.29 → 8.29 | 35.6 → 25.4 | 1.40× | 0.83 → 0.72 | 1.15× |
-| silesia | balanced | 57.27 → 57.27 | 5.1 → 5.1 | 1.01× | 0.18 → 0.15 | 1.24× |
-| silesia | max | 48.65 → 48.65 | 39.6 → 33.0 | 1.20× | 0.92 → 0.89 | 1.04× |
+### Mixed folder (736 MB)
 
-Balanced packing runs the same code as before; its ±4% is noise. **Max extraction now beats 7-Zip Ultra on the mixed folder.** Five alternating runs each gave a median of 3.52 s (3.38–3.59) for Arca against 3.85 s (3.83–3.87) for 7-Zip, and Arca won every pair.
+All five sets below in one folder. A realistic "compress this folder" job.
 
-Dead ends, kept for the record:
+| Tool | Size | % of original | Compress | Extract | Peak memory, compressing |
+|---|---:|---:|---:|---:|---:|
+| *Fast settings* | | | | | |
+| Finder Compress / Archive Utility | 324.6 MB | 44% | 24.1 s | 7.90 s | – |
+| tar + zstd -3 | 294.6 MB | 40% | 5.63 s | 5.50 s | 172 MB |
+| WinRAR Fastest (-m1) | 309.8 MB | 42% | 5.61 s | 3.18 s | 279 MB |
+| **Zipling Fast** | 281.1 MB | 38% | 0.51 s | 0.82 s | 1704 MB |
+| *Normal settings* | | | | | |
+| 7-Zip Normal (-mx5) | 237.8 MB | 32% | 26.1 s | 2.96 s | 2523 MB |
+| WinRAR Normal (-m3) | 277.8 MB | 38% | 10.6 s | 3.26 s | 306 MB |
+| tar + xz -6 | 251.2 MB | 34% | 25.1 s | 5.79 s | 1357 MB |
+| **Zipling Default** | 216.0 MB | 29% | 8.39 s | 1.49 s | 3549 MB |
+| *Strongest settings* | | | | | |
+| 7-Zip Ultra (-mx9) | 235.0 MB | 32% | 48.5 s | 3.84 s | 6874 MB |
+| WinRAR Best (-m5, solid) | 247.4 MB | 34% | 21.6 s | 2.98 s | 578 MB |
+| tar + zstd -19 --long | 245.7 MB | 33% | 46.1 s | 5.51 s | 1871 MB |
+| tar + xz -9e | 236.6 MB | 32% | 87.8 s | 7.10 s | 3656 MB |
+| **Zipling Max** | 192.6 MB | 26% | 19.3 s | 2.55 s | 3644 MB |
+| **Zipling Ultra*** | 189.3 MB | 26% | 28.1 s | 2.73 s | 4213 MB |
 
-* *Starting every LZMA block at once* (a 16-thread compression pool instead of 10). The trace showed 14 blocks on 10 threads, the last two running nearly alone for ~9 s, and that looked like idle cores to fill. It made no difference (57.98 s vs 58.27 s). Compression is bound by total LZMA throughput, which is memory-bound: one 64 MiB block takes 23 s alone and 40–49 s with ten running. So the fix had to make LZMA itself cheaper (items 4 and 5).
-* *Prefetching both children of each BT4 tree node.* 15–20% slower.
-* *Smaller blocks when there are fewer blocks than cores.* Docs has five 64 MiB blocks for 10 cores, so half the machine idles at max. With 48 MiB blocks it packs 1.39× faster but grows 0.17%; with 32 MiB, 1.56× faster and 0.94% larger. Both fail the size rule.
-* *More extraction threads than cores* (12 or 14), to hide file-system waits. No gain.
-* *Multi-threaded Lepton decoding.* Not needed once the largest JPEGs start first: the cores stay busy to the end. The JPEGs are already stored with up to eight Lepton partitions, so it stays available for folders of a few huge photos.
+### PDFs and screenshots (89 MB)
 
-## Speed work, part 1: same compression, faster
+250 PDFs and 600 PNGs from system and Xcode resources. Office, PDF and screenshot-heavy folders.
 
-Each change below either leaves the archive bytes unchanged or was kept only because it made archives the same size or smaller:
+| Tool | Size | % of original | Compress | Extract | Peak memory, compressing |
+|---|---:|---:|---:|---:|---:|
+| *Fast settings* | | | | | |
+| Finder Compress / Archive Utility | 50.24 MB | 56% | 2.03 s | 1.25 s | – |
+| tar + zstd -3 | 45.07 MB | 51% | 0.40 s | 0.42 s | 105 MB |
+| WinRAR Fastest (-m1) | 50.04 MB | 56% | 0.84 s | 0.39 s | 99 MB |
+| **Zipling Fast** | 41.06 MB | 46% | 0.08 s | 0.12 s | 1000 MB |
+| *Normal settings* | | | | | |
+| 7-Zip Normal (-mx5) | 38.29 MB | 43% | 2.47 s | 0.80 s | 382 MB |
+| WinRAR Normal (-m3) | 49.75 MB | 56% | 1.08 s | 0.36 s | 126 MB |
+| tar + xz -6 | 43.29 MB | 49% | 4.14 s | 0.64 s | 505 MB |
+| **Zipling Default** | 22.14 MB | 25% | 1.38 s | 0.26 s | 1224 MB |
+| *Strongest settings* | | | | | |
+| 7-Zip Ultra (-mx9) | 38.25 MB | 43% | 2.86 s | 0.83 s | 920 MB |
+| WinRAR Best (-m5, solid) | 38.74 MB | 44% | 1.74 s | 0.30 s | 567 MB |
+| tar + zstd -19 --long | 38.82 MB | 44% | 6.27 s | 0.41 s | 359 MB |
+| tar + xz -9e | 38.80 MB | 44% | 20.8 s | 1.15 s | 794 MB |
+| **Zipling Max** | 18.20 MB | 20% | 10.5 s | 0.45 s | 1611 MB |
+| **Zipling Ultra*** | 17.81 MB | 20% | 15.0 s | 0.46 s | 1455 MB |
 
-1. **Per-lane codecs.** The profile showed zstd-15's binary-tree match finder using ~40% of all CPU. Text really needs it (lighter strategies cost 2.6% on text), but binaries lose under 0.4% with zstd-12's lazy matcher at 3–4× the speed. Doubling binary blocks to 64 MiB, which costs no CPU, wins that back and more.
-2. **One verification instead of two** for Deflate expansion. Preflate's internal check duplicated the engine's own end-to-end round trip, which is stronger, so the internal check is off.
-3. **Parallel Deflate streams within a file**, for both packing and extraction. A PDF or DOCX holds hundreds of independent streams.
-4. **Shallower preflate search at balanced** (depth 256, which covers zlib levels 1–7). Archives come out the same size within 0.15% in the worst case, and preflate runs 1.7× faster.
-5. **A streaming pack pipeline.** Every file is its own task, running up to 512 MB ahead of an in-order packer. Blocks compress on a separate pool as soon as they fill, and each lane's last block is sealed the moment its file group has passed. The archive layout stays deterministic.
-6. **Extraction overlaps block decoding with file rebuilding.** Single-chunk files are created, written and given their permissions, timestamps and xattrs through one file descriptor. Directories are created once each.
-7. **Small files are read once** when packing (whole, during type detection), and the largest JPEGs are scheduled first.
+### Photos (98 MB)
 
-| Set | Level | Size before → after (MB) | Pack before → after (s) | Speed-up | Extract before → after (s) | Speed-up |
-|---|---|---:|---:|---:|---:|---:|
-| mixed | fast | 286.76 → 286.76 | 1.5 → 1.4 | 1.06× | 1.49 → 1.00 | 1.49× |
-| mixed | balanced | 222.07 → 221.46 | 19.8 → 11.1 | 1.79× | 3.94 → 2.76 | 1.42× |
-| mixed | max | 192.80 → 192.80 | 56.1 → 56.8 | 0.99× | 5.91 → 4.73 | 1.25× |
-| docs | fast | 40.01 → 40.01 | 0.1 → 0.2 | 0.86× | 0.12 → 0.09 | 1.26× |
-| docs | balanced | 23.31 → 20.79 | 6.9 → 2.4 | 2.87× | 1.76 → 0.34 | 5.23× |
-| docs | max | 16.46 → 16.46 | 33.2 → 32.0 | 1.04× | 1.83 → 1.88 | 0.97× |
-| jpeg | fast | 95.00 → 95.00 | 0.1 → 0.1 | 1.00× | 0.09 → 0.07 | 1.30× |
-| jpeg | balanced | 71.02 → 71.02 | 2.6 → 3.0 | 0.89× | 1.58 → 1.63 | 0.97× |
-| jpeg | max | 71.02 → 71.02 | 2.8 → 2.8 | 1.00× | 1.70 → 1.54 | 1.10× |
-| apps | fast | 72.40 → 72.40 | 0.4 → 0.5 | 0.99× | 0.37 → 0.31 | 1.22× |
-| apps | balanced | 64.51 → 62.43 | 3.9 → 2.6 | 1.53× | 0.49 → 0.46 | 1.06× |
-| apps | max | 49.84 → 49.84 | 28.7 → 27.8 | 1.03× | 1.24 → 1.19 | 1.04× |
-| source | fast | 13.55 → 13.55 | 0.7 → 0.5 | 1.29× | 0.80 → 0.52 | 1.54× |
-| source | balanced | 11.33 → 11.21 | 2.4 → 2.3 | 1.04× | 0.83 → 0.56 | 1.49× |
-| source | max | 8.29 → 8.29 | 28.8 → 27.9 | 1.03× | 1.16 → 0.86 | 1.36× |
-| silesia | fast | 65.74 → 65.74 | 0.3 → 0.3 | 0.90× | 0.14 → 0.10 | 1.43× |
-| silesia | balanced | 57.05 → 57.27 | 6.9 → 5.2 | 1.33× | 0.16 → 0.19 | 0.85× |
-| silesia | max | 48.65 → 48.65 | 38.3 → 37.1 | 1.03× | 0.97 → 0.95 | 1.02× |
-What didn't move, and why:
+400 JPEGs from system and Xcode resources. Photo folders.
 
-* *Max* compression time is LZMA `-9e` itself. Plain `-9` was 1.1–1.2× faster on samples but cost up to 6% on real folders, so it was reverted. The product answer is the roadmap's "compress fast now, shrink later" (pack at *fast* in 1.4 s, then upgrade to *max* in the background), not a weaker codec.
-* *Fast* compression was already near I/O speed (500–800 MB/s).
-* *Silesia at balanced* is the one archive that grew, by 0.4% (57.05 → 57.27 MB). Its large distinct binaries are where zstd-15's deeper search still pays. Every real-world folder got smaller.
-* JPEG compression is Lepton's encode plus verification, about 5 MB/s per core. The vector (SIMD) paths are already in use on Apple Silicon.
+| Tool | Size | % of original | Compress | Extract | Peak memory, compressing |
+|---|---:|---:|---:|---:|---:|
+| *Fast settings* | | | | | |
+| Finder Compress / Archive Utility | 93.32 MB | 95% | 3.11 s | 1.23 s | – |
+| tar + zstd -3 | 91.72 MB | 94% | 0.24 s | 0.25 s | 118 MB |
+| WinRAR Fastest (-m1) | 92.51 MB | 94% | 1.05 s | 0.30 s | 104 MB |
+| **Zipling Fast** | 89.08 MB | 91% | 0.05 s | 0.08 s | 1374 MB |
+| *Normal settings* | | | | | |
+| 7-Zip Normal (-mx5) | 85.29 MB | 87% | 6.01 s | 1.59 s | 381 MB |
+| WinRAR Normal (-m3) | 90.93 MB | 93% | 1.12 s | 0.36 s | 131 MB |
+| tar + xz -6 | 89.04 MB | 91% | 8.22 s | 0.65 s | 554 MB |
+| **Zipling Default** | 69.18 MB | 71% | 2.00 s | 0.70 s | 2238 MB |
+| *Strongest settings* | | | | | |
+| 7-Zip Ultra (-mx9) | 85.29 MB | 87% | 6.40 s | 1.58 s | 983 MB |
+| WinRAR Best (-m5, solid) | 86.21 MB | 88% | 2.89 s | 0.38 s | 571 MB |
+| tar + zstd -19 --long | 85.70 MB | 87% | 14.5 s | 0.25 s | 409 MB |
+| tar + xz -9e | 85.60 MB | 87% | 38.5 s | 1.99 s | 850 MB |
+| **Zipling Max** | 69.17 MB | 71% | 2.05 s | 0.68 s | 2283 MB |
+| **Zipling Ultra*** | 69.17 MB | 71% | 2.15 s | 0.70 s | 2201 MB |
 
-Dead ends, kept for the record: a smaller zstd window (no effect), zstd minimum-match tuning (helped 32 MB samples, hurt full folders), and a per-file "is expansion worth it?" estimate. That estimate helped the docs set alone but hurt the mixed folder, because files that look unprofitable alone become profitable next to similar files in a big block.
+### Mac apps (174 MB)
 
-## Full results
+8 apps from `/System/Applications`: universal Mach-O, asset catalogs, nibs, strings. Software and `.app` bundles.
 
-Arca and 7-Zip rows: 2026-10-26, best of two runs for Arca balanced and max. † Finder zip and tar rows: 2026-10-25, a session that ran LZMA-heavy jobs about 20% faster (see the top of this page).
+| Tool | Size | % of original | Compress | Extract | Peak memory, compressing |
+|---|---:|---:|---:|---:|---:|
+| *Fast settings* | | | | | |
+| Finder Compress / Archive Utility | 87.42 MB | 50% | 6.66 s | 2.42 s | – |
+| tar + zstd -3 | 76.47 MB | 44% | 1.06 s | 1.14 s | 146 MB |
+| WinRAR Fastest (-m1) | 78.68 MB | 45% | 1.24 s | 0.70 s | 272 MB |
+| **Zipling Fast** | 72.30 MB | 42% | 0.13 s | 0.23 s | 1082 MB |
+| *Normal settings* | | | | | |
+| 7-Zip Normal (-mx5) | 55.26 MB | 32% | 16.8 s | 1.41 s | 878 MB |
+| WinRAR Normal (-m3) | 64.68 MB | 37% | 2.51 s | 0.76 s | 300 MB |
+| tar + xz -6 | 58.97 MB | 34% | 8.47 s | 1.26 s | 938 MB |
+| **Zipling Default** | 56.44 MB | 32% | 1.38 s | 0.26 s | 1572 MB |
+| *Strongest settings* | | | | | |
+| 7-Zip Ultra (-mx9) | 54.10 MB | 31% | 27.7 s | 1.66 s | 1759 MB |
+| WinRAR Best (-m5, solid) | 58.69 MB | 34% | 5.40 s | 0.70 s | 574 MB |
+| tar + zstd -19 --long | 59.36 MB | 34% | 21.3 s | 1.15 s | 547 MB |
+| tar + xz -9e | 54.33 MB | 31% | 57.9 s | 2.40 s | 899 MB |
+| **Zipling Max** | 49.15 MB | 28% | 12.1 s | 0.70 s | 1962 MB |
+| **Zipling Ultra*** | 48.55 MB | 28% | 14.5 s | 0.71 s | 1425 MB |
 
-### mixed (736 MB)
+### Source code (162 MB)
 
-| Tool | Size (MB) | % of original | vs 7-Zip ultra | Compress (s) | Extract (s) | Round trip |
-|---|---:|---:|---:|---:|---:|---|
-| Finder zip (ditto) † | 322.7 | 43.9% | +38% | 19.8 | 9.32 | identical |
-| 7-Zip ultra (7z -mx9) | 233.4 | 31.7% | +0% | 49.3 | 3.84 | identical |
-| tar.zst -19 --long † | 244.1 | 33.2% | +5% | 46.5 | 5.52 | identical |
-| tar.xz -9e † | 235.1 | 32.0% | +1% | 97.9 | 7.28 | identical |
-| **Arca fast** | 286.8 | 39.0% | +23% | 1.4 | 0.88 | identical |
-| **Arca balanced** | 221.5 | 30.1% | -5% | 9.7 | 2.30 | identical |
-| **Arca max** | 192.8 | 26.2% | -17% | 51.6 | 3.50 | identical |
-| **Arca ultra** | 191.0 | 26.0% | -18% | 37.9 | 7.45 | identical |
+89 Rust crates, including vendored C (zstd, xz). Code repositories.
 
-### docs (89 MB)
+| Tool | Size | % of original | Compress | Extract | Peak memory, compressing |
+|---|---:|---:|---:|---:|---:|
+| *Fast settings* | | | | | |
+| Finder Compress / Archive Utility | 25.11 MB | 16% | 6.54 s | 5.16 s | – |
+| tar + zstd -3 | 15.09 MB | 9% | 3.72 s | 3.53 s | 111 MB |
+| WinRAR Fastest (-m1) | 21.82 MB | 13% | 1.72 s | 1.42 s | 47 MB |
+| **Zipling Fast** | 13.55 MB | 8% | 0.25 s | 0.52 s | 577 MB |
+| *Normal settings* | | | | | |
+| 7-Zip Normal (-mx5) | 9.15 MB | 6% | 12.9 s | 1.14 s | 794 MB |
+| WinRAR Normal (-m3) | 18.15 MB | 11% | 2.38 s | 1.46 s | 59 MB |
+| tar + xz -6 | 9.96 MB | 6% | 6.22 s | 3.48 s | 932 MB |
+| **Zipling Default** | 11.20 MB | 7% | 1.88 s | 0.53 s | 880 MB |
+| *Strongest settings* | | | | | |
+| 7-Zip Ultra (-mx9) | 8.51 MB | 5% | 21.9 s | 1.16 s | 1676 MB |
+| WinRAR Best (-m5, solid) | 10.15 MB | 6% | 4.48 s | 1.23 s | 551 MB |
+| tar + zstd -19 --long | 9.29 MB | 6% | 25.8 s | 3.50 s | 508 MB |
+| tar + xz -9e | 8.35 MB | 5% | 66.1 s | 3.48 s | 861 MB |
+| **Zipling Max** | 8.31 MB | 5% | 1.55 s | 0.83 s | 916 MB |
+| **Zipling Ultra*** | 8.09 MB | 5% | 1.70 s | 1.01 s | 897 MB |
 
-| Tool | Size (MB) | % of original | vs 7-Zip ultra | Compress (s) | Extract (s) | Round trip |
-|---|---:|---:|---:|---:|---:|---|
-| Finder zip (ditto) † | 48.6 | 54.3% | +33% | 1.5 | 0.68 | identical |
-| 7-Zip ultra (7z -mx9) | 36.6 | 40.9% | +0% | 2.7 | 0.82 | identical |
-| tar.zst -19 --long † | 37.1 | 41.5% | +1% | 8.0 | 0.42 | identical |
-| tar.xz -9e † | 36.9 | 41.3% | +1% | 22.3 | 1.10 | identical |
-| **Arca fast** | 40.0 | 44.7% | +9% | 0.1 | 0.09 | identical |
-| **Arca balanced** | 20.8 | 23.2% | -43% | 2.0 | 0.26 | identical |
-| **Arca max** | 16.5 | 18.4% | -55% | 29.3 | 1.20 | identical |
-| **Arca ultra** | 16.5 | 18.4% | -55% | 29.4 | 1.19 | identical |
+### Generic data (212 MB)
 
-### jpeg (98 MB)
+The standard Silesia compression corpus. Data with no file-type tricks to exploit.
 
-| Tool | Size (MB) | % of original | vs 7-Zip ultra | Compress (s) | Extract (s) | Round trip |
-|---|---:|---:|---:|---:|---:|---|
-| Finder zip (ditto) † | 93.3 | 94.8% | +10% | 2.5 | 0.47 | identical |
-| 7-Zip ultra (7z -mx9) | 85.2 | 86.6% | +0% | 6.0 | 1.58 | identical |
-| tar.zst -19 --long † | 85.7 | 87.1% | +1% | 15.1 | 0.27 | identical |
-| tar.xz -9e † | 85.8 | 87.2% | +1% | 43.3 | 2.04 | identical |
-| **Arca fast** | 95.0 | 96.5% | +12% | 0.1 | 0.06 | identical |
-| **Arca balanced** | 71.0 | 72.2% | -17% | 2.4 | 1.24 | identical |
-| **Arca max** | 71.0 | 72.2% | -17% | 2.5 | 1.25 | identical |
-| **Arca ultra** | 71.0 | 72.2% | -17% | 2.5 | 1.29 | identical |
-
-### apps (174 MB)
-
-| Tool | Size (MB) | % of original | vs 7-Zip ultra | Compress (s) | Extract (s) | Round trip |
-|---|---:|---:|---:|---:|---:|---|
-| Finder zip (ditto) † | 87.4 | 50.3% | +62% | 5.8 | 1.96 | identical |
-| 7-Zip ultra (7z -mx9) | 54.1 | 31.1% | +0% | 27.6 | 1.69 | identical |
-| tar.zst -19 --long † | 59.4 | 34.1% | +10% | 23.2 | 1.15 | identical |
-| tar.xz -9e † | 54.4 | 31.3% | +0% | 67.0 | 2.43 | identical |
-| **Arca fast** | 72.4 | 41.6% | +34% | 0.4 | 0.22 | identical |
-| **Arca balanced** | 62.4 | 35.9% | +15% | 2.4 | 0.28 | identical |
-| **Arca max** | 49.8 | 28.7% | -8% | 23.5 | 1.04 | identical |
-| **Arca ultra** | 49.8 | 28.7% | -8% | 23.5 | 1.03 | identical |
-
-### source (162 MB)
-
-| Tool | Size (MB) | % of original | vs 7-Zip ultra | Compress (s) | Extract (s) | Round trip |
-|---|---:|---:|---:|---:|---:|---|
-| Finder zip (ditto) † | 24.8 | 15.3% | +191% | 5.2 | 6.09 | identical |
-| 7-Zip ultra (7z -mx9) | 8.5 | 5.3% | +0% | 22.0 | 1.22 | identical |
-| tar.zst -19 --long † | 9.3 | 5.7% | +9% | 26.6 | 3.45 | identical |
-| tar.xz -9e † | 8.3 | 5.1% | -2% | 71.5 | 3.55 | identical |
-| **Arca fast** | 13.5 | 8.4% | +59% | 0.5 | 0.54 | identical |
-| **Arca balanced** | 11.2 | 6.9% | +32% | 2.1 | 0.51 | identical |
-| **Arca max** | 8.3 | 5.1% | -3% | 25.4 | 0.72 | identical |
-| **Arca ultra** | 8.3 | 5.1% | -3% | 24.9 | 3.57 | identical |
-
-### silesia (212 MB)
-
-| Tool | Size (MB) | % of original | vs 7-Zip ultra | Compress (s) | Extract (s) | Round trip |
-|---|---:|---:|---:|---:|---:|---|
-| Finder zip (ditto) † | 68.2 | 32.2% | +40% | 5.8 | 0.30 | identical |
-| 7-Zip ultra (7z -mx9) | 48.7 | 23.0% | +0% | 48.3 | 1.53 | identical |
-| tar.zst -19 --long † | 52.6 | 24.8% | +8% | 32.9 | 0.27 | identical |
-| tar.xz -9e † | 48.4 | 22.9% | -1% | 99.3 | 2.15 | identical |
-| **Arca fast** | 65.7 | 31.0% | +35% | 0.3 | 0.08 | identical |
-| **Arca balanced** | 57.3 | 27.0% | +18% | 5.1 | 0.15 | identical |
-| **Arca max** | 48.6 | 23.0% | -0% | 33.0 | 0.89 | identical |
-| **Arca ultra** | 47.0 | 22.2% | -3% | 25.1 | 5.96 | identical |
-
-## Where Arca is still behind (and the fixes)
-
-* *Max* extraction of PDF/PNG folders is slower than 7z (1.20 s vs 0.82 s on docs, for an archive 55% smaller). Two PNGs that each hold one huge image take 0.8–0.9 s apiece to re-create, and preflate can only re-create a stream sequentially. Everything else in the folder is done by then.
-* *Max* compression is within 5% of 7z on the mixed folder, but slower on docs (29.3 s vs 2.7 s) and source (25.4 s vs 22.0 s). Docs expands its PDFs and PNGs 3.6× and LZMA-compresses the result, which is where its 55% comes from, and it has only five blocks for 10 cores. The remaining lever is a 7-Zip-style multi-threaded match finder (one thread finds matches while another encodes, with identical output). That is a substantial liblzma change.
-* Writing 10,000 small files costs ~3.5 s of kernel time across 10 threads against 1.5 s on one thread, because of contention inside APFS. Spread over 10 cores this is ~0.3 s of the mixed folder's extraction.
-* *Ultra* (PPMd text lane) helps only prose-heavy data (−3.4% on Silesia, −1% on mixed) and extracts ~2× slower, so it stays opt-in.
-* *Fast* skips Lepton and preflate to stay at ~500–800 MB/s, so on JPEG/PDF-only folders it's slightly larger than 7z.
-
-## Reproduce
-
-```bash
-brew install sevenzip zstd xz
-cd engine && cargo build --release && cd ..
-python3 bench/bench.py --arca engine/target/release/arca --work /tmp/arca-bench DIR1 DIR2 ...
-```
-
-Set `ARCA_DEBUG_TIMING=1` to print pack or unpack phases, or `ARCA_DEBUG_ROUTING=1` to print each file's class, lane and transform.
+| Tool | Size | % of original | Compress | Extract | Peak memory, compressing |
+|---|---:|---:|---:|---:|---:|
+| *Fast settings* | | | | | |
+| Finder Compress / Archive Utility | 68.23 MB | 32% | 6.21 s | 1.32 s | – |
+| tar + zstd -3 | 66.25 MB | 31% | 0.15 s | 0.21 s | 153 MB |
+| WinRAR Fastest (-m1) | 66.68 MB | 31% | 0.92 s | 0.41 s | 270 MB |
+| **Zipling Fast** | 65.18 MB | 31% | 0.17 s | 0.11 s | 874 MB |
+| *Normal settings* | | | | | |
+| 7-Zip Normal (-mx5) | 49.60 MB | 23% | 22.9 s | 0.98 s | 904 MB |
+| WinRAR Normal (-m3) | 54.21 MB | 26% | 3.64 s | 0.45 s | 297 MB |
+| tar + xz -6 | 49.50 MB | 23% | 13.2 s | 0.51 s | 1088 MB |
+| **Zipling Default** | 57.26 MB | 27% | 4.95 s | 0.13 s | 1011 MB |
+| *Strongest settings* | | | | | |
+| 7-Zip Ultra (-mx9) | 48.69 MB | 23% | 48.2 s | 1.56 s | 2084 MB |
+| WinRAR Best (-m5, solid) | 53.12 MB | 25% | 6.36 s | 0.45 s | 572 MB |
+| tar + zstd -19 --long | 52.60 MB | 25% | 30.1 s | 0.23 s | 656 MB |
+| tar + xz -9e | 48.42 MB | 23% | 83.8 s | 1.99 s | 1080 MB |
+| **Zipling Max** | 46.68 MB | 22% | 6.22 s | 0.59 s | 2104 MB |
+| **Zipling Ultra*** | 45.92 MB | 22% | 13.5 s | 0.84 s | 1302 MB |

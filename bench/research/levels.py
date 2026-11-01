@@ -21,7 +21,7 @@ from checkpoint_report import NAMES, SET_INFO, SHORT, load  # noqa: E402
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 RIVALS_DEFAULT = ["results-2026-10-30-quiet-all.jsonl", "results-2026-10-30-quiet-rar.jsonl", "results-2026-10-30-zipgeist.jsonl"]
 CLASSES = {
-    "arca-fast": ["zstd-3", "zg-tzst-fast", "zg-zip-fast", "rar-fastest", "finder-zip"],
+    "arca-fast": ["zstd-3", "zg-tzst-fast", "zg-zip-fast", "rar-fastest", "finder-app"],
     "arca-balanced": ["7z-normal", "zg-7z-normal", "zg-zip-normal", "rar-normal", "xz-6"],
     "arca-max": ["7z-ultra", "zstd-19-long", "xz-9e", "rar-best", "zg-7z-best", "zg-txz-best"],
 }

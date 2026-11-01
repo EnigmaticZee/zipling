@@ -1,0 +1,82 @@
+01:36:34 jpeg: start (load 3.1, AppleScript floor 51 ms), 4 tools x 2 rounds
+01:36:35 jpeg r1 zstd-3: 91715800 0.24s / 0.26s
+01:36:50 jpeg r1 zstd-19-long: 85699521 14.55s / 0.25s
+01:36:59 jpeg r1 xz-6: 89037132 8.22s / 0.65s
+01:37:39 jpeg r1 xz-9e: 85603292 38.53s / 2.00s
+01:38:20 jpeg r2 xz-9e: 85603292 39.12s / 1.99s
+01:38:29 jpeg r2 xz-6: 89037132 8.22s / 0.65s
+01:38:44 jpeg r2 zstd-19-long: 85699521 14.47s / 0.25s
+01:38:45 jpeg r2 zstd-3: 91715800 0.24s / 0.25s
+01:40:00 docs: start (load 3.6, AppleScript floor 51 ms), 4 tools x 2 rounds
+01:40:01 docs r1 zstd-3: 45072237 0.40s / 0.42s
+01:40:08 docs r1 zstd-19-long: 38824501 6.27s / 0.41s
+01:40:13 docs r1 xz-6: 43293144 4.14s / 0.64s
+01:40:35 docs r1 xz-9e: 38797016 20.87s / 1.15s
+01:40:57 docs r2 xz-9e: 38797016 20.81s / 1.15s
+01:41:02 docs r2 xz-6: 43293144 4.21s / 0.64s
+01:41:09 docs r2 zstd-19-long: 38824501 6.31s / 0.42s
+01:41:10 docs r2 zstd-3: 45072237 0.41s / 0.42s
+01:41:15 source: start (load 3.3, AppleScript floor 51 ms), 4 tools x 2 rounds
+01:41:23 source r1 zstd-3: 15087505 3.72s / 3.53s
+01:41:54 source r1 zstd-19-long: 9291607 26.02s / 3.50s
+01:42:05 source r1 xz-6: 9962752 6.28s / 3.48s
+01:43:15 source r1 xz-9e: 8345028 66.12s / 3.48s
+01:44:26 source r2 xz-9e: 8345028 66.23s / 3.52s
+01:44:36 source r2 xz-6: 9962752 6.22s / 3.54s
+01:45:06 source r2 zstd-19-long: 9291607 25.82s / 3.52s
+01:45:14 source r2 zstd-3: 15087505 3.83s / 3.53s
+01:46:00 apps: start (load 3.7, AppleScript floor 52 ms), 4 tools x 2 rounds
+01:46:03 apps r1 zstd-3: 76470731 1.06s / 1.14s
+01:46:26 apps r1 zstd-19-long: 59362947 21.29s / 1.15s
+01:46:36 apps r1 xz-6: 58969632 8.57s / 1.27s
+01:47:37 apps r1 xz-9e: 54330288 58.25s / 2.40s
+01:48:37 apps r2 xz-9e: 54330288 57.91s / 2.40s
+01:48:47 apps r2 xz-6: 58969632 8.47s / 1.26s
+01:49:10 apps r2 zstd-19-long: 59362947 21.37s / 1.17s
+01:49:12 apps r2 zstd-3: 76470731 1.12s / 1.14s
+01:49:43 silesia: start (load 3.6, AppleScript floor 51 ms), 4 tools x 2 rounds
+01:49:43 silesia r1 zstd-3: 66253773 0.15s / 0.21s
+01:50:13 silesia r1 zstd-19-long: 52599112 30.09s / 0.23s
+01:50:27 silesia r1 xz-6: 49501468 13.16s / 0.52s
+01:51:53 silesia r1 xz-9e: 48415660 83.81s / 2.03s
+01:53:19 silesia r2 xz-9e: 48415660 83.97s / 1.99s
+01:53:33 silesia r2 xz-6: 49501468 13.21s / 0.51s
+01:54:03 silesia r2 zstd-19-long: 52599112 30.09s / 0.23s
+01:54:03 silesia r2 zstd-3: 66253773 0.15s / 0.22s
+01:54:57 saved: start (load 3.8, AppleScript floor 52 ms), 4 tools x 2 rounds
+01:55:16 saved r1 zstd-3: 328159567 6.46s / 10.50s
+01:56:10 saved r1 zstd-19-long: 282659299 40.47s / 10.61s
+01:56:46 saved r1 xz-6: 292882840 22.74s / 10.70s
+01:58:25 saved r1 xz-9e: 277979460 85.35s / 10.73s
+02:00:02 saved r2 xz-9e: 277979460 85.81s / 10.65s
+02:00:37 saved r2 xz-6: 292882840 22.80s / 10.78s
+02:01:29 saved r2 zstd-19-long: 282659299 40.68s / 10.63s
+02:01:47 saved r2 zstd-3: 328159567 6.67s / 10.55s
+02:04:24 mixed: start (load 3.8, AppleScript floor 52 ms), 4 tools x 2 rounds
+02:04:37 mixed r1 zstd-3: 294639456 5.63s / 5.51s
+02:05:31 mixed r1 zstd-19-long: 245688559 46.06s / 5.63s
+02:06:04 mixed r1 xz-6: 251206904 25.26s / 5.84s
+02:07:40 mixed r1 xz-9e: 236625508 87.86s / 7.10s
+02:09:16 mixed r2 xz-9e: 236625508 87.84s / 7.14s
+02:09:48 mixed r2 xz-6: 251206904 25.14s / 5.79s
+02:10:40 mixed r2 zstd-19-long: 245688559 46.17s / 5.51s
+02:10:52 mixed r2 zstd-3: 294639456 5.64s / 5.50s
+02:12:38 dmgs: start (load 3.9, AppleScript floor 52 ms), 4 tools x 2 rounds
+02:12:38 dmgs r1 zstd-3: 616129273 0.26s / 0.46s
+02:13:14 dmgs r1 zstd-19-long: 610250818 35.46s / 0.48s
+02:13:45 dmgs r1 xz-6: 612495272 29.57s / 1.22s
+02:15:29 dmgs r1 xz-9e: 610661436 100.84s / 2.72s
+02:17:11 dmgs r2 xz-9e: 610661436 99.68s / 2.71s
+02:17:42 dmgs r2 xz-6: 612495272 29.61s / 1.17s
+02:18:18 dmgs r2 zstd-19-long: 610250818 35.32s / 0.46s
+02:18:19 dmgs r2 zstd-3: 616129273 0.26s / 0.45s
+02:20:20 thirdparty: start (load 3.7, AppleScript floor 51 ms), 4 tools x 2 rounds
+02:20:39 thirdparty r1 zstd-3: 512988264 1.47s / 15.14s
+02:22:09 thirdparty r1 zstd-19-long: 382719658 72.19s / 15.35s
+02:23:18 thirdparty r1 xz-6: 390175140 51.45s / 16.10s
+02:25:20 thirdparty r1 xz-9e: 364224756 102.11s / 17.25s
+02:27:19 thirdparty r2 xz-9e: 364224756 101.71s / 17.25s
+02:28:27 thirdparty r2 xz-6: 390175140 51.48s / 16.13s
+02:29:55 thirdparty r2 zstd-19-long: 382719658 72.41s / 15.25s
+02:30:12 thirdparty r2 zstd-3: 512988264 1.57s / 15.16s
+02:30:12 done
