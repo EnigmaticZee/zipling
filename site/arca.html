@@ -111,7 +111,7 @@
             <div class="st" style="--n:5"><h4>Write</h4><p>One streaming pass. The index comes last, so opening a 100 GB archive reads only the end.</p><i class="ind chk"></i></div>
             <div class="pk" style="--d:0s">IMG_2048.jpg<i><span>sniffed: JPEG</span><span>coefficients re-coded</span><span>hashed: new</span><span>image lane</span><span>block 3</span><span>written</span></i></div>
             <div class="pk" style="--d:-3.5s">Report.pdf<i><span>sniffed: PDF</span><span>Deflate expanded</span><span>hashed: new</span><span>text and binary lanes</span><span>blocks 1 and 4</span><span>written</span></i></div>
-            <div class="pk" style="--d:-7s">Zipling.app<i><span>sniffed: Mach-O</span><span>arm64 branches filtered</span><span>hashed: new</span><span>code lane</span><span>block 2</span><span>written</span></i></div>
+            <div class="pk" style="--d:-7s">Zipling.app<i><span>sniffed: Mach-O</span><span>arm64 branches filtered</span><span>hashed: new</span><span>binary lane</span><span>block 2</span><span>written</span></i></div>
             <div class="pk" style="--d:-10.5s">IMG_2048 copy.jpg<i><span>sniffed: JPEG</span><span>already claimed</span><span>duplicate: stored once</span><span>no lane needed</span><span>no block needed</span><span>one entry</span></i></div>
           </div>
         </div>
@@ -225,7 +225,7 @@
           <div class="copy3">
             <p class="num">05 · The Max lane</p>
             <h3>Text sorted before it is coded.</h3>
-            <p>At Max, text and code go through a Burrows–Wheeler transform (libbsc) instead of LZMA: the data is sorted by context so the same letters sit together and code in a few bits each. On the Silesia text block it is 19% smaller than LZMA2's strongest setting and 18 times faster to make. Binaries stay with LZMA, where the transform loses.</p>
+            <p>At Max, text and code go through a Burrows–Wheeler transform (libbsc) instead of LZMA: the data is sorted by context so the same letters sit together and code in a few bits each. On the Silesia text block it is 19% smaller than LZMA2's strongest setting and 18 times faster to make. Binaries stay with LZMA, where the transform loses. Default borrows the same lane for static libraries and executables, with its own zstd as the fallback where the transform does not pay: source trees 15% smaller at no cost in time.</p>
             <ul class="facts">
               <li><b>−19%</b><span>on Silesia text against LZMA2 with 273-byte matches</span></li>
               <li><b>18×</b><span>faster to make, per block</span></li>
