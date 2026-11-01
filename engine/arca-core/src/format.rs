@@ -45,12 +45,8 @@ pub const FOOTER_LEN: usize = 64;
 pub enum Codec {
     Store,
     Zstd,
-    Xz,
-    /// PPMd var. H; the payload starts with `order: u8, mem_size: u32le`.
-    Ppmd,
     /// Raw LZMA2 from the LZMA SDK; the payload starts with its dictionary
-    /// property byte. (Xz blocks carry an xz container and a CRC-64 that the
-    /// block's own BLAKE3 hashes make redundant.)
+    /// property byte.
     Lzma2,
     /// One libbsc block (BWT via libsais, then QLFC); its own header carries
     /// everything the decoder needs.
@@ -60,12 +56,12 @@ pub enum Codec {
 }
 
 impl Codec {
+    /// Tags 2 (xz) and 3 (PPMd) belonged to codecs of the research builds, removed
+    /// on 2026-11-01 (see docs/handbook); they stay reserved.
     fn tag(self) -> u8 {
         match self {
             Codec::Store => 0,
             Codec::Zstd => 1,
-            Codec::Xz => 2,
-            Codec::Ppmd => 3,
             Codec::Lzma2 => 4,
             Codec::Bsc => 5,
             Codec::Lzt => 6,
@@ -76,11 +72,10 @@ impl Codec {
         Ok(match t {
             0 => Codec::Store,
             1 => Codec::Zstd,
-            2 => Codec::Xz,
-            3 => Codec::Ppmd,
             4 => Codec::Lzma2,
             5 => Codec::Bsc,
             6 => Codec::Lzt,
+            2 | 3 => bail!("codec {t} belongs to a research build of Arca and is not supported"),
             _ => bail!("unknown codec {t}"),
         })
     }
@@ -89,8 +84,6 @@ impl Codec {
         match self {
             Codec::Store => "store",
             Codec::Zstd => "zstd",
-            Codec::Xz => "xz",
-            Codec::Ppmd => "ppmd",
             Codec::Lzma2 => "lzma2",
             Codec::Bsc => "bsc",
             Codec::Lzt => "lzt",
@@ -107,11 +100,11 @@ pub enum Transform {
     Arm64 { ranges: Vec<(u64, u64)>, x86: Vec<(u64, u64)> },
     /// JPEG losslessly re-encoded with Lepton.
     Lepton,
-    /// JPEG's symbols re-coded with per-image context tables (`transform::jpeglite`).
-    JpegLite,
     /// Deflate streams expanded with preflate (ZIP/Office/PNG/PDF/gzip).
     Deflate,
     /// JPEG coefficients re-coded with our static-table rANS coder (`transform::jpegrans`).
+    /// Tag 5 was the light JPEG coder of the research builds, removed on
+    /// 2026-11-01 (see docs/handbook); it stays reserved.
     JpegRans,
 }
 
@@ -121,7 +114,6 @@ impl Transform {
             Transform::None => "none",
             Transform::Arm64 { .. } => "arm64",
             Transform::Lepton => "lepton",
-            Transform::JpegLite => "jpeglite",
             Transform::JpegRans => "jpegrans",
             Transform::Deflate => "deflate",
         }
@@ -197,7 +189,9 @@ pub fn header_bytes(flags: u16) -> [u8; HEADER_LEN] {
 pub fn check_header(h: &[u8]) -> Result<u16> {
     ensure!(h.len() >= HEADER_LEN && &h[..8] == MAGIC, "not an Arca archive");
     let version = u16::from_le_bytes([h[8], h[9]]);
-    ensure!((1..=VERSION).contains(&version), "unsupported archive version {version}");
+    // Versions 1 and 2 were the research builds' layouts (BLAKE3 hashes, a row-wise
+    // index); their readers were removed on 2026-11-01. Nothing released wrote them.
+    ensure!(version == VERSION, "unsupported archive version {version}");
     Ok(u16::from_le_bytes([h[10], h[11]]))
 }
 
@@ -232,7 +226,7 @@ impl Footer {
     }
 }
 
-/// BLAKE3-128: the index's own check, and every hash in versions 1 and 2.
+/// BLAKE3-128: the index's own check in the footer.
 pub fn hash16(data: &[u8]) -> [u8; 16] {
     blake3::hash(data).as_bytes()[..16].try_into().unwrap()
 }
@@ -323,7 +317,6 @@ impl Index {
                 }
                 Transform::Lepton => w.u8(2),
                 Transform::Deflate => w.u8(3),
-                Transform::JpegLite => w.u8(5),
                 Transform::JpegRans => w.u8(6),
             }
             if o.transform != Transform::None {
@@ -363,31 +356,7 @@ impl Index {
         w.buf
     }
 
-    fn entries_v1(r: &mut Reader) -> Result<Vec<Entry>> {
-        let n = r.len()?;
-        let mut entries = Vec::with_capacity(n.min(1 << 20));
-        for _ in 0..n {
-            let path = r.str()?;
-            let kind = match r.u8()? {
-                0 => EntryKind::File { size: r.uv()?, object: r.uv()? as u32 },
-                1 => EntryKind::Dir,
-                2 => EntryKind::Symlink { target: r.bytes()?.to_vec() },
-                3 => EntryKind::HardLink { target: r.uv()? as u32 },
-                t => bail!("unknown entry kind {t}"),
-            };
-            let mode = r.uv()? as u32;
-            let mtime = (r.iv()?, r.uv()? as u32);
-            let nx = r.len()?;
-            let mut xattrs = Vec::with_capacity(nx.min(64));
-            for _ in 0..nx {
-                xattrs.push((r.str()?, r.bytes()?.to_vec()));
-            }
-            entries.push(Entry { path, kind, mode, mtime, xattrs });
-        }
-        Ok(entries)
-    }
-
-    fn entries_v2(r: &mut Reader) -> Result<Vec<Entry>> {
+    fn entries(r: &mut Reader) -> Result<Vec<Entry>> {
         let n = r.len()?;
         let mut paths: Vec<String> = Vec::with_capacity(n.min(1 << 20));
         let mut prev: Vec<u8> = Vec::new();
@@ -446,10 +415,10 @@ impl Index {
     pub fn decode(data: &[u8]) -> Result<Self> {
         let mut r = Reader::new(data);
         let version = r.uv()?;
-        ensure!((1..=VERSION as u64).contains(&version), "unsupported index version {version}");
+        ensure!(version == VERSION as u64, "unsupported index version {version}");
         let created = r.iv()?;
-        let key = if version >= 3 { Some(r.array::<16>()?) } else { None };
-        let entries = if version == 1 { Self::entries_v1(&mut r)? } else { Self::entries_v2(&mut r)? };
+        let key = Some(r.array::<16>()?);
+        let entries = Self::entries(&mut r)?;
 
         let n = r.len()?;
         let mut objects = Vec::with_capacity(n.min(1 << 20));
@@ -472,8 +441,8 @@ impl Index {
                 }
                 2 => Transform::Lepton,
                 3 => Transform::Deflate,
-                5 => Transform::JpegLite,
                 6 => Transform::JpegRans,
+                5 => bail!("transform 5 belongs to a research build of Arca and is not supported"),
                 t => bail!("unknown transform {t}"),
             };
             let hash = if transform == Transform::None { None } else { Some(r.array::<16>()?) };
@@ -556,7 +525,6 @@ impl Index {
                 Transform::Arm64 { .. } => 1,
                 Transform::Lepton => 2,
                 Transform::Deflate => 3,
-                Transform::JpegLite => 5,
                 Transform::JpegRans => 6,
             };
             let ext = extension[i].as_deref().unwrap_or("");

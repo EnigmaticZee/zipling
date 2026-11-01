@@ -3,7 +3,6 @@
 
 use crate::format::Codec;
 use anyhow::{ensure, Context, Result};
-use std::io::{Read, Write};
 use zstd::zstd_safe::{CParameter, DParameter};
 
 #[derive(Debug, Clone, Copy)]
@@ -233,13 +232,6 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
             }
             Ok(first)
         }
-        Codec::Xz => {
-            let preset = cfg.level.clamp(0, 9) as u32 | if cfg.extreme { liblzma::stream::PRESET_EXTREME } else { 0 };
-            let stream = liblzma::stream::Stream::new_easy_encoder(preset, liblzma::stream::Check::Crc64)?;
-            let mut enc = liblzma::write::XzEncoder::new_stream(Vec::with_capacity(raw.len() / 3), stream);
-            enc.write_all(raw)?;
-            Ok(enc.finish()?)
-        }
         Codec::Lzma2 => {
             // 7-Zip's binary-tree encoder with the block as dictionary and the
             // match finder in its own thread: 1.7x faster per block and 17% less
@@ -273,17 +265,6 @@ pub fn compress(raw: &[u8], cfg: CodecConfig) -> Result<Vec<u8>> {
             }
         }
         Codec::Lzt => lzt_compress(raw, cfg),
-        Codec::Ppmd => {
-            let order = cfg.level.clamp(2, 64) as u32;
-            // Model memory: enough for the block, capped so parallel blocks stay affordable.
-            let mem = (raw.len() as u64 * 3).clamp(16 << 20, PPMD_MAX_MEM as u64) as u32;
-            let mut out = Vec::with_capacity(raw.len() / 4 + 8);
-            out.push(order as u8);
-            out.extend_from_slice(&mem.to_le_bytes());
-            let mut enc = ppmd_rust::Ppmd7Encoder::new(out, order, mem).map_err(|e| anyhow::anyhow!("ppmd: {e:?}"))?;
-            enc.write_all(raw)?;
-            Ok(enc.finish(false)?)
-        }
     }
 }
 
@@ -355,13 +336,6 @@ pub fn encoder_memory(cfg: CodecConfig, block: usize) -> u64 {
                 48 << 20
             }
         }
-        Codec::Xz => {
-            let preset = cfg.level.clamp(0, 9) as u32 | if cfg.extreme { liblzma::stream::PRESET_EXTREME } else { 0 };
-            // SAFETY: a pure function of the preset.
-            let m = unsafe { liblzma_sys::lzma_easy_encoder_memusage(preset) };
-            if m == u64::MAX { 1 << 30 } else { m }
-        }
-        Codec::Ppmd => (block as u64 * 3).clamp(16 << 20, PPMD_MAX_MEM as u64) + (block as u64 / 2),
         // Binary tree of the dictionary (~10x it) plus the threaded match
         // finder's buffers, as 7-Zip estimates for -mx9.
         Codec::Lzma2 => 11 * (block as u64).clamp(1 << 16, 1 << 26) + (64 << 20),
@@ -392,9 +366,6 @@ pub fn physical_memory() -> u64 {
     if rc == 0 && mem > 0 { mem } else { 8 << 30 }
 }
 
-/// Largest PPMd model a block may request (the decoder allocates this much).
-pub const PPMD_MAX_MEM: u32 = 256 << 20;
-
 pub fn decompress(comp: &[u8], codec: Codec, raw_len: u64) -> Result<Vec<u8>> {
     let raw_len = usize::try_from(raw_len)?;
     let out = match codec {
@@ -404,11 +375,6 @@ pub fn decompress(comp: &[u8], codec: Codec, raw_len: u64) -> Result<Vec<u8>> {
             d.set_parameter(DParameter::WindowLogMax(31))?;
             d.decompress(comp, raw_len).context("zstd block")?
         }
-        Codec::Xz => {
-            let mut out = Vec::with_capacity(raw_len);
-            liblzma::read::XzDecoder::new(comp).take(raw_len as u64 + 1).read_to_end(&mut out).context("xz block")?;
-            out
-        }
         Codec::Lzma2 => {
             ensure!(!comp.is_empty(), "lzma2 block header missing");
             lzma_sdk::decode(&comp[1..], comp[0], raw_len).context("lzma2 block")?
@@ -417,17 +383,6 @@ pub fn decompress(comp: &[u8], codec: Codec, raw_len: u64) -> Result<Vec<u8>> {
         // One thread per 8 MiB: small blocks come in numbers, and five of 16 MiB on
         // 8 threads each fought over ten cores, taking 0.60 s to their 0.47 s on 3.
         Codec::Bsc => libbsc::decompress_threads(comp, raw_len, (raw_len >> 23).clamp(2, 8) as i32).context("bsc block")?,
-        Codec::Ppmd => {
-            ensure!(comp.len() >= 5, "ppmd block header truncated");
-            let order = comp[0] as u32;
-            let mem = u32::from_le_bytes(comp[1..5].try_into().unwrap());
-            ensure!(mem <= PPMD_MAX_MEM, "ppmd block asks for {mem} bytes of model memory");
-            let mut dec =
-                ppmd_rust::Ppmd7Decoder::new(&comp[5..], order, mem).map_err(|e| anyhow::anyhow!("ppmd: {e:?}"))?;
-            let mut out = vec![0u8; raw_len];
-            dec.read_exact(&mut out).context("ppmd block")?;
-            out
-        }
     };
     ensure!(out.len() == raw_len, "block decompressed to {} bytes, expected {raw_len}", out.len());
     Ok(out)

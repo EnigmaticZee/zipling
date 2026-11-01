@@ -32,7 +32,8 @@ pub enum Level {
     Balanced,
     /// Smallest archives that still extract at LZMA speed.
     Max,
-    /// Smallest archives, period: PPMd on text, whose decoder is as slow as its encoder.
+    /// Smallest archives, period: bsc on text and code, LZMA2's longest matches on
+    /// the rest. Experimental, not in the released app.
     Ultra,
 }
 
@@ -78,11 +79,6 @@ pub struct PackOptions {
     /// bytes and hold the least for level 3 to find. Third-party apps 1.05 → 0.57 s,
     /// for 10% in size, which still leaves them under zstd -3's.
     pub quick_binaries: bool,
-    /// Research (`ARCA_EXP_MACHO_LANE`, Default only): send Mach-O to the code lane
-    /// when the code lane is on, so a stronger codec can be tried on app code alone.
-    /// Apple's apps and third-party apps are 60-85% Mach-O, and Default is 2-9%
-    /// behind the LZMA normal settings there.
-    pub macho_lane: bool,
     /// Send photos no coder touched to the image lane instead of the store lane,
     /// when it runs zstd. Fast's lane there is zstd -1: a camera JPEG holds under
     /// 1% for it but a wallpaper or gradient 10-85%, and the 400-photo set goes
@@ -138,8 +134,8 @@ impl PackOptions {
             Level::Max => (bsc(1, false), lzma2(7, false), 64 << 20, 64 << 20, 0),
             // Ultra is the smallest: bsc for text and code too (it took over from
             // PPMd, which was 0.4% bigger on the mixed folder, 25% slower to make
-            // and 2.4x slower to extract) and the longest LZMA2 matches for the rest.
-            // `--text-codec ppmd` still gives the context model.
+            // and 2.4x slower to extract; removed 2026-11-01, see docs/handbook) and
+            // the longest LZMA2 matches for the rest.
             Level::Ultra => (bsc(1, false), lzma2(9, true), 64 << 20, 64 << 20, 0),
         };
         let heavy = level != Level::Fast;
@@ -155,10 +151,6 @@ impl PackOptions {
             large_input_block: if level == Level::Max { 32 << 20 } else { 0 },
             transforms: TransformOpts {
                 jpeg: heavy,
-                // Research: ARCA_EXP_JPEGLITE puts the light coder back on Fast's
-                // photos: 12% smaller than storing them, at 4x the time (see
-                // `quick_photos`).
-                jpeg_lite: level == Level::Fast && std::env::var_os("ARCA_EXP_JPEGLITE").is_some(),
                 // Our coefficient coder ahead of Lepton from Default up; ARCA_EXP_LEPTON=1
                 // leaves photos to Lepton alone, for comparison.
                 jpeg_rans: heavy && std::env::var_os("ARCA_EXP_LEPTON").is_none(),
@@ -204,7 +196,6 @@ impl PackOptions {
             },
             code_fallback: if level == Level::Balanced { binary } else { lzma2(9, true) },
             quick_binaries: level == Level::Fast,
-            macho_lane: level == Level::Balanced && std::env::var_os("ARCA_EXP_MACHO_LANE").is_some(),
             quick_photos: level == Level::Fast,
             quick_images: level == Level::Balanced,
             quick_codec: if level == Level::Balanced { zstd(5) } else { binary },
@@ -1264,7 +1255,6 @@ fn process_file_inner(
     use classify::DeflateKind as Kind;
     let packed = matches!(class, Class::DeflateContainer(Kind::Zip | Kind::Gzip | Kind::AssetCatalog));
     let lane = if opts.quick_binaries && (matches!(transform, Transform::Arm64 { .. }) || packed) { Lane::Code } else { lane };
-    let lane = if opts.macho_lane && opts.code_lane && class == Class::MachO { Lane::Code } else { lane };
     let image = matches!(class, Class::DeflateContainer(Kind::Dmg));
     let lane = if image && opts.quick_images { Lane::Quick } else { lane };
     let photo = matches!(class, Class::Jpeg) && matches!(transform, Transform::None);

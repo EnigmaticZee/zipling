@@ -43,9 +43,7 @@ enum Cmd {
         /// Override the block size in MiB.
         #[arg(long)]
         block_mib: Option<usize>,
-        /// Override the text-lane codec (zstd, xz, ppmd) and its level.
-        #[arg(long)]
-        text_codec: Option<String>,
+        /// Override the text-lane codec's level.
         #[arg(long)]
         text_level: Option<i32>,
         /// Override the text-lane block size in MiB.
@@ -148,7 +146,7 @@ fn done() -> ! {
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
-        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_codec, text_level, text_block_mib, code_block_mib, image_block_mib, deflate_chain, disk_images, lane, json } => {
+        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_level, text_block_mib, code_block_mib, image_block_mib, deflate_chain, disk_images, lane, json } => {
             let level = match level {
                 LevelArg::Fast => Level::Fast,
                 LevelArg::Balanced => Level::Balanced,
@@ -161,7 +159,6 @@ fn main() -> Result<()> {
             }
             if no_transforms {
                 o.transforms.jpeg = false;
-                o.transforms.jpeg_lite = false;
                 o.transforms.jpeg_rans = false;
                 o.transforms.deflate = false;
                 o.transforms.arm64 = false;
@@ -174,14 +171,6 @@ fn main() -> Result<()> {
             if let Some(l) = codec_level {
                 o.text_codec.level = l;
                 o.binary_codec.level = l;
-            }
-            if let Some(c) = text_codec {
-                o.text_codec.codec = match c.as_str() {
-                    "zstd" => arca_core::Codec::Zstd,
-                    "xz" => arca_core::Codec::Xz,
-                    "ppmd" => arca_core::Codec::Ppmd,
-                    other => anyhow::bail!("unknown codec {other}"),
-                };
             }
             if let Some(l) = text_level {
                 o.text_codec.level = l;
@@ -211,10 +200,8 @@ fn main() -> Result<()> {
                 let cfg = arca_core::codec::CodecConfig {
                     codec: match codec {
                         "zstd" => arca_core::Codec::Zstd,
-                        "xz" => arca_core::Codec::Xz,
                         "lzma2" => arca_core::Codec::Lzma2,
                         "lzt" => arca_core::Codec::Lzt,
-                        "ppmd" => arca_core::Codec::Ppmd,
                         "bsc" => arca_core::Codec::Bsc,
                         "store" => arca_core::Codec::Store,
                         other => anyhow::bail!("unknown codec {other}"),

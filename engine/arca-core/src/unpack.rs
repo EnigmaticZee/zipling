@@ -98,8 +98,6 @@ impl Archive {
                 match b.codec {
                     Codec::Store => "decode.store",
                     Codec::Zstd => "decode.zstd",
-                    Codec::Xz => "decode.xz",
-                    Codec::Ppmd => "decode.ppmd",
                     Codec::Lzma2 => "decode.lzma2",
                     Codec::Bsc => "decode.bsc",
                     Codec::Lzt => "decode.lzt",
@@ -496,7 +494,6 @@ const FILE_COST: u64 = 50_000;
 fn rebuild_cost(obj: &Object) -> u64 {
     let work = match obj.transform {
         Transform::Lepton => obj.size.saturating_mul(125),
-        Transform::JpegLite => obj.size.saturating_mul(17),
         Transform::JpegRans => obj.size.saturating_mul(40),
         Transform::Deflate => obj.stored_len.saturating_mul(27),
         _ => obj.size,
@@ -699,7 +696,6 @@ impl Extraction<'_> {
                     let _p = prof::span(
                         match obj.transform {
                             Transform::Lepton => "inverse.lepton",
-                            Transform::JpegLite => "inverse.jpeglite",
                             Transform::JpegRans => "inverse.jpegrans",
                             Transform::Deflate => "inverse.deflate",
                             Transform::Arm64 { .. } => "inverse.arm64",

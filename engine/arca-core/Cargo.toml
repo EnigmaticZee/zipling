@@ -16,17 +16,12 @@ fastcdc = "3"
 filetime = "0.2"
 lepton_jpeg = "0.5"
 libc = "0.2"
-# Built from source: the app must not depend on a Homebrew dylib.
-liblzma = { version = "0.4", features = ["static"] }
-# For encoder memory estimates (the same vendored build `liblzma` uses).
-liblzma-sys = { version = "0.4", features = ["static"] }
 lzma-sdk = { path = "../vendor/lzma-sdk", features = ["token-hook"] }
 libbsc = { path = "../vendor/libbsc" }
 zlib-pinned = { path = "../vendor/zlib" }
 lzfse-pinned = { path = "../vendor/lzfse" }
 memchr = "2"
 memmap2 = "0.9"
-ppmd-rust = "1.5"
 preflate-rs = "0.7"
 rayon = "1.10"
 xattr = "1.3"

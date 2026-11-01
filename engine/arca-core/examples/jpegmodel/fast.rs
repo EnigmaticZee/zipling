@@ -99,7 +99,6 @@ fn value<I: Io>(io: &mut I, ctx: usize, _cc: usize, _k: usize, v: i32, _sctx: us
 
 /// The model walk: codes (or decodes into) every block of every plane.
 pub fn walk<I: Io>(io: &mut I, planes: &mut [Plane]) {
-    let lvt = levels();
     let fixed = std::env::var_os("FIXED_CTX").is_some();
     for (ci, pl) in planes.iter_mut().enumerate() {
         let cc = ci.min(1);

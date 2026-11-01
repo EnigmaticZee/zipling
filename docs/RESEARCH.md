@@ -19,12 +19,14 @@ every commit after 2026-10-28 a new hash. The engine as built, by file:
   (`hash.rs`), lanes (text, binary, image, code, store) filling blocks, presets per
   level in `PackOptions::preset`. Extraction and its scheduler: `unpack.rs`.
   Format 3: `format.rs`, `wire.rs`. ZIP reader and writer: `zip.rs`, `zipwrite.rs`.
-- **Codecs** `codec.rs`: zstd (tables and job cuts per block size), LZMA2 (vendored
-  liblzma with two speed patches), bsc (libbsc, LZP + BWT), PPMd, and our own
+- **Codecs** `codec.rs`: zstd (tables and job cuts per block size), LZMA2 (the
+  vendored LZMA SDK encoder, its own decoder), bsc (libbsc, LZP + BWT), and our own
   `lzt.rs` (LZMA's parse, per-context tables, rANS; research switch `ARCA_EXP_LZT`).
+  PPMd and the xz codec (with the patched liblzma) were removed in the cleanup of
+  2026-11-01; their format tags 3 and 2 stay reserved (docs/handbook/research-index.md).
 - **Transforms** `transform/`: `jpegrans.rs` (our JPEG coefficient coder, Default
-  and up), `jpeg.rs` (Lepton, fallback), `jpeglite.rs` (light JPEG coder, research
-  switch `ARCA_EXP_JPEGLITE` at Fast), `deflate.rs` (preflate expansion of
+  and up), `jpeg.rs` (Lepton, fallback; the light JPEG coder `jpeglite.rs` was
+  removed in the cleanup of 2026-11-01, transform tag 5 reserved), `deflate.rs` (preflate expansion of
   ZIP/Office/PNG/PDF/gzip, zlib and LZFSE replay, disk images with a rebuild
   budget), `arm64.rs` (arm64 and x86 code filters), `pixels.rs` (PNG pixel codec,
   Max and Ultra).
@@ -33,10 +35,12 @@ every commit after 2026-10-28 a new hash. The engine as built, by file:
   (2026-11-01), disk images on a quick zstd 5 lane, every transform, JPEG coder;
   Max bsc text and code, LZMA2 7 binaries; Ultra bsc text and code, LZMA2 9e.
   Research switches:
-  `ARCA_EXP_LZT`, `ARCA_EXP_JPEGLITE`, `ARCA_EXP_LEPTON`, `ARCA_EXP_CODE_LANE`,
-  `ARCA_EXP_MACHO_LANE`, `ARCA_EXP_BSC_FALLBACK`, `ARCA_EXP_FAST_TABLES`,
-  `ARCA_EXP_OVLOG`, `ARCA_EXP_PIXELS`, `ARCA_EXP_CAR`; `--lane`, `--text-codec`,
-  `--block-mib`, `--text-block-mib`, `--disk-images` on the CLI.
+  `ARCA_EXP_LZT`, `ARCA_EXP_LEPTON`, `ARCA_EXP_BSC_FALLBACK`, `ARCA_EXP_FAST_TABLES`,
+  `ARCA_EXP_OVLOG`, `ARCA_EXP_PIXELS`, `ARCA_EXP_PIXEL_GAIN`, `ARCA_EXP_CAR`, and the
+  deflate knobs in `transform/deflate.rs`; `--lane`, `--block-mib`,
+  `--text-block-mib`, `--disk-images` on the CLI. (`ARCA_EXP_JPEGLITE`,
+  `ARCA_EXP_CODE_LANE`, `ARCA_EXP_MACHO_LANE` and `--text-codec` went with the
+  cleanup of 2026-11-01.)
 - **Benchmarks** `bench/`: `checkpoint.py` (every tool on every set, waits for a
   quiet Mac), `checkpoint_report.py`, `research/board.py` (any Arca setting against
   each rival result), `research/levels.py` (1:1 by level and the upsets),
@@ -44,9 +48,11 @@ every commit after 2026-10-28 a new hash. The engine as built, by file:
   with `.log` files; the final engine run is `results-2026-10-31-presets.jsonl`,
   the rivals' quiet runs `results-2026-10-30-{quiet-all,quiet-rar,zipgeist}.jsonl`.
   The test sets live outside the repo (`research_notes/engine-bench.noindex`).
-- **Research code**: `engine/arca-core/examples/` (jpegmodel rounds, lzsbench and
-  lztok for the codec, pixbench, lrp, bscbench), `bench/research/gpumatch` (GPU
-  matchfinder, dead end).
+- **Research code**: `engine/arca-core/examples/` (jpegmodel rounds; lzsbench,
+  lzslit and lztok for the lzt codec; treecmp). The sixteen other research tools
+  and `bench/research/gpumatch` (GPU matchfinder, dead end) were removed in the
+  cleanup of 2026-11-01: tag `before-engine-cleanup` has them all, and
+  docs/handbook/research-index.md says what each measured.
 
 Tracks and verdicts, newest first (each has an entry below): Default lane by
 lane (2026-11-01): bsc on the code lane with zstd as its fallback, +2 rows for no

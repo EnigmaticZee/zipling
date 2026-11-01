@@ -13,8 +13,5 @@ codegen-units = 1
 panic = "unwind"
 debug = 1
 
-# liblzma with two speed patches that keep its output identical; see
-# vendor/liblzma-sys/ARCA-PATCHES.md.
 [patch.crates-io]
-liblzma-sys = { path = "vendor/liblzma-sys" }
 preflate-rs = { path = "vendor/preflate-rs" }
