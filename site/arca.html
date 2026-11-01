@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inside Arca — Zipling</title>
+  <meta name="description" content="Inside Arca, the engine behind Zipling: how it sees files instead of bytes, the six instruments the research produced, what was tried and dropped, and how it compares technique by technique.">
+  <meta name="theme-color" content="#06080F">
+  <link rel="canonical" href="https://www.zipling.app/arca.html">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Inside Arca — Zipling">
+  <meta property="og:description" content="The engine behind Zipling: how it sees files instead of bytes, the six instruments the research produced, and what was tried and dropped.">
+  <meta property="og:image" content="https://www.zipling.app/assets/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="arca.css">
+  <script>document.documentElement.classList.add("js")</script>
+  <script src="data.js" defer></script>
+  <script src="main.js" defer></script>
+  <script src="arca.js" defer></script>
+</head>
+<body class="arca">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="progress" aria-hidden="true"></div>
+  <canvas class="stars" aria-hidden="true"></canvas>
+  <header class="nav" id="top">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="Zipling home">
+        <img src="assets/icon-512.png" alt="" width="30" height="30">
+        <span>Zipling</span>
+      </a>
+      <nav aria-label="Site"><a href="benchmarks.html">Benchmarks</a><a href="compare.html">Compare</a><a href="index.html#engine">How it works</a><a href="index.html#faq">FAQ</a></nav>
+      <a class="nav-gh" href="https://github.com/EnigmaticZee/zipling" aria-label="Zipling on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- The strongbox -->
+    <section class="a-hero">
+      <div class="a-hero-inner">
+        <div class="reveal">
+          <span class="hud"><i></i>The engine · Zipling</span>
+          <h1 class="a-title">Inside <em>Arca</em>.</h1>
+          <p class="a-sub">No magic codec exists. zstd and LZMA are within a few percent of what their kind can do, and anyone promising ten times better is selling something or losing data. Arca wins somewhere else: in what reaches the codec.</p>
+          <div class="a-cta">
+            <a class="btn btn-primary" href="#pipeline">See the pipeline</a>
+            <a class="btn btn-ghost" href="https://github.com/EnigmaticZee/zipling/blob/main/docs/RESEARCH.md">Read the research log</a>
+          </div>
+          <div class="readout">
+            <div>Written in<b>Rust</b></div>
+            <div>Archive format<b>3, frozen at 1.0</b></div>
+            <div>Round trips verified<b>every one</b></div>
+            <div>Research log<b>3,200+ lines</b></div>
+          </div>
+        </div>
+        <div class="reveal">
+          <div class="box3d" aria-hidden="true">
+            <div class="rig">
+              <div class="cube">
+                <div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div>
+                <div class="core"><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div><div class="f"></div></div>
+                <div class="ring"></div><div class="ring b"></div>
+              </div>
+            </div>
+          </div>
+          <p class="hint">arca · latin · a strongbox</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 01 The premise -->
+    <section class="lab" id="premise">
+      <div class="lab-inner">
+        <div class="lab-head reveal">
+          <span class="hud"><i></i>01 · The premise</span>
+          <h2>Mainstream archivers see noise. Arca sees files.</h2>
+          <p>ZIP and 7z treat a JPEG, a PDF or a Mac app as opaque bytes. Most of what is inside is already compressed, badly or in a way the codec cannot see through. Arca undoes that first, reversibly, and compresses what is really there.</p>
+        </div>
+        <div class="lens reveal" data-live aria-hidden="true">
+          <div class="band"></div>
+          <div class="row"><span class="who">ZIP, 7z see</span><span class="noise">FF D8 FF E0 00 10 4A 46 49 46 00 01 01 00 00 48 00 48 00 00 FF DB 00 43 00 08 06 06 07 06 05 08 07 07 07 09 09 08 0A 0C 14 0D 0C 0B 0B 0C 19 12 13 0F 14 1D 1A 1F 1E 1D 1A 1C 1C 20 24 2E 27 20 22 2C 23 1C 1C 28 37 29 2C 30 31 34 34 34 1F 27 39 3D 38 32 3C 2E 33 34 32</span></div>
+          <div class="row"><span class="who">Arca sees</span><span class="seen"><span style="--at:.6s">JPEG coefficients</span><span style="--at:1.5s">PDF text under Deflate</span><span style="--at:2.4s">arm64 branches</span><span style="--at:3.3s">PNG pixels</span><span style="--at:4.2s">a duplicate, 2 GB away</span><span style="--at:5.1s">a DMG's chunks</span></span></div>
+        </div>
+        <div class="levers reveal" data-stagger>
+          <div class="lever"><b>20–75%</b><span>on already-compressed formats: JPEG, PNG, PDF, Office files, JAR, disk images</span></div>
+          <div class="lever"><b>5–15%</b><span>on arm64 code, once relative branch targets stop looking random</span></div>
+          <div class="lever"><b>up to N×</b><span>on duplicates far apart, which an 8 to 64 MB window never sees</span></div>
+          <div class="lever"><b>5–10×</b><span>faster extraction when solid blocks decode on every core instead of one</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 The pipeline -->
+    <section class="lab" id="pipeline">
+      <div class="lab-inner">
+        <div class="lab-head reveal">
+          <span class="hud"><i></i>02 · The pipeline</span>
+          <h2>One file at a time, on every core.</h2>
+          <p>There are no batches. Every file is its own task, the packer takes results in a fixed order so the archive is deterministic, and blocks start compressing the moment they fill. One slow file never idles the other cores, and there is no compression tail at the end.</p>
+        </div>
+        <div class="board reveal" data-live aria-hidden="true">
+          <div class="track">
+            <div class="rail"></div>
+            <div class="st" style="--n:0"><h4>Sniff</h4><p>Magic bytes, never extensions. Known-compressed media goes straight to store, at zero CPU.</p><i class="ind scan"></i></div>
+            <div class="st" style="--n:1"><h4>Transform</h4><p>JPEG, Deflate, arm64, PNG, DMG: undone, then proved by its inverse.</p><i class="ind flip"></i></div>
+            <div class="st" style="--n:2"><h4>Hash &amp; dedup</h4><p>A keyed hash of the content. The first task to hash it claims it; duplicates skip the work.</p><i class="ind dd"></i></div>
+            <div class="st" style="--n:3"><h4>Lanes</h4><p>Text, binary, image, code, store. Each chunk routed by a probe, not by the file's name.</p><i class="ind lanes"><i style="--at:0s"></i><i style="--at:-.7s"></i><i style="--at:-1.4s"></i></i></div>
+            <div class="st" style="--n:4"><h4>Blocks</h4><p>Solid blocks, compressed independently and in parallel as they fill.</p><i class="ind fill"></i></div>
+            <div class="st" style="--n:5"><h4>Write</h4><p>One streaming pass. The index comes last, so opening a 100 GB archive reads only the end.</p><i class="ind chk"></i></div>
+            <div class="pk" style="--d:0s">IMG_2048.jpg<i><span>sniffed: JPEG</span><span>coefficients re-coded</span><span>hashed: new</span><span>image lane</span><span>block 3</span><span>written</span></i></div>
+            <div class="pk" style="--d:-3.5s">Report.pdf<i><span>sniffed: PDF</span><span>Deflate expanded</span><span>hashed: new</span><span>text and binary lanes</span><span>blocks 1 and 4</span><span>written</span></i></div>
+            <div class="pk" style="--d:-7s">Zipling.app<i><span>sniffed: Mach-O</span><span>arm64 branches filtered</span><span>hashed: new</span><span>code lane</span><span>block 2</span><span>written</span></i></div>
+            <div class="pk" style="--d:-10.5s">IMG_2048 copy.jpg<i><span>sniffed: JPEG</span><span>already claimed</span><span>duplicate: stored once</span><span>no lane needed</span><span>no block needed</span><span>one entry</span></i></div>
+          </div>
+        </div>
+        <div class="gauges reveal" data-stagger>
+          <div class="gauge"><span class="hud">In</span><b><span data-count="736">0</span> MB</b><span class="cap">the benchmark's mixed folder: photos, PDFs, apps and code</span></div>
+          <div class="gauge"><span class="hud">Out, at Default</span><b class="us"><span data-count="216">0</span> MB</b><span class="cap">in 8.5 s</span></div>
+          <div class="gauge"><span class="hud">7-Zip Ultra</span><b><span data-count="235">0</span> MB</b><span class="cap">in 47.8 s</span></div>
+          <div class="gauge"><span class="hud">Extracted</span><b class="us">byte for byte</b><span class="cap">every archive, every run</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 The instruments -->
+    <section class="lab" id="instruments">
+      <div class="lab-inner">
+        <div class="lab-head reveal">
+          <span class="hud"><i></i>03 · What the research produced</span>
+          <h2>Six instruments.</h2>
+          <p>Each one measured on the same data as the benchmarks, and each one in the research log with the numbers that got it in.</p>
+        </div>
+
+        <article class="scene3 reveal">
+          <div class="vis3" data-live aria-hidden="true">
+            <div class="dct"><div class="dct-grid"><b class="dct-beam"></b></div><div class="dct-bar"><i></i></div></div>
+            <div class="tag" style="--cyc:10s"><span>coefficients, as the camera wrote them</span><span>read by the coder</span><span>30% smaller, decoded and compared</span></div>
+          </div>
+          <div class="copy3">
+            <p class="num">01 · JPEG coefficient coder</p>
+            <h3>Photos, 30% smaller, bit for bit.</h3>
+            <p>A JPEG is a grid of frequency coefficients coded with Huffman tables from 1992. Arca reads the coefficients and codes them again with a static model fitted to each image and four interleaved rANS streams, then decodes the result and compares it with the original before keeping it. The photo comes back identical to the byte.</p>
+            <ul class="facts">
+              <li><b>−2.7%</b><span>against Dropbox's Lepton on the photo set, the previous best</span></li>
+              <li><b>1.7×</b><span>faster to extract than Lepton</span></li>
+              <li><b>every one</b><span>decoded and compared before it is kept</span></li>
+              <li><b>Lepton</b><span>stays as the fallback for progressive JPEGs and synthetic textures</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="scene3 flip reveal">
+          <div class="vis3" data-live aria-hidden="true">
+            <div class="tokens">
+              <div class="trow"><span class="lbl">macOS</span><div class="tape"></div></div>
+              <div class="trow"><span class="lbl">lzfse 1.0</span><div class="tape" data-mark="x"></div></div>
+              <div class="dial">pending match after <span class="flip"><span>8</span><span>3</span></span> × 315 literals</div>
+            </div>
+            <div class="tag" style="--cyc:12s"><span>127 of 193 chunks differ</span><span>one threshold changed</span><span>193 of 193 re-created</span></div>
+          </div>
+          <div class="copy3">
+            <p class="num">02 · The one number inside macOS</p>
+            <h3>macOS's own compressor, replayed exactly.</h3>
+            <p>Mac apps carry asset catalogs and disk images compressed with LZFSE, Apple's codec. Apple's open-source lzfse 1.0 re-created only 66 of the 193 chunks in a test image. Laying the two token streams side by side showed every difference began where macOS flushed a short pending match early. One threshold changed, 3 × 315 waiting literals instead of 8 × 315, and all 193 chunks came back identical. Each stored stream records which value re-creates it.</p>
+            <ul class="facts">
+              <li><b>127 / 193</b><span>chunks lzfse 1.0 got wrong out of the box</span></li>
+              <li><b>1</b><span>number changed in the encoder, two lines of code</span></li>
+              <li><b>193 / 193</b><span>chunks re-created byte for byte afterwards</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="scene3 reveal">
+          <div class="vis3" data-live aria-hidden="true">
+            <div class="dmg"><div class="stack">
+              <div class="slab" style="--i:0;--c:rgba(135,148,255,.5)">zlib</div>
+              <div class="slab" style="--i:1;--c:rgba(127,231,255,.4)">bzip2</div>
+              <div class="slab" style="--i:2;--c:rgba(255,211,110,.4)">LZMA</div>
+              <div class="slab" style="--i:3;--c:rgba(110,231,168,.4)">LZFSE</div>
+              <div class="slab" style="--i:4;--c:rgba(135,148,255,.5)">zlib −9</div>
+              <div class="slab" style="--i:5;--c:rgba(110,231,168,.4)">LZFSE</div>
+              <div class="slab" style="--i:6;--c:rgba(255,211,110,.4)">LZMA</div>
+              <div class="slab" style="--i:7;--c:rgba(135,148,255,.5)">zlib</div>
+            </div></div>
+            <div class="tag" style="--cyc:11s"><span>a disk image: hundreds of chunks</span><span>each chunk expanded</span><span>rebuilt, byte for byte</span></div>
+          </div>
+          <div class="copy3">
+            <p class="num">03 · Disk images</p>
+            <h3>Taken apart, compressed properly, rebuilt.</h3>
+            <p>A DMG is hundreds of chunks, each compressed with zlib, bzip2, LZMA or LZFSE at whatever level its maker chose. Arca expands every chunk it can re-create, compresses the raw data with modern codecs, and rebuilds the image byte for byte on extraction. For the zlib level 9 chunks that installers favour, a re-implementation of zlib's match search finds the same answer without walking the whole hash chain, so replaying them no longer costs more than it saves.</p>
+            <ul class="facts">
+              <li><b>4</b><span>chunk codecs replayed: zlib, bzip2, LZMA and LZFSE</span></li>
+              <li><b>485 / 485</b><span>chunks of a 500 MB installer image rebuilt exactly</span></li>
+              <li><b>a budget</b><span>on rebuild time, so a stubborn image is stored as it is, never stalled on</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="scene3 flip reveal">
+          <div class="vis3" data-live aria-hidden="true">
+            <div class="race2">
+              <div class="lane2 us"><div><b>Arca pixel codec</b><small>559 PNGs · 1,042 MB of pixels</small></div><div class="rbar"><i></i><em>70.62 MB · 22.3 s CPU</em></div></div>
+              <div class="lane2"><div><b>xz −9</b><small>the strongest common setting</small></div><div class="rbar"><i></i><em>70.44 MB · 167.8 s CPU</em></div></div>
+              <p class="clock">same size within <b>0.3%</b> · <b>7.5×</b> less processor time</p>
+            </div>
+          </div>
+          <div class="copy3">
+            <p class="num">04 · PNG pixel codec</p>
+            <h3>Pixels predicted, not matched.</h3>
+            <p>Inside a PNG are rows of filtered pixels. At Max and Ultra*, Arca undoes the filters, predicts each pixel from its neighbours and codes only the surprise with an adaptive binary coder. On the benchmark's PDFs and screenshots it lands within 0.3% of xz at its strongest, for a seventh of the processor time.</p>
+            <ul class="facts">
+              <li><b>70.62 MB</b><span>Arca, 22.3 s of CPU</span></li>
+              <li><b>70.44 MB</b><span>xz −9 on the filtered rows, 167.8 s of CPU</span></li>
+              <li><b>7.5×</b><span>less processor time for the same size</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="scene3 reveal">
+          <div class="vis3" data-live aria-hidden="true">
+            <div class="bwt"><div class="tiles"></div><p class="caption"></p></div>
+          </div>
+          <div class="copy3">
+            <p class="num">05 · The Max lane</p>
+            <h3>Text sorted before it is coded.</h3>
+            <p>At Max, text and code go through a Burrows–Wheeler transform (libbsc) instead of LZMA: the data is sorted by context so the same letters sit together and code in a few bits each. On the Silesia text block it is 19% smaller than LZMA2's strongest setting and 18 times faster to make. Binaries stay with LZMA, where the transform loses.</p>
+            <ul class="facts">
+              <li><b>−19%</b><span>on Silesia text against LZMA2 with 273-byte matches</span></li>
+              <li><b>18×</b><span>faster to make, per block</span></li>
+              <li><b>22.7 → 1.6 s</b><span>source trees at Max</span></li>
+              <li><b>+31%</b><span>on Mach-O binaries, so those keep LZMA</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="scene3 flip reveal">
+          <div class="vis3" data-live aria-hidden="true">
+            <div class="verify">
+              <div class="hexrow in"><span class="lbl">original</span><div class="cells"></div></div>
+              <div class="arrows"><span>forward transform</span><span>inverse</span></div>
+              <div class="hexrow out"><span class="lbl">rebuilt</span><div class="cells"></div></div>
+            </div>
+            <div class="tag" style="--cyc:12s"><span>identical: accepted</span><span>one byte off: stored as it was</span></div>
+          </div>
+          <div class="copy3">
+            <p class="num">06 · Verified before accepted</p>
+            <h3>A transform bug can cost ratio. Never data.</h3>
+            <p>Every forward transform is followed by its inverse and a byte comparison before the result is kept; anything that does not come back identical is stored as it was. Every block carries a keyed hash of its compressed and its decoded bytes, under a random key drawn for each archive, and nothing is written until the block holding it has passed both checks.</p>
+            <ul class="facts">
+              <li><b>2 hashes</b><span>per block: the compressed bytes and the decoded bytes</span></li>
+              <li><b>2¹²⁸</b><span>keyed POLYVAL, a fresh random key per archive, so a false duplicate match is bounded</span></li>
+              <li><b>BLAKE3</b><span>on the index, which holds the key</span></li>
+              <li><b>0 bytes</b><span>written before both checks pass</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <div class="instruments reveal" data-stagger>
+          <div class="instrument"><b>1.3–1.45× faster</b><span>liblzma's strongest blocks, from two speed patches that leave every output byte unchanged.</span></div>
+          <div class="instrument"><b>zlib, exact</b><span>a level 9 match search that returns the same newest, longest string without walking 60 chain steps per lookup.</span></div>
+          <div class="instrument"><b>clones, not copies</b><span>duplicates come back as APFS clones on extraction: instant, and no extra disk space.</span></div>
+          <div class="instrument"><b>a graph, not waves</b><span>extraction takes the best ready item from one priority queue: blocks first, then the costliest work, so nothing long starts last.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 Dead ends -->
+    <section class="lab" id="dropped">
+      <div class="lab-inner">
+        <div class="lab-head reveal">
+          <span class="hud"><i></i>04 · What we tried and dropped</span>
+          <h2>The dead ends are part of the proof.</h2>
+          <p>A research log that lists only wins is marketing. These were built, measured on the same sets, and lost.</p>
+        </div>
+        <div class="space reveal" data-live>
+          <div class="cluster">
+            <div class="node" style="--x:14%;--y:22%;--z:40px;--t:0s"><b>GPU match finder</b><i>4× slower than the CPU cores</i></div>
+            <div class="node" style="--x:38%;--y:16%;--z:-60px;--t:-.8s"><b>Long-range pre-pass before LZMA</b><i>2× faster on code, 13% bigger</i></div>
+            <div class="node" style="--x:62%;--y:24%;--z:20px;--t:-1.6s"><b>Hint-guided LZMA parsing</b><i>+1.3 to 10% size for 17–31% less CPU</i></div>
+            <div class="node" style="--x:84%;--y:18%;--z:-40px;--t:-2.4s"><b>Hash-chain match finders</b><i>+2.6 to 4.5% for 17–19% less CPU</i></div>
+            <div class="node" style="--x:20%;--y:52%;--z:-30px;--t:-.4s"><b>Parallel LZMA2 segments</b><i>indexing the preload costs as much as coding it</i></div>
+            <div class="node" style="--x:46%;--y:48%;--z:60px;--t:-1.2s"><b>Band-parallel pixel decoding</b><i>bound by instruction count, not bandwidth</i></div>
+            <div class="node" style="--x:72%;--y:54%;--z:-20px;--t:-2s"><b>Multi-symbol Lepton size classes</b><i>+0.63% for 25% less coder work</i></div>
+            <div class="node" style="--x:84%;--y:60%;--z:30px;--t:-2.8s"><b>arm64 code in byte planes</b><i>35% bigger</i></div>
+            <div class="node" style="--x:12%;--y:82%;--z:10px;--t:-.6s"><b>Mach-O split into code, strings, tables</b><i>0.13% gain</i></div>
+            <div class="node" style="--x:36%;--y:80%;--z:-50px;--t:-1.4s"><b>Mach-O sections through the BWT lane</b><i>46% bigger than LZMA</i></div>
+            <div class="node" style="--x:60%;--y:84%;--z:40px;--t:-2.2s"><b>lzt, our LZMA-style codec with rANS</b><i>2× faster decode, 15–21% bigger on PDFs, source and apps: behind a flag</i></div>
+            <div class="node" style="--x:84%;--y:86%;--z:-10px;--t:-3s"><b>Light JPEG coder at Fast</b><i>12% smaller, but 4× the time of its lanes: behind a flag</i></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 Ours and borrowed -->
+    <section class="lab" id="credits">
+      <div class="lab-inner">
+        <div class="lab-head reveal">
+          <span class="hud"><i></i>05 · Ours and borrowed</span>
+          <h2>What Arca adds, and what it stands on.</h2>
+          <p>The honest premise cuts both ways. Nothing here is a brand-new theory of compression, and several of the parts are the best open-source work in their field, used as they are. What is new is what was built around them.</p>
+        </div>
+        <div class="ours reveal" data-stagger>
+          <div class="col">
+            <span class="hud">Built here</span>
+            <h3>Arca's own</h3>
+            <ul>
+              <li><b>The pipeline and the format.</b> File tasks on every core, lanes, content-defined dedup, parallel solid blocks, a footer-last layout that opens a 100 GB archive by reading its end.</li>
+              <li><b>The JPEG coefficient coder.</b> Static model per image, four rANS streams, smaller and faster than Lepton.</li>
+              <li><b>The PNG pixel codec.</b> Prediction and an adaptive binary coder at a seventh of xz's CPU.</li>
+              <li><b>The LZFSE replay.</b> The one setting that makes Apple's encoder re-create what macOS writes.</li>
+              <li><b>Disk images, expanded and rebuilt.</b> Four chunk codecs, a rebuild budget, and an exact faster search for zlib level 9.</li>
+              <li><b>The liblzma speed patches.</b> 1.3 to 1.45 times faster, identical output.</li>
+              <li><b>The extraction scheduler.</b> One priority queue, blocks first, duplicates as APFS clones.</li>
+              <li><b>Verification at every step.</b> Inverse-and-compare for transforms, two keyed hashes per block, BLAKE3 on the index.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <span class="hud">Borrowed, with thanks</span>
+            <h3>Standing on</h3>
+            <ul>
+              <li><b>zstd</b> for the Fast and Default lanes.</li>
+              <li><b>liblzma (XZ Utils)</b> for binaries at Max and Ultra*.</li>
+              <li><b>libbsc and libsais</b> for the Burrows–Wheeler lane.</li>
+              <li><b>Lepton</b> as the JPEG fallback.</li>
+              <li><b>preflate</b> to expand Deflate streams and record the diff that re-creates them.</li>
+              <li><b>lzfse</b>, Apple's reference encoder, with the one setting changed.</li>
+              <li><b>zlib</b> with the exact fast search added.</li>
+              <li><b>PPMd</b>, kept available as a text codec.</li>
+              <li><b>BLAKE3, POLYVAL and FastCDC</b> for hashing and chunking.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 Against the field -->
+    <section class="lab" id="field">
+      <div class="lab-inner">
+        <div class="lab-head reveal">
+          <span class="hud"><i></i>06 · Against the field</span>
+          <h2>Technique by technique.</h2>
+          <p>What each archiver does with the files it is given. Speed and size are on the <a href="benchmarks.html">benchmarks page</a>; this is about method.</p>
+        </div>
+        <div class="field-wrap reveal">
+          <table class="field">
+            <thead><tr><th scope="col">Technique</th><th scope="col" class="us">Zipling</th><th scope="col">7-Zip, Keka, BetterZip</th><th scope="col">WinRAR</th><th scope="col">Finder</th></tr></thead>
+            <tbody>
+              <tr><td>Re-codes JPEG coefficients, losslessly</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+              <tr><td>Expands Deflate inside PDF, PNG and Office files</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+              <tr><td>Expands Mac asset catalogs and disk images</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+              <tr><td>Stores duplicates once, at any distance</td><td class="yes">Yes</td><td class="part">Within its window</td><td class="part">Within its window</td><td class="no">No</td></tr>
+              <tr><td>Verifies each transform by rebuilding the original</td><td class="yes">Yes</td><td class="no">No transforms</td><td class="no">No transforms</td><td class="no">No transforms</td></tr>
+              <tr><td>Recovery data for damaged archives</td><td class="yes">Yes, a recovery file</td><td class="no">No</td><td class="yes">Yes, built in</td><td class="no">No</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">7-Zip, and Keka and BetterZip which use it, also filter arm64 code as Arca does. WinRAR's recovery record is part of its format; Zipling's recovery file is separate today and moves inside the format in 1.0. * Ultra is experimental and not in the released app.</p>
+      </div>
+    </section>
+
+    <section class="a-end">
+      <div class="reveal">
+        <span class="hud"><i></i>Arca 0.1 · locked for 1.0</span>
+        <h2>The format freezes at release.</h2>
+        <p>Every archive carries its format number, so what Zipling writes at 1.0 will open for as long as there is a Zipling. Until then, it is 0.x, and the research log keeps growing.</p>
+        <div class="a-cta">
+          <a class="btn btn-primary" href="benchmarks.html">See the benchmarks</a>
+          <a class="btn btn-ghost" href="https://github.com/EnigmaticZee/zipling/blob/main/docs/DESIGN.md">Read the design notes</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a class="brand" href="index.html"><img src="assets/icon-512.png" alt="" width="26" height="26"><span>Zipling</span></a>
+        <p>Smaller archives for your Mac.<br>© 2026 Observant Systems</p>
+      </div>
+      <nav class="footer-cols" aria-label="Footer">
+        <div><h3>Product</h3><a href="benchmarks.html">Benchmarks</a><a href="compare.html">Compare</a><a href="arca.html" aria-current="page">Inside Arca</a><a href="index.html#engine">How it works</a><a href="index.html#faq">FAQ</a></div>
+        <div><h3>Project</h3><a href="https://github.com/EnigmaticZee/zipling">GitHub</a><a href="https://github.com/EnigmaticZee/zipling/issues/new?template=bug_report.yml">Report a bug</a><a href="https://github.com/EnigmaticZee/zipling/issues">Known issues</a><a href="v0.1/index.html">The 0.1 site, as it was</a></div>
+        <div><h3>Legal</h3><a href="privacy.html">Privacy</a><a href="legal.html">Legal notice</a></div>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

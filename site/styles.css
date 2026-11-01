@@ -781,3 +781,6 @@ a:hover .arrow { transform: translateX(3px); }
 
 .cmp-hint { display: none; margin-top: 14px; font-size: 13.5px; color: var(--ink-3); }
 @media (max-width: 640px) { .cmp-hint { display: block; } }
+
+/* A link out of a section, under its cards. */
+.section .more { margin-top: 32px; }
