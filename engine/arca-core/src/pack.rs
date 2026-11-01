@@ -71,6 +71,11 @@ pub struct PackOptions {
     /// bytes and hold the least for level 3 to find. Third-party apps 1.05 → 0.57 s,
     /// for 10% in size, which still leaves them under zstd -3's.
     pub quick_binaries: bool,
+    /// Research (`ARCA_EXP_MACHO_LANE`, Default only): send Mach-O to the code lane
+    /// when the code lane is on, so a stronger codec can be tried on app code alone.
+    /// Apple's apps and third-party apps are 60-85% Mach-O, and Default is 2-9%
+    /// behind the LZMA normal settings there.
+    pub macho_lane: bool,
     /// Send photos no coder touched to the image lane instead of the store lane,
     /// when it runs zstd. Fast's lane there is zstd -1: a camera JPEG holds under
     /// 1% for it but a wallpaper or gradient 10-85%, and the 400-photo set goes
@@ -188,6 +193,7 @@ impl PackOptions {
                 Level::Balanced => zstd(5),
             },
             quick_binaries: level == Level::Fast,
+            macho_lane: level == Level::Balanced && std::env::var_os("ARCA_EXP_MACHO_LANE").is_some(),
             quick_photos: level == Level::Fast,
             quick_images: level == Level::Balanced,
             code_block_size: block,
@@ -1240,6 +1246,7 @@ fn process_file_inner(
     use classify::DeflateKind as Kind;
     let packed = matches!(class, Class::DeflateContainer(Kind::Zip | Kind::Gzip | Kind::AssetCatalog));
     let lane = if opts.quick_binaries && (matches!(transform, Transform::Arm64 { .. }) || packed) { Lane::Code } else { lane };
+    let lane = if opts.macho_lane && opts.code_lane && class == Class::MachO { Lane::Code } else { lane };
     let image = matches!(class, Class::DeflateContainer(Kind::Dmg));
     let lane = if image && opts.quick_images && opts.code_codec.codec == Codec::Zstd { Lane::Code } else { lane };
     let photo = matches!(class, Class::Jpeg) && matches!(transform, Transform::None);

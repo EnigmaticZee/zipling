@@ -1,0 +1,38 @@
+07:16:23 arca '/Users/zee/Documents/Building/Tools/Zip Project/.claude/worktrees/arca-research-77726f/engine/target/release/arca'; 4 candidates: tcz tcz2 tcz4 tcz8
+07:16:28 source: start (load 4.4)
+07:16:30 source r1 tcz: 8469644 0.90s / 0.74s
+07:16:33 source r1 tcz2: 8880536 0.96s / 0.73s
+07:16:36 source r1 tcz4: 8706008 0.94s / 0.67s
+07:16:39 source r1 tcz8: 8516697 0.95s / 0.71s
+07:16:41 source r2 tcz8: 8516695 0.95s / 0.75s
+07:16:44 source r2 tcz4: 8706008 0.95s / 0.72s
+07:16:46 source r2 tcz2: 8880535 0.96s / 0.70s
+07:16:48 source r2 tcz: 8469642 0.94s / 0.76s
+07:16:49 silesia: start (load 4.3)
+07:16:52 silesia r1 tcz: 53067367 2.76s / 0.41s
+07:16:55 silesia r1 tcz2: 53958553 2.88s / 0.39s
+07:16:59 silesia r1 tcz4: 53621830 2.90s / 0.43s
+07:17:02 silesia r1 tcz8: 53253111 2.89s / 0.41s
+07:17:05 silesia r2 tcz8: 53253116 2.84s / 0.41s
+07:17:09 silesia r2 tcz4: 53621837 2.85s / 0.41s
+07:17:12 silesia r2 tcz2: 53958558 2.85s / 0.41s
+07:17:15 silesia r2 tcz: 53067369 2.78s / 0.43s
+07:17:16 docs: start (load 4.4)
+07:17:18 docs r1 tcz: 22140742 1.35s / 0.22s
+07:17:19 docs r1 tcz2: 22140748 1.41s / 0.24s
+07:17:21 docs r1 tcz4: 22140752 1.36s / 0.23s
+07:17:23 docs r1 tcz8: 22140739 1.42s / 0.21s
+07:17:25 docs r2 tcz8: 22140742 1.41s / 0.22s
+07:17:26 docs r2 tcz4: 22140757 1.34s / 0.22s
+07:17:28 docs r2 tcz2: 22140754 1.37s / 0.26s
+07:17:30 docs r2 tcz: 22140743 1.39s / 0.22s
+07:17:36 mixed: start (load 6.0)
+07:17:45 mixed r1 tcz: 209200456 6.07s / 1.99s
+07:17:56 mixed r1 tcz2: 210381118 6.12s / 1.98s
+07:18:06 mixed r1 tcz4: 209998120 6.53s / 1.92s
+07:18:17 mixed r1 tcz8: 209403102 6.08s / 2.00s
+07:18:26 mixed r2 tcz8: 209402527 6.32s / 1.95s
+07:18:35 mixed r2 tcz4: 209843263 6.21s / 2.01s
+07:18:44 mixed r2 tcz2: 210381128 6.39s / 1.96s
+07:18:53 mixed r2 tcz: 209199866 6.43s / 1.94s
+07:18:54 done

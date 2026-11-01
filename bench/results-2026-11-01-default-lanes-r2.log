@@ -1,0 +1,83 @@
+07:07:50 arca '/Users/zee/Documents/Building/Tools/Zip Project/.claude/worktrees/arca-research-77726f/engine/target/release/arca'; 4 candidates: base tbsc cz tcz
+07:07:50 jpeg: start (load 2.8)
+07:07:53 jpeg r1 base: 69183226 2.06s / 0.63s
+07:07:56 jpeg r1 tbsc: 69183222 2.03s / 0.64s
+07:07:59 jpeg r1 cz: 69183225 2.20s / 0.63s
+07:08:02 jpeg r1 tcz: 69183219 2.25s / 0.65s
+07:08:05 jpeg r2 tcz: 69183225 1.99s / 0.61s
+07:08:08 jpeg r2 cz: 69183213 2.05s / 0.63s
+07:08:10 jpeg r2 tbsc: 69183220 2.04s / 0.62s
+07:08:13 jpeg r2 base: 69183216 2.04s / 0.59s
+07:08:14 docs: start (load 12.9)
+07:08:16 docs r1 base: 22140756 1.35s / 0.22s
+07:08:18 docs r1 tbsc: 22140759 1.42s / 0.41s
+07:08:20 docs r1 cz: 22140743 1.52s / 0.23s
+07:08:21 docs r1 tcz: 22140751 1.45s / 0.23s
+07:08:23 docs r2 tcz: 22140742 1.40s / 0.21s
+07:08:25 docs r2 cz: 22140746 1.45s / 0.22s
+07:08:27 docs r2 tbsc: 22140752 1.39s / 0.34s
+07:08:28 docs r2 base: 22140754 1.41s / 0.21s
+07:08:32 source: start (load 11.6)
+07:08:35 source r1 base: 11200939 1.96s / 0.39s
+07:08:38 source r1 tbsc: 10206872 0.95s / 0.54s
+07:08:42 source r1 cz: 9463710 2.10s / 0.53s
+07:08:45 source r1 tcz: 8469641 0.90s / 0.72s
+07:08:47 source r2 tcz: 8469648 0.89s / 0.72s
+07:08:50 source r2 cz: 9463711 2.00s / 0.51s
+07:08:52 source r2 tbsc: 10206868 0.97s / 0.51s
+07:08:55 source r2 base: 11200942 1.99s / 0.41s
+07:08:57 apps: start (load 11.3)
+07:08:59 apps r1 base: 56438887 1.36s / 0.19s
+07:09:02 apps r1 tbsc: 56241646 2.15s / 0.19s
+07:09:04 apps r1 cz: 56438898 1.42s / 0.19s
+07:09:06 apps r1 tcz: 56396505 1.40s / 0.21s
+07:09:08 apps r2 tcz: 56396504 1.41s / 0.20s
+07:09:10 apps r2 cz: 56276366 2.12s / 0.19s
+07:09:13 apps r2 tbsc: 56233984 2.17s / 0.19s
+07:09:15 apps r2 base: 56438890 1.41s / 0.20s
+07:09:15 silesia: start (load 9.7)
+07:09:20 silesia r1 base: 57257106 5.09s / 0.10s
+07:09:23 silesia r1 tbsc: 53068062 2.35s / 0.42s
+07:09:28 silesia r1 cz: 57256424 5.22s / 0.10s
+07:09:32 silesia r1 tcz: 53067366 2.68s / 0.42s
+07:09:35 silesia r2 tcz: 53067366 2.69s / 0.41s
+07:09:40 silesia r2 cz: 57256425 5.27s / 0.11s
+07:09:43 silesia r2 tbsc: 53068061 2.36s / 0.41s
+07:09:48 silesia r2 base: 57257110 5.14s / 0.09s
+07:09:56 saved: start (load 7.5)
+07:10:08 saved r1 base: 248805739 8.37s / 1.59s
+07:10:20 saved r1 tbsc: 247762958 7.84s / 1.76s
+07:10:33 saved r1 cz: 246649275 8.61s / 1.67s
+07:10:45 saved r1 tcz: 245606468 8.03s / 1.94s
+07:10:57 saved r2 tcz: 245606477 8.13s / 1.86s
+07:11:08 saved r2 cz: 246649299 8.65s / 1.67s
+07:11:19 saved r2 tbsc: 247762903 8.19s / 1.77s
+07:11:30 saved r2 base: 248805773 8.56s / 1.56s
+07:11:38 mixed: start (load 11.7)
+07:11:50 mixed r1 base: 215971684 9.20s / 1.35s
+07:12:00 mixed r1 tbsc: 211022854 6.05s / 1.81s
+07:12:13 mixed r1 cz: 214257686 9.74s / 1.57s
+07:12:24 mixed r1 tcz: 209200478 6.06s / 2.02s
+07:12:33 mixed r2 tcz: 209083034 6.19s / 1.93s
+07:12:44 mixed r2 cz: 214257560 9.05s / 1.36s
+07:12:52 mixed r2 tbsc: 210886621 5.68s / 1.86s
+07:13:04 mixed r2 base: 215971680 9.04s / 1.46s
+07:13:05 dmgs: start (load 19.0)
+07:13:07 dmgs r1 base: 601794858 1.07s / 0.37s
+07:13:08 dmgs r1 tbsc: 601787307 1.04s / 0.32s
+07:13:10 dmgs r1 cz: 600102732 1.97s / 0.31s
+07:13:13 dmgs r1 tcz: 600102733 2.02s / 0.32s
+07:13:15 dmgs r2 tcz: 600102737 2.02s / 0.31s
+07:13:18 dmgs r2 cz: 600102734 1.99s / 0.33s
+07:13:20 dmgs r2 tbsc: 601825308 1.02s / 0.32s
+07:13:21 dmgs r2 base: 601825309 1.04s / 0.33s
+07:13:22 thirdparty: start (load 16.6)
+07:13:31 thirdparty r1 base: 402703320 7.22s / 0.44s
+07:13:39 thirdparty r1 tbsc: 402830522 7.22s / 0.45s
+07:13:48 thirdparty r1 cz: 402981755 7.38s / 0.44s
+07:13:57 thirdparty r1 tcz: 402830515 7.05s / 0.45s
+07:14:04 thirdparty r2 tcz: 402830533 7.14s / 0.45s
+07:14:12 thirdparty r2 cz: 402981749 7.25s / 0.43s
+07:14:20 thirdparty r2 tbsc: 402614216 7.12s / 0.46s
+07:14:28 thirdparty r2 base: 402981773 7.29s / 0.41s
+07:14:28 done

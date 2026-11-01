@@ -32,8 +32,9 @@ every commit after 2026-10-28 a new hash. The engine as built, by file:
   zstd 15 text / 12 binary, every transform, JPEG coder; Max bsc text and code,
   LZMA2 7 binaries; Ultra bsc text and code, LZMA2 9e. Research switches:
   `ARCA_EXP_LZT`, `ARCA_EXP_JPEGLITE`, `ARCA_EXP_LEPTON`, `ARCA_EXP_CODE_LANE`,
-  `ARCA_EXP_FAST_TABLES`, `ARCA_EXP_OVLOG`, `ARCA_EXP_PIXELS`, `ARCA_EXP_CAR`;
-  `--lane`, `--text-codec`, `--block-mib`, `--disk-images` on the CLI.
+  `ARCA_EXP_MACHO_LANE`, `ARCA_EXP_BSC_FALLBACK`, `ARCA_EXP_FAST_TABLES`,
+  `ARCA_EXP_OVLOG`, `ARCA_EXP_PIXELS`, `ARCA_EXP_CAR`; `--lane`, `--text-codec`,
+  `--block-mib`, `--text-block-mib`, `--disk-images` on the CLI.
 - **Benchmarks** `bench/`: `checkpoint.py` (every tool on every set, waits for a
   quiet Mac), `checkpoint_report.py`, `research/board.py` (any Arca setting against
   each rival result), `research/levels.py` (1:1 by level and the upsets),
@@ -45,8 +46,11 @@ every commit after 2026-10-28 a new hash. The engine as built, by file:
   lztok for the codec, pixbench, lrp, bscbench), `bench/research/gpumatch` (GPU
   matchfinder, dead end).
 
-Tracks and verdicts, newest first (each has an entry below): GPU matchfinder, 4x
-slower than the CPU cores, dead end. Fast's make time on Silesia, at the CPU floor
+Tracks and verdicts, newest first (each has an entry below): Default lane by
+lane (2026-11-01): bsc on the code lane with zstd as its fallback, +2 rows for no
+time; bsc on text, +2 rows and faster makes for slower extraction; Mach-O only
+shrinks with LZMA-class time, which loses more rows than it wins; decision with
+the user. GPU matchfinder, 4x slower than the CPU cores, dead end. Fast's make time on Silesia, at the CPU floor
 for zstd -3's ratio; zstd's own tables 9% faster for 0.9% size, not taken. lzt,
 LZMA's ratio within 5% at 2x the decode speed, behind a flag because it is 15-21%
 bigger on PDFs, source and apps. Disk images at Default, rebuild budget, taken.
@@ -1303,6 +1307,100 @@ and the probe is not involved (disk images take the quick-images lane, which it
 does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
+
+**Default, lane by lane: what a stronger codec on one lane buys (2026-11-01,
+06:30-07:30, `bench/results-2026-11-01-default-lanes-r{1,2,3}.jsonl`,
+`bench/research/defaultlanes.py` and `defaultlanes_report.py`).** After the app
+benchmark the user asked for the lane-specific experiment on code and apps, to
+decide on results. Default lost 22 of its 45 normal-class rows there: 10 on make
+time to the near-store ZIPs (not winnable by anything that compresses), 10 on size
+to the LZMA normal settings (7-Zip Normal, Zipgeist 7z Normal, xz -6) on source,
+Silesia, Apple apps and third-party apps, one on both, one on extraction. The
+lanes those sets fill at Default: source is 54 MiB of text and 99 MiB of static
+libraries (the code class, in the binary lane at Default); Silesia 81 MiB text, 80
+MiB tar and PE (code class), 40 MiB binary; the two app sets are 60-85% Mach-O in
+the binary lane. Two research switches for the runs: `ARCA_EXP_MACHO_LANE` sends
+Mach-O to the code lane at Default, `ARCA_EXP_BSC_FALLBACK=zstd:12` names the codec a
+bsc lane falls back to under 16:1 (LZMA2 fb 273 otherwise). The rivals were not
+re-run: every candidate is scored against the phase 3 rows, the engine's own
+clock for ours (the app's clock matched it within noise), best of two rounds.
+
+*Round 1, fifteen candidates, one lane changed at a time, on the four sets and the
+mixed folder.* What each lane can do:
+
+- *Text lane* (zstd 15): bsc:1 is smaller and faster to make at once, source
+  11.20 → 10.21 MB in 0.93 s instead of 1.96, Silesia 57.26 → 53.07 in 2.3 s
+  instead of 5.1, mixed 216.0 → 211.0 in 5.7 s instead of 9.0; extraction
+  slower wherever text is, 0.39 → 0.50, 0.09 → 0.41, 1.35 → 1.81 s. zstd 19:
+  −6% on source at 2.6x the make time, −0.9% on mixed at 1.6x, nothing won.
+- *Code lane* (static libraries, ELF, PE, tar): bsc:2 takes source's libraries
+  from 3.77 to 2.11 MiB, source 9.46 MB in 1.74 s (3 of 5 rows from 1; 7-Zip
+  Normal's 9.15 still ahead). The same codec on Silesia's x86 tars is +1.4% for
+  1.18 s of extraction (BWT at 70 MB/s where LZP finds nothing), and on the
+  mixed folder 2.14 s instead of 1.35. bsc:2e with the LZMA2 fallback: Silesia
+  53.18 MB in 14.5 s, mixed 209.4 in 26 s. lzma2:7 on the lane: Silesia 53.49 in
+  11.7 s / 0.63 s, mixed 210.4 in 16.9 s. zstd 19: 20-28 s. lzt:7: 2.7x the make
+  time for −5% on source. The LZMA rows on Silesia (49.5-50.0 MB) are out of
+  reach of every candidate; they need LZMA on tars and binaries both, at 2.4-4x
+  the make time and 7x the extraction.
+- *Mach-O in its own lane:* zstd 15 is 4.4x the make time of zstd 12 for −0.4%
+  (Apple apps 56.23 MB in 5.8 s; zstd's level-13 strategies on filtered code);
+  zstd 19 53.46 MB in 14.7 s; lzma2:7 51.33 MB in 12.4 s / 0.49 s, which beats
+  7-Zip Normal and loses Zipgeist 7z Normal, xz -6 and WinRAR Normal on make, 1
+  row of 5 from 3; lzt:7 53.16 in 12.6 s. Third-party apps with lzma2:7: 342 MB
+  in 39 s / 1.41 s, the three LZMA rows won and WinRAR's and ZIP Normal's lost on
+  make, 3 of 5 from 2, at 6x today's make time, and the mixed folder's 95 MiB of
+  Mach-O takes it from 9.0 to 18.6 s. Nothing under 2.5 s gains the 2.1% that
+  7-Zip Normal has on Apple's apps: that row is LZMA's.
+- *The whole binary lane* at zstd 15: 1.6-4.5x the make time for −0.5 to −0.8%;
+  zstd 19: 3.6-12x for −4 to −8%, every make row lost.
+
+*Round 2, four finalists on all nine sets* (`-r2.jsonl`): base; bsc on text
+(`tbsc`); bsc:2e on the code lane with zstd 12 as its fallback (`cz`: static
+libraries stay with bsc, which LZP makes quick to decode; x86 tars and PE go to
+zstd 12 as today); both (`tcz`). Normal-class rows won of 45: **base 23** (the
+app run's 23), **cz 25**, **tbsc 25**, **tcz 28** (27 plus a coin flip: ZIP
+Normal's make on third-party apps, 7.05 against 7.08 s, which base wins in the
+app run at 6.82).
+
+| | Source | Silesia | Mixed folder | Elsewhere |
+|---|---|---|---|---|
+| base | 11.20 MB, 1.96 / 0.39 s, 1 of 5 | 57.26 MB, 5.1 / 0.09 s, 0 of 5 | 216.0 MB, 9.0 / 1.35 s | |
+| cz | 9.46 MB, 2.00 / 0.51 s, 3 of 5 | unchanged | 214.3 MB, same times | saved −0.9%; DMGs' make 1.04 → 1.97 s (see below) |
+| tbsc | 10.21 MB, 0.95 / 0.51 s, 2 of 5 | 53.07 MB, 2.4 / 0.41 s, 1 of 5 (WinRAR Normal) | 211.0 MB, 5.7 / 1.81 s | docs extract 0.21 → 0.34 s, saved 1.56 → 1.76 s; apps, photos, DMGs, third-party unchanged |
+| tcz | 8.47 MB, 0.89 / 0.72 s, 4 of 5 | 53.07 MB, 2.7 / 0.41 s, 1 of 5 | 209.2 MB, 6.1 / 1.93 s | saved 245.6 MB (−1.3%), 8.0 / 1.86 s |
+
+The mixed-folder headline against 7-Zip Ultra moves from 8.1% smaller, 5.4x
+faster to make and 2.8x to extract (Finder 5.8x) to: cz 8.8%, 5.4x, 2.8x; tbsc
+10.2%, 8.5x, 2.1x (Finder 4.4x); tcz 11.0%, 8.0x, 2.0x (Finder 4.1x). Every
+candidate stays under every rival of Default's class on extraction everywhere.
+Peak memory moves little (mixed 4.4-4.5 GB, source 0.6-0.8 GB). The DMG make time
+under cz: `quick_images` sends disk images to the code lane only while its codec
+is zstd, so with bsc there they went to the binary lane at zstd 12; the rows hold
+(4 of 5) and a routing fix would keep them at zstd 5. Source under tcz, 8.47 MB in
+0.89 s, is smaller than 7-Zip Ultra's 8.51 MB in 21.9 s.
+
+*Round 3, the text block for a bsc text lane* (`-r3.jsonl`: tcz with 2, 4, 8 and
+the preset's 12 MiB blocks, on docs, source, Silesia, mixed). Extraction does not
+move (source 0.67-0.74 s, Silesia 0.39-0.41, mixed 1.92-1.96) and size does:
+source 8.47 → 8.52 / 8.71 / 8.88 MB at 8 / 4 / 2 MiB, Silesia 53.07 → 53.96 at 2
+MiB. The time is bsc's decode itself (QLFC and the inverse BWT, already two
+threads a block), not idle cores. 12 MiB stays.
+
+*What this leaves.* Two cheap changes and nothing else. (1) bsc on the code lane
+with the binary lane's zstd as its fallback: source 11.20 → 9.46 MB, saved and
+mixed −0.9%, no time anywhere but the DMGs (a routing fix), +2 rows. (2) bsc on
+the text lane: 2-7% smaller and 37-54% faster to make wherever text is, 1.3-4.6x
+slower to extract there, still under every rival of the class; +2 rows, and with
+(1) source wins all its LZMA rows, 8.47 MB in 0.89 s. What stays with LZMA: the
+three LZMA rows on Silesia (needs LZMA on the tars and binaries, 2.4-4x the make
+time, 7x the extraction), 7-Zip Normal on Apple's apps (2.1%, nothing under 2.5 s
+buys it), the three LZMA rows on third-party apps (6x the make time), and every
+ZIP Normal make row. The decision is the user's, on the trade behind (2): the
+site's 2.6x over 7-Zip and 5x over Finder on extraction become about 2.0x and
+4.1x; make goes from 5.8x to 8x, size from 8% to 11% smaller, and the Default
+tally from 23 to 27 of 45. The 52 engine tests pass with the switches in; the
+presets are unchanged.
 
 **The app against the engine (2026-10-31, 14:30-15:10,
 `bench/research/appvsengine.py`, timing marks in the app).** The installed app
