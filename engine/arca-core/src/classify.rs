@@ -47,6 +47,9 @@ pub enum Lane {
     Image = 3,
     /// Executables and libraries (`Class::Code`, Mach-O).
     Code = 4,
+    /// Disk images at Default, on a quick zstd level of their own (see
+    /// `PackOptions::quick_images`).
+    Quick = 5,
 }
 
 pub const SNIFF_LEN: usize = 4096;

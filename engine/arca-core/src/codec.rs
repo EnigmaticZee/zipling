@@ -90,30 +90,38 @@ const SPLIT_RETRY_RATIO: usize = 20;
 /// faster).
 const BSC_FALLBACK_RATIO: usize = 16;
 
-/// The codec a bsc lane falls back to under `BSC_FALLBACK_RATIO`: LZMA2 fb 273 at
-/// Max and Ultra. Research knob `ARCA_EXP_BSC_FALLBACK=zstd:12` (or `lzma2:7`,
-/// `lzt:7`) puts another codec there, for a bsc code lane at Default: static
-/// libraries stay with bsc, which LZP makes quick to decode, and x86 tars, where
-/// BWT decodes at 70 MB/s for 1% of size, go to the binary lane's codec instead.
-fn bsc_fallback(lane: CodecConfig) -> CodecConfig {
-    let lzma = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true, long: false, workers: 1, job: 0 };
-    let Ok(v) = std::env::var("ARCA_EXP_BSC_FALLBACK") else { return lzma };
+/// LZMA2 fb 273: what a bsc lane falls back to unless the packer says otherwise.
+const LZMA_BACK: CodecConfig = CodecConfig { codec: Codec::Lzma2, level: 9, extreme: true, long: false, workers: 1, job: 0 };
+
+/// The codec a bsc lane falls back to under `BSC_FALLBACK_RATIO`: `back` as the
+/// packer set it (LZMA2 fb 273 at Max and Ultra; at Default the binary lane's zstd
+/// 12, so static libraries stay with bsc, which LZP makes quick to decode, and x86
+/// tars, where BWT decodes at 70 MB/s for 1% of size, decode as before), with the
+/// lane's workers and job. Research knob `ARCA_EXP_BSC_FALLBACK=zstd:12` (or
+/// `lzma2:7`, `lzt:7`) puts another codec there.
+fn bsc_fallback(lane: CodecConfig, back: CodecConfig) -> CodecConfig {
+    let back = CodecConfig { workers: lane.workers, job: lane.job, ..back };
+    let Ok(v) = std::env::var("ARCA_EXP_BSC_FALLBACK") else { return back };
     let (codec, level) = v.split_once(':').unwrap_or((v.as_str(), "7"));
     let codec = match codec {
         "zstd" => Codec::Zstd,
         "lzma2" => Codec::Lzma2,
         "lzt" => Codec::Lzt,
-        _ => return lzma,
+        _ => return back,
     };
-    // The lane's workers and job, as the packer set them for its blocks.
     CodecConfig { codec, level: level.trim_end_matches('e').parse().unwrap_or(7), extreme: level.ends_with('e'), long: true, ..lane }
 }
 
 /// As `compress`, also saying which codec the output is in: a bsc lane with the
-/// fallback may hand a block to LZMA2 (or the codec `bsc_fallback` names).
+/// fallback may hand a block to LZMA2.
 pub fn compress_auto(raw: &[u8], cfg: CodecConfig) -> Result<(Vec<u8>, Codec)> {
+    compress_auto_with(raw, cfg, LZMA_BACK)
+}
+
+/// `compress_auto` with the lane's own fallback codec (see `bsc_fallback`).
+pub fn compress_auto_with(raw: &[u8], cfg: CodecConfig, back: CodecConfig) -> Result<(Vec<u8>, Codec)> {
     if cfg.codec == Codec::Bsc && cfg.extreme {
-        let back = bsc_fallback(cfg);
+        let back = bsc_fallback(cfg, back);
         // A sample decides up front for large blocks, so the fallback's blocks don't
         // pay for a whole bsc pass first (the sample takes ~0.1 s).
         if raw.len() > 2 * BSC_SAMPLE {

@@ -29,8 +29,10 @@ every commit after 2026-10-28 a new hash. The engine as built, by file:
   budget), `arm64.rs` (arm64 and x86 code filters), `pixels.rs` (PNG pixel codec,
   Max and Ultra).
 - **Presets** (locked for 1.0): Fast zstd 3 lanes, photos through zstd -1; Default
-  zstd 15 text / 12 binary, every transform, JPEG coder; Max bsc text and code,
-  LZMA2 7 binaries; Ultra bsc text and code, LZMA2 9e. Research switches:
+  zstd 15 text / 12 binary, bsc on the code lane with zstd 12 as its fallback
+  (2026-11-01), disk images on a quick zstd 5 lane, every transform, JPEG coder;
+  Max bsc text and code, LZMA2 7 binaries; Ultra bsc text and code, LZMA2 9e.
+  Research switches:
   `ARCA_EXP_LZT`, `ARCA_EXP_JPEGLITE`, `ARCA_EXP_LEPTON`, `ARCA_EXP_CODE_LANE`,
   `ARCA_EXP_MACHO_LANE`, `ARCA_EXP_BSC_FALLBACK`, `ARCA_EXP_FAST_TABLES`,
   `ARCA_EXP_OVLOG`, `ARCA_EXP_PIXELS`, `ARCA_EXP_CAR`; `--lane`, `--text-codec`,
@@ -48,9 +50,11 @@ every commit after 2026-10-28 a new hash. The engine as built, by file:
 
 Tracks and verdicts, newest first (each has an entry below): Default lane by
 lane (2026-11-01): bsc on the code lane with zstd as its fallback, +2 rows for no
-time; bsc on text, +2 rows and faster makes for slower extraction; Mach-O only
-shrinks with LZMA-class time, which loses more rows than it wins; decision with
-the user. GPU matchfinder, 4x slower than the CPU cores, dead end. Fast's make time on Silesia, at the CPU floor
+time, taken; bsc on text, +2 rows and faster makes for slower extraction, not
+taken (the user keeps the extraction margin; a faster bsc decode setting is the
+thing to try before revisiting); Mach-O only shrinks with LZMA-class time, which
+loses more rows than it wins. GPU matchfinder, 4x slower than the CPU cores,
+dead end. Fast's make time on Silesia, at the CPU floor
 for zstd -3's ratio; zstd's own tables 9% faster for 0.9% size, not taken. lzt,
 LZMA's ratio within 5% at 2x the decode speed, behind a flag because it is 15-21%
 bigger on PDFs, source and apps. Disk images at Default, rebuild budget, taken.
@@ -1401,6 +1405,27 @@ site's 2.6x over 7-Zip and 5x over Finder on extraction become about 2.0x and
 4.1x; make goes from 5.8x to 8x, size from 8% to 11% smaller, and the Default
 tally from 23 to 27 of 45. The 52 engine tests pass with the switches in; the
 presets are unchanged.
+
+**Taken: the code lane, not the text lane (2026-11-01, 07:45-08:10,
+`bench/results-2026-11-01-default-codelane.jsonl`).** The user kept the
+extraction margin ("only the code lane then"). In the engine: Default's code lane
+is on with bsc:2e, and the lane's fallback is a preset field now
+(`PackOptions::code_fallback`, `codec::compress_auto_with`): the binary lane's zstd
+12 at Default, LZMA2 fb 273 at Max and Ultra, `ARCA_EXP_BSC_FALLBACK` still
+overriding for research. Disk images at Default had been riding on the code lane
+being zstd 5; they have a lane of their own now (`Lane::Quick`, `quick_codec`),
+so nothing about them changes. The new Default on all nine sets, two rounds,
+every round trip identical, against the phase 3 Default rows: source 11.20 → 9.46
+MB (0.52 s to extract, as before), saved folder 248.8 → 246.7, mixed 216.0 →
+214.3, the other six sets byte for byte the same; make times within 5-9% of the
+app run on every set, the same offset on the unchanged sets as on the changed
+ones (the Mac's idle load was 3.4-5 today against 2.5 then), extraction equal or
+faster. Rows won of 45: 23 → 25 (source: Zipgeist 7z Normal and xz -6; 7-Zip
+Normal's 9.15 MB stays ahead). The 52 engine tests pass. The website and the
+installed app still describe the 31 October Default; they move when the app is
+next rebuilt and reinstalled, since the site is about the released app. The
+text lane's bsc stays an option on record: before revisiting it, try libbsc's
+static QLFC coder and a wider parallel inverse BWT for the extraction cost.
 
 **The app against the engine (2026-10-31, 14:30-15:10,
 `bench/research/appvsengine.py`, timing marks in the app).** The installed app

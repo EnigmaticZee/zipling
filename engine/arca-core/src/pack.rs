@@ -60,12 +60,19 @@ pub struct PackOptions {
     /// false they share the binary lane (and its codec), as before.
     pub code_lane: bool,
     pub code_codec: CodecConfig,
+    /// What a bsc code lane's blocks fall back to where LZP and BWT don't pay
+    /// (under 16:1): LZMA2 fb 273 at Max and Ultra; at Default the binary lane's
+    /// zstd 12, so x86 tars and PE files decode as fast as before and only static
+    /// libraries, which LZP makes quick to decode, take the BWT route.
+    pub code_fallback: CodecConfig,
     /// Block size for the code lane.
     pub code_block_size: usize,
-    /// Send disk images to the code lane without `code_lane`, when it runs zstd.
-    /// Default's lane there is zstd -5: an image is hundreds of megabytes of mostly
-    /// app bundles, and five DMGs took 5.4 s at level 12 against 2.7 s, for 1.8%.
+    /// Send disk images to the quick lane (`quick_codec`). Default's codec there is
+    /// zstd -5: an image is hundreds of megabytes of mostly app bundles, and five
+    /// DMGs took 5.4 s at level 12 against 2.7 s, for 1.8%.
     pub quick_images: bool,
+    /// The quick lane's codec.
+    pub quick_codec: CodecConfig,
     /// Send filtered binaries and ZIP, gzip or asset catalog files to the code lane
     /// without `code_lane`. Fast's lane there is zstd -1: they are most of a big app's
     /// bytes and hold the least for level 3 to find. Third-party apps 1.05 → 0.57 s,
@@ -182,20 +189,25 @@ impl PackOptions {
             binary_codec: binary,
             // Fast's image lane holds stored photos (see `quick_photos`).
             image_codec: if level == Level::Fast { CodecConfig { long: false, ..zstd(1) } } else { binary },
-            // At Max and Ultra code and text get long matches: what makes source
-            // trees and apps small (7-Zip Ultra is the bar there).
-            code_lane: matches!(level, Level::Max | Level::Ultra) || (level == Level::Balanced && std::env::var_os("ARCA_EXP_CODE_LANE").is_some()),
+            // From Default up, code gets its own lane and long matches: what makes
+            // source trees and apps small (7-Zip Ultra is the bar there).
+            code_lane: level != Level::Fast,
             code_codec: match level {
                 Level::Max | Level::Ultra if lzt_lanes => lzma2(9, true),
                 Level::Max | Level::Ultra => bsc(2, true),
                 Level::Fast => CodecConfig { long: false, ..zstd(1) },
-                // Disk images only: see `quick_images`.
-                Level::Balanced => zstd(5),
+                // bsc where it pays, the binary lane's zstd where it doesn't
+                // (`code_fallback`): source trees 11.20 → 9.46 MB at the same
+                // speed, the saved and mixed folders 0.9% smaller, nothing else
+                // moves (see RESEARCH.md, "Default, lane by lane").
+                Level::Balanced => bsc(2, true),
             },
+            code_fallback: if level == Level::Balanced { binary } else { lzma2(9, true) },
             quick_binaries: level == Level::Fast,
             macho_lane: level == Level::Balanced && std::env::var_os("ARCA_EXP_MACHO_LANE").is_some(),
             quick_photos: level == Level::Fast,
             quick_images: level == Level::Balanced,
+            quick_codec: if level == Level::Balanced { zstd(5) } else { binary },
             code_block_size: block,
             image_block_size: block,
             index_level: if matches!(level, Level::Fast | Level::Balanced) { 9 } else { 19 },
@@ -469,9 +481,11 @@ struct BlockSink {
     slots_tx: Sender<()>,
     slots_rx: Receiver<()>,
     done_tx: Sender<Result<Done>>,
-    open: [Option<OpenBlock>; 5],
-    block_sizes: [usize; 5],
-    codecs: [CodecConfig; 5],
+    open: [Option<OpenBlock>; 6],
+    block_sizes: [usize; 6],
+    codecs: [CodecConfig; 6],
+    /// What a bsc lane's blocks fall back to (`PackOptions::code_fallback`).
+    fallback: CodecConfig,
     /// The lane of each block number.
     lanes: Arc<Mutex<Vec<Lane>>>,
     /// Blocks split as they closed: (block, the second half's number, where).
@@ -519,7 +533,7 @@ impl BlockSink {
         }
         // Bound blocks in flight so memory stays flat on huge inputs.
         self.slots_rx.recv().expect("slot channel");
-        let cfg = self.codecs[block.lane as usize];
+        let (cfg, back) = (self.codecs[block.lane as usize], self.fallback);
         let (done_tx, slots_tx) = (self.done_tx.clone(), self.slots_tx.clone());
         let (start, key, busy, cores) = (self.start, self.key.clone(), self.busy.clone(), self.cores);
         let small_job = self.small_job;
@@ -535,6 +549,7 @@ impl BlockSink {
                     (_, Lane::Text) => "block.text",
                     (_, Lane::Image) => "block.image",
                     (_, Lane::Code) => "block.code",
+                    (_, Lane::Quick) => "block.quick",
                     _ => "block.binary",
                 },
                 block.buf.len() as u64,
@@ -552,7 +567,7 @@ impl BlockSink {
                 } else if hard {
                     codec::compress_hard(&buf, cfg)
                 } else {
-                    codec::compress_auto(&buf, cfg)
+                    codec::compress_auto_with(&buf, cfg, back)
                 }
                 .map(|(comp, codec)| {
                     // Never let a codec expand data: fall back to storing the block.
@@ -623,7 +638,7 @@ impl BlockSink {
     }
 
     fn flush(&mut self) {
-        for lane in [Lane::Text, Lane::Binary, Lane::Image, Lane::Code, Lane::Store] {
+        for lane in [Lane::Text, Lane::Binary, Lane::Image, Lane::Code, Lane::Quick, Lane::Store] {
             self.flush_lane(lane);
         }
     }
@@ -882,15 +897,17 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         slots_tx,
         slots_rx,
         done_tx,
-        open: [None, None, None, None, None],
+        open: [None, None, None, None, None, None],
         block_sizes: [
             text_block_size,
             block_size,
             block_size,
             opts.image_block_size.clamp(1 << 20, block_size.max(1 << 20)),
             opts.code_block_size.min(block_size.max(1 << 20)),
+            block_size,
         ],
-        codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec, opts.code_codec],
+        codecs: [opts.text_codec, opts.binary_codec, store, opts.image_codec, opts.code_codec, opts.quick_codec],
+        fallback: opts.code_fallback,
         lanes: Arc::new(Mutex::new(Vec::new())),
         splits: Arc::new(Mutex::new(Vec::new())),
         split: opts.level == Level::Max && stats.input_bytes < SPLIT_BELOW,
@@ -1043,6 +1060,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
                     sink.flush_lane(Lane::Binary);
                     sink.flush_lane(Lane::Image);
                     sink.flush_lane(Lane::Code);
+                    sink.flush_lane(Lane::Quick);
                 }
             }
             Ok(())
@@ -1073,7 +1091,7 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
     }
     let blocks: Vec<BlockInfo> = blocks.into_iter().collect::<Option<_>>().context("block missing from writer")?;
 
-    let mut lane_stats = [("text", 0u64, 0u64), ("binary", 0, 0), ("store", 0, 0), ("image", 0, 0), ("code", 0, 0)];
+    let mut lane_stats = [("text", 0u64, 0u64), ("binary", 0, 0), ("store", 0, 0), ("image", 0, 0), ("code", 0, 0), ("quick", 0, 0)];
     for (b, lane) in blocks.iter().zip(&lanes) {
         lane_stats[*lane as usize].1 += b.raw_len;
         lane_stats[*lane as usize].2 += b.comp_len;
@@ -1248,7 +1266,7 @@ fn process_file_inner(
     let lane = if opts.quick_binaries && (matches!(transform, Transform::Arm64 { .. }) || packed) { Lane::Code } else { lane };
     let lane = if opts.macho_lane && opts.code_lane && class == Class::MachO { Lane::Code } else { lane };
     let image = matches!(class, Class::DeflateContainer(Kind::Dmg));
-    let lane = if image && opts.quick_images && opts.code_codec.codec == Codec::Zstd { Lane::Code } else { lane };
+    let lane = if image && opts.quick_images { Lane::Quick } else { lane };
     let photo = matches!(class, Class::Jpeg) && matches!(transform, Transform::None);
     let lane = if photo && opts.quick_photos && opts.image_codec.codec == Codec::Zstd { Lane::Image } else { lane };
     let stored: &[u8] = owned.as_deref().unwrap_or(&data);

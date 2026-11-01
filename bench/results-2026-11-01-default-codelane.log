@@ -1,0 +1,29 @@
+08:02:08 arca '/Users/zee/Documents/Building/Tools/Zip Project/.claude/worktrees/arca-research-77726f/engine/target/release/arca'; 1 candidates: base
+08:02:08 jpeg: start (load 5.1)
+08:02:11 jpeg r1 base: 69183228 2.08s / 0.64s
+08:02:14 jpeg r2 base: 69183218 2.05s / 0.67s
+08:02:15 docs: start (load 6.1)
+08:02:16 docs r1 base: 22140753 1.37s / 0.22s
+08:02:18 docs r2 base: 22140756 1.38s / 0.23s
+08:02:22 source: start (load 6.6)
+08:02:25 source r1 base: 9463713 2.09s / 0.52s
+08:02:29 source r2 base: 9463712 2.10s / 0.55s
+08:02:30 apps: start (load 6.1)
+08:02:32 apps r1 base: 56438893 1.46s / 0.20s
+08:02:34 apps r2 base: 56438888 1.45s / 0.20s
+08:02:35 silesia: start (load 6.1)
+08:02:40 silesia r1 base: 57256423 5.47s / 0.12s
+08:02:46 silesia r2 base: 57256418 5.42s / 0.11s
+08:02:54 saved: start (load 5.9)
+08:03:07 saved r1 base: 246649261 8.85s / 1.72s
+08:03:18 saved r2 base: 246649267 8.64s / 1.66s
+08:03:26 mixed: start (load 9.0)
+08:03:38 mixed r1 base: 214257596 9.04s / 1.48s
+08:03:49 mixed r2 base: 214258191 9.02s / 1.43s
+08:03:50 dmgs: start (load 11.7)
+08:03:52 dmgs r1 base: 601825303 1.05s / 0.32s
+08:03:53 dmgs r2 base: 601825309 1.01s / 0.30s
+08:03:55 thirdparty: start (load 12.0)
+08:04:03 thirdparty r1 base: 402981741 7.22s / 0.41s
+08:04:11 thirdparty r2 base: 402981749 7.30s / 0.41s
+08:04:11 done
