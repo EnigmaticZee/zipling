@@ -1421,11 +1421,26 @@ MB (0.52 s to extract, as before), saved folder 248.8 → 246.7, mixed 216.0 →
 app run on every set, the same offset on the unchanged sets as on the changed
 ones (the Mac's idle load was 3.4-5 today against 2.5 then), extraction equal or
 faster. Rows won of 45: 23 → 25 (source: Zipgeist 7z Normal and xz -6; 7-Zip
-Normal's 9.15 MB stays ahead). The 52 engine tests pass. The website and the
-installed app still describe the 31 October Default; they move when the app is
-next rebuilt and reinstalled, since the site is about the released app. The
-text lane's bsc stays an option on record: before revisiting it, try libbsc's
-static QLFC coder and a wider parallel inverse BWT for the extraction cost.
+Normal's 9.15 MB stays ahead). The 52 engine tests and the 58 app tests pass.
+The app was rebuilt on the new engine and installed over /Applications/Zipling.app
+at 08:22 (the only registered copy, as before), and Default was timed through it
+on all nine sets with the same harness and clock as phase 3
+(`results-2026-11-01-apps-default.jsonl`, 18 rows, every round trip identical,
+APPRUN_LOAD=4 with the idle load near 3.6): source 9.46 MB in 1.80 / 0.61 s,
+mixed 214.3 MB in 8.8 / 1.62 s, the rest as the main run within its noise. Those
+rows replace the main run's Default rows in the report (now 131 of 198 level for
+level, Default 25 of 45), docs/BENCHMARKS.md and the website (mixed folder: 9%
+smaller than 7-Zip Ultra, 5.5x faster to compress, 2.4x to extract, Finder 4.9x;
+the 5.8x and 2.6x of 31 October were measured at an idle load of 2.4 against 3.6
+today, the same drift on the unchanged sets). One thing the re-run showed: the
+app's first round on Apple's apps and the third-party apps came out 0.3% and
+0.05% smaller than the second (56.28 against 56.44 MB). That is the zstd worker
+rule in `BlockSink::close`, two workers a block while blocks in flight allow it,
+one otherwise, which the codec notes put at 0.05 to 0.3% of size; it predates the
+code lane (the CLI gives 56.44 three times in a row) and the loaders now count
+the larger of a tool's two sizes. The text lane's bsc stays an option on record:
+before revisiting it, try libbsc's static QLFC coder and a wider parallel inverse
+BWT for the extraction cost.
 
 **The app against the engine (2026-10-31, 14:30-15:10,
 `bench/research/appvsengine.py`, timing marks in the app).** The installed app

@@ -16,6 +16,10 @@ R = WT + "bench/"
 S = tempfile.mkdtemp(prefix="appreport-") + "/"
 APPS, ZXF, ZG, FI, ENG = (R + "results-2026-10-31-apps" + x + ".jsonl" for x in ("", "-zx", "-zipgeist", "-finder", ""))
 ENG = R + "results-2026-10-31-presets.jsonl"
+# Default again on 1 November, in the app rebuilt with the code lane (bsc with the
+# binary lane's zstd as fallback), and the same preset through the engine's CLI.
+DEF = R + "results-2026-11-01-apps-default.jsonl"
+ENGDEF = R + "results-2026-11-01-default-codelane.jsonl"
 ZX = {"zstd-3", "zstd-19-long", "xz-6", "xz-9e"}
 SETS = ["jpeg", "docs", "source", "apps", "silesia", "saved", "mixed", "dmgs", "thirdparty"]
 TITLES = {"jpeg": "Photos", "docs": "PDFs and screenshots", "source": "Source code", "apps": "Apple apps", "silesia": "Silesia",
@@ -58,6 +62,9 @@ def load(path, keep=None, drop=None):
             best[k] = dict(r, rounds=1)
         else:
             b["rounds"] += 1
+            # Zipling's zstd blocks take one worker or two as blocks are in flight,
+            # 0.05 to 0.3% of size between rounds: the larger archive counts.
+            b["size"] = max(b["size"], r["size"])
             for m in ("make_s", "extract_s", "make_cpu", "extract_cpu"):
                 if r.get(m) is not None and (b.get(m) is None or r[m] < b[m]):
                     b[m] = r[m]
@@ -72,7 +79,10 @@ rows = load(APPS, drop=ZX if zx else None)
 rows.update(zx)
 rows.update(load(ZG, drop={"arca-fast-clock"}))
 rows.update(load(FI))
+default = load(DEF, keep={"arca-balanced"})
+rows.update(default)
 eng = load(ENG)
+eng.update({(s, "arca-balanced"): dict(v, tool="arca-balanced") for (s, _), v in load(ENGDEF, keep={"arca-balanced-base"}).items()})
 missing = [(s, t) for s in SETS for t in ORDER if (s, t) not in rows]
 if missing:
     sys.exit(f"missing rows: {missing}")
@@ -256,9 +266,10 @@ dd = {s: rows[(s, "arca-balanced")] for s in SETS}
 filtered = S + "apps-no-zx.jsonl"
 with open(filtered, "w") as f:
     for line in open(APPS):
-        if not zx or json.loads(line)["tool"] not in ZX:
+        tool = json.loads(line)["tool"]
+        if (not zx or tool not in ZX) and not (default and tool == "arca-balanced"):
             f.write(line)
-cmd = [sys.executable, "-I", WT + "bench/research/levels.py", filtered] + ([ZXF] if zx else []) + ["--rivals", ZG, FI]
+cmd = [sys.executable, "-I", WT + "bench/research/levels.py", filtered] + ([DEF] if default else []) + ([ZXF] if zx else []) + ["--rivals", ZG, FI]
 levels_out = subprocess.run(cmd, capture_output=True, text=True, cwd=WT).stdout
 assert "Rows won" in levels_out, levels_out[-500:]
 lv_total = re.search(r"all\s+(\d+) of (\d+)", levels_out)
@@ -282,6 +293,14 @@ if zx and os.path.exists(ZXF + ".log"):
 
 n_rows = sum(1 for _ in open(APPS))
 n_zx = sum(1 for _ in open(ZXF)) if zx else 0
+n_def = sum(1 for _ in open(DEF)) if default else 0
+def_note = (f"Default was measured again on the morning of 1 November, after the engine's code lane change (bsc on "
+            f"static libraries, ELF, PE and tar, with the binary lane's zstd as its fallback; docs/RESEARCH.md, \"Default, lane by "
+            f"lane\"), in the app rebuilt and reinstalled with it: {n_def} rows, `results-2026-11-01-apps-default.jsonl`, the same "
+            f"harness and clock, two rounds, every round trip identical. Those rows replace the main run's Default rows everywhere "
+            f"below; the main run's stay in its file for the record. Where a tool's two rounds differ in size (Zipling's zstd blocks "
+            f"take one worker or two depending on how many blocks are in flight, 0.05 to 0.3% of size on Apple's apps and the third-party "
+            f"apps), the larger archive counts." if default else "")
 zx_note = (f"zstd and xz were measured twice. The main run picked up zstd 1.5.6 and XZ Utils 5.6.4 from a conda "
            f"environment that sat first in the harness's PATH; a second pass of the same four settings on all nine sets "
            f"({n_zx} rows, `results-2026-10-31-apps-zx.jsonl`, Homebrew zstd 1.5.7 and XZ Utils 5.8.4, the current releases) "
@@ -304,9 +323,11 @@ Machine: MacBook Pro, Apple M1 Pro (8 performance + 2 efficiency cores), 32 GB, 
 27.0.1. Method, versions and set descriptions: `results-2026-10-31-apps-machine.json`. Raw rows:
 `results-2026-10-31-apps.jsonl` (Zipling, 7-Zip, WinRAR, first-pass zstd and xz),
 `results-2026-10-31-apps-zx.jsonl` (zstd and xz, second pass), `results-2026-10-31-apps-zipgeist.jsonl`,
-`results-2026-10-31-apps-finder.jsonl`. Scoring: `bench/research/levels.py`.
+`results-2026-10-31-apps-finder.jsonl`, `results-2026-11-01-apps-default.jsonl` (Default, 1 November). Scoring: `bench/research/levels.py`.
 
 {zx_note}
+
+{def_note}
 
 How each tool was timed. Zipling: the app's timing log (`defaults write com.observantsystems.zipling
 timing -bool true`), command arrived to file finished; the AppleScript round trip itself (50 to 60 ms
@@ -394,21 +415,24 @@ website compares level against level these rows stay red; if it compares the riv
 with the Zipling button that answers it, they are green rows for Fast.
 
 **2. Against the LZMA-class normal settings on size: 7-Zip Normal, Zipgeist 7z Normal and xz -6 on
-{', '.join(TITLES[s] for s in d_7z_lost)}.** Default's lanes are zstd 15 and 12 with every transform; those rivals are LZMA.
+{', '.join(TITLES[s] for s in d_7z_lost)}.** Default's lanes are zstd 15 for text and 12 for binaries, with every transform, and since
+1 November bsc on the code lane (static libraries, ELF, PE, tar; the binary lane's zstd where BWT does not pay); those rivals are LZMA.
 Default is {min(v[1] for v in d_7z.values()):.0f} to {max(v[1] for v in d_7z.values()):.0f}x faster to make and {min(v[2] for v in d_7z.values()):.0f} to {max(v[2] for v in d_7z.values()):.0f}x faster to extract than 7-Zip Normal on every set, and smaller on
-{len(d_7z_won_size)} of nine; on the three code- and text-heavy sets it is {', '.join(f'{d_7z[s][0]:.0f}%' for s in d_7z_lost)} bigger. This is the part a codec change
-could fix, and the measured options (engine runs, quiet machine, 30 and 31 October) are:
+{len(d_7z_won_size)} of nine; on the {len(d_7z_lost)} code- and binary-heavy sets it is {', '.join(f'{d_7z[s][0]:.0f}%' for s in d_7z_lost)} bigger. The lane-by-lane study of 1 November
+(docs/RESEARCH.md, "Default, lane by lane"; `results-2026-11-01-default-lanes-r1.jsonl` to `-r3.jsonl`, engine runs) measured what a
+stronger codec on one lane buys, and the code lane was taken:
 
 | Option | Source code | Silesia | Third-party apps | Cost |
 |---|---|---|---|---|
-| Default as is (this run, the app) | {mb(dd['source']['size'])} MB, {sec(dd['source']['make_s'])} s | {mb(dd['silesia']['size'])} MB, {sec(dd['silesia']['make_s'])} s | {mb(dd['thirdparty']['size'])} MB, {sec(dd['thirdparty']['make_s'])} s | — |
-| Default with bsc on the text lane | 10.21 MB, 0.95 s: wins the row | 53.07 MB, 2.32 s: still 6% bigger | 402.61 MB: still 6% bigger | extract 1.3 to 4x slower on text-heavy sets (still 2x faster than 7z Normal); DMGs make 1.05 to 5.1 s |
-| Max's codecs at Default (bsc text, LZMA2 7 binaries) | 8.23 MB, 1.61 s: wins | 49.41 MB, 6.14 s: wins | 350.23 MB, 39 s: wins | make 2 to 40x slower than today's Default; loses the normal-class rows it wins today on PDFs, apps, Saved, DMGs (make time) |
-| The lzt codec (LZMA's parse at a symbol coder's decode speed, research stage) | within 3 to 5% of LZMA at 2x its decode speed, measured on Silesia | | | needs a format change and a quiet month; the only route to LZMA's size at Default's extract speed |
+| Default before the code lane (the main run, 31 October, the app) | 11.20 MB, 1.88 s | 57.26 MB, 4.95 s | 403.0 MB, 6.82 s | — |
+| **Default as it is (1 November, the app)** | {mb(dd['source']['size'])} MB, {sec(dd['source']['make_s'])} s: beats Zipgeist 7z Normal and xz -6 | {mb(dd['silesia']['size'])} MB, {sec(dd['silesia']['make_s'])} s | {mb(dd['thirdparty']['size'])} MB, {sec(dd['thirdparty']['make_s'])} s | none: the other sets are byte for byte as before, extraction 0.1 s more on source and the Saved folder |
+| With bsc on the text lane too | 8.47 MB, 0.89 s: beats all three LZMA settings | 53.07 MB, 2.7 s: beats WinRAR Normal, the LZMA settings still 7% smaller | unchanged | extraction 1.3 to 4.6x slower wherever text is (mixed folder 1.35 to 1.93 s), still under every rival of the class; not taken, to keep the extraction margin |
+| Mach-O on LZMA2 (apps) | — | — | 342 MB, 39 s: beats the three LZMA settings, loses WinRAR and ZIP Normal on make | 6x the make time; on Apple's apps 1 row of 5 instead of 3 |
+| Max's codecs at Default (bsc text, LZMA2 7 binaries) | 8.23 MB, 1.61 s | 49.41 MB, 6.14 s | 350.23 MB, 39 s | make 2 to 40x slower; loses the normal-class rows Default wins on PDFs, apps, Saved, DMGs |
 
-Recommendation unchanged: keep Default's codecs and present Default as the middle it is, smaller
-than every normal setting on most sets and several times faster than the LZMA settings that beat it on
-size on the other three. The rows Default loses on make time are Fast's rows.
+Default stays here: smaller than every normal setting on most sets, several times faster than the LZMA
+settings that beat it on size on the others, and the rows it loses on make time are Fast's rows. The
+three LZMA rows on Silesia and 7-Zip Normal's 2% on Apple's apps need LZMA-class time; nothing cheaper buys them.
 
 ## Max and Ultra*: where the transforms cost time
 

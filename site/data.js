@@ -1,8 +1,10 @@
 // Data shared by every page. Benchmarks come from the app benchmark of 31 October to
 // 1 November 2026 (bench/results-2026-10-31-apps*.jsonl): the installed Zipling app driven
 // through its AppleScript commands and timed by its own clock, 7-Zip, WinRAR, zstd and xz as
-// processes in the same session, Finder measured in Finder itself; competitor capabilities
-// from MacPacker's comparison (macpacker.app/en/compare, 10 Aug 2026).
+// processes in the same session, Finder measured in Finder itself; Default measured again on
+// 1 November 2026 in the app rebuilt with the engine's code lane (bench/results-2026-11-01-apps-
+// default.jsonl); competitor capabilities from MacPacker's comparison (macpacker.app/en/compare,
+// 10 Aug 2026).
 
 window.ZIPLING = {
   // Tools in chart order, grouped by class so each Zipling level sits next to the
@@ -29,7 +31,7 @@ window.ZIPLING = {
   datasets: [
     { id: "mixed", name: "Mixed folder", mb: 736, what: "All five sets below in one folder", why: "A realistic \"compress this folder\" job",
       r: { finder: [324.6, 24.1, 7.90], zst3: [294.6, 5.6, 5.50], rarf: [309.8, 5.6, 3.18], fast: [281.1, 0.51, 0.82],
-           "7zn": [237.8, 26.1, 2.96], rarn: [277.8, 10.6, 3.26], xz6: [251.2, 25.1, 5.79], balanced: [216.0, 8.4, 1.49],
+           "7zn": [237.8, 26.1, 2.96], rarn: [277.8, 10.6, 3.26], xz6: [251.2, 25.1, 5.79], balanced: [214.3, 8.8, 1.62],
            "7z": [235.0, 48.5, 3.84], rar: [247.4, 21.6, 2.98], zst: [245.7, 46.1, 5.51], xz: [236.6, 87.8, 7.10], max: [192.6, 19.3, 2.55], ultra: [189.3, 28.1, 2.73] } },
     { id: "docs", name: "PDFs & screenshots", mb: 89, what: "250 PDFs and 600 PNGs from system and Xcode resources", why: "Office, PDF and screenshot-heavy folders",
       r: { finder: [50.2, 2.0, 1.25], zst3: [45.1, 0.40, 0.42], rarf: [50.0, 0.84, 0.39], fast: [41.1, 0.08, 0.12],
@@ -37,7 +39,7 @@ window.ZIPLING = {
            "7z": [38.2, 2.9, 0.83], rar: [38.7, 1.7, 0.30], zst: [38.8, 6.3, 0.41], xz: [38.8, 20.8, 1.15], max: [18.2, 10.5, 0.45], ultra: [17.8, 15.0, 0.46] } },
     { id: "jpeg", name: "Photos", mb: 98, what: "400 JPEGs from system and Xcode resources", why: "Photo folders",
       r: { finder: [93.3, 3.1, 1.23], zst3: [91.7, 0.24, 0.25], rarf: [92.5, 1.0, 0.30], fast: [89.1, 0.05, 0.08],
-           "7zn": [85.3, 6.0, 1.59], rarn: [90.9, 1.1, 0.36], xz6: [89.0, 8.2, 0.65], balanced: [69.2, 2.0, 0.70],
+           "7zn": [85.3, 6.0, 1.59], rarn: [90.9, 1.1, 0.36], xz6: [89.0, 8.2, 0.65], balanced: [69.2, 2.0, 0.66],
            "7z": [85.3, 6.4, 1.58], rar: [86.2, 2.9, 0.38], zst: [85.7, 14.5, 0.25], xz: [85.6, 38.5, 1.99], max: [69.2, 2.1, 0.68], ultra: [69.2, 2.1, 0.70] } },
     { id: "apps", name: "Mac apps", mb: 174, what: "8 apps from /System/Applications: universal Mach-O, asset catalogs, nibs, strings", why: "Software and .app bundles",
       r: { finder: [87.4, 6.7, 2.42], zst3: [76.5, 1.1, 1.14], rarf: [78.7, 1.2, 0.70], fast: [72.3, 0.13, 0.23],
@@ -45,11 +47,11 @@ window.ZIPLING = {
            "7z": [54.1, 27.7, 1.66], rar: [58.7, 5.4, 0.70], zst: [59.4, 21.3, 1.15], xz: [54.3, 57.9, 2.40], max: [49.2, 12.1, 0.70], ultra: [48.6, 14.5, 0.71] } },
     { id: "source", name: "Source code", mb: 162, what: "89 Rust crates, including vendored C (zstd, xz)", why: "Code repositories",
       r: { finder: [25.1, 6.5, 5.16], zst3: [15.1, 3.7, 3.53], rarf: [21.8, 1.7, 1.42], fast: [13.5, 0.25, 0.52],
-           "7zn": [9.2, 12.9, 1.14], rarn: [18.2, 2.4, 1.46], xz6: [10.0, 6.2, 3.48], balanced: [11.2, 1.9, 0.53],
+           "7zn": [9.2, 12.9, 1.14], rarn: [18.2, 2.4, 1.46], xz6: [10.0, 6.2, 3.48], balanced: [9.5, 1.8, 0.61],
            "7z": [8.5, 21.9, 1.16], rar: [10.2, 4.5, 1.23], zst: [9.3, 25.8, 3.50], xz: [8.3, 66.1, 3.48], max: [8.3, 1.6, 0.83], ultra: [8.1, 1.7, 1.01] } },
     { id: "silesia", name: "Generic data", mb: 212, what: "The standard Silesia compression corpus", why: "Data with no file-type tricks to exploit",
       r: { finder: [68.2, 6.2, 1.32], zst3: [66.3, 0.15, 0.21], rarf: [66.7, 0.92, 0.41], fast: [65.2, 0.17, 0.11],
-           "7zn": [49.6, 22.9, 0.98], rarn: [54.2, 3.6, 0.45], xz6: [49.5, 13.2, 0.51], balanced: [57.3, 4.9, 0.13],
+           "7zn": [49.6, 22.9, 0.98], rarn: [54.2, 3.6, 0.45], xz6: [49.5, 13.2, 0.51], balanced: [57.3, 5.0, 0.15],
            "7z": [48.7, 48.2, 1.56], rar: [53.1, 6.4, 0.45], zst: [52.6, 30.1, 0.23], xz: [48.4, 83.8, 1.99], max: [46.7, 6.2, 0.59], ultra: [45.9, 13.5, 0.84] } },
   ],
 

@@ -84,7 +84,7 @@
           <ul class="ticks">
             <li>Apple M1 Pro (8 performance + 2 efficiency cores, 32 GB), macOS 27, warm file cache, two rounds each, the better kept.</li>
             <li>Wall-clock time for every tool, and every round trip compared with the source. All were identical.</li>
-            <li>Versions: 7-Zip 26.05 (<code>7zz -mx5</code> and <code>-mx9</code>), WinRAR 7.23 (<code>rar -m1</code>, <code>-m3</code>, <code>-m5</code> solid), zstd 1.5.7, XZ Utils 5.8.4. Finder is Finder's own Compress command and Archive Utility, timed from the click to the finished file. Zipling's numbers are the app's: the installed app, driven through its AppleScript commands and timed by its own clock from the command's arrival to the finished file.</li>
+            <li>Versions: 7-Zip 26.05 (<code>7zz -mx5</code> and <code>-mx9</code>), WinRAR 7.23 (<code>rar -m1</code>, <code>-m3</code>, <code>-m5</code> solid), zstd 1.5.7, XZ Utils 5.8.4. Finder is Finder's own Compress command and Archive Utility, timed from the click to the finished file. Zipling's numbers are the app's: the installed app, driven through its AppleScript commands and timed by its own clock from the command's arrival to the finished file. Default was measured again on 1 November, after the engine gained a code lane for static libraries and executables; nothing else was re-run.</li>
             <li>Every tool waited for an idle machine: Finder on 31 October 2026, then Zipling and the command-line tools in one unattended session that night, alternating within each dataset, with the load checked before each set.</li>
             <li>Back-to-back runs vary by about ±10%, so treat small differences as ties.</li>
             <li>Public and system data only. No personal files were read.</li>
@@ -95,7 +95,7 @@
           <h2 class="h2-sm">Where Zipling is still behind.</h2>
           <ul class="behind">
             <li><strong>Max on PDF and PNG folders</strong> takes 10.5 s to compress against 7-Zip's 2.9 s, for an archive 52% smaller: re-creating the compression inside PDFs and PNGs is work the other tools skip.</li>
-            <li><strong>The default setting on apps, code and generic data</strong> trades size for speed. It is 4–32% larger than 7-Zip Ultra and 2–22% larger than 7-Zip Normal there, but 5–20× faster to compress and 2–12× faster to extract. Max beats 7-Zip on all of them.</li>
+            <li><strong>The default setting on apps, code and generic data</strong> trades size for speed. It is 4–18% larger than 7-Zip Ultra and 2–15% larger than 7-Zip Normal there, but 5–20× faster to compress and 2–11× faster to extract. Max beats 7-Zip on all of them.</li>
             <li><strong>Fast on generic data</strong> loses to <code>zstd -3</code> on compression time (0.17 against 0.15 s) at a file 2% smaller that extracts twice as fast.</li>
             <li><strong>Ultra*</strong> is 0–3% smaller than Max for up to twice the compression time. It is experimental and not in the released app.</li>
           </ul>

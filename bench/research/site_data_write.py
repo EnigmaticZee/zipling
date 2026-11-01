@@ -19,8 +19,10 @@ head_end = js.index("window.ZIPLING")
 header = """// Data shared by every page. Benchmarks come from the app benchmark of 31 October to
 // 1 November 2026 (bench/results-2026-10-31-apps*.jsonl): the installed Zipling app driven
 // through its AppleScript commands and timed by its own clock, 7-Zip, WinRAR, zstd and xz as
-// processes in the same session, Finder measured in Finder itself; competitor capabilities
-// from MacPacker's comparison (macpacker.app/en/compare, 10 Aug 2026).
+// processes in the same session, Finder measured in Finder itself; Default measured again on
+// 1 November 2026 in the app rebuilt with the engine's code lane (bench/results-2026-11-01-apps-
+// default.jsonl); competitor capabilities from MacPacker's comparison (macpacker.app/en/compare,
+// 10 Aug 2026).
 
 """
 js = header + js[head_end:]

@@ -1,0 +1,28 @@
+08:23:24 jpeg: start (load 3.5, AppleScript floor 51 ms), 1 tools x 2 rounds
+08:23:29 jpeg r1 arca-balanced: 69183215 1.98s / 0.66s
+08:23:32 jpeg r2 arca-balanced: 69183228 2.00s / 0.68s
+08:23:48 docs: start (load 3.7, AppleScript floor 51 ms), 1 tools x 2 rounds
+08:23:50 docs r1 arca-balanced: 22140749 1.36s / 0.28s
+08:23:52 docs r2 arca-balanced: 22140758 1.35s / 0.26s
+08:24:12 source: start (load 3.8, AppleScript floor 51 ms), 1 tools x 2 rounds
+08:24:16 source r1 arca-balanced: 9463715 1.80s / 0.61s
+08:24:19 source r2 arca-balanced: 9463714 1.87s / 0.65s
+08:24:36 apps: start (load 3.9, AppleScript floor 51 ms), 1 tools x 2 rounds
+08:24:39 apps r1 arca-balanced: 56276366 1.98s / 0.26s
+08:24:41 apps r2 arca-balanced: 56438893 1.39s / 0.26s
+08:25:11 silesia: start (load 3.9, AppleScript floor 52 ms), 1 tools x 2 rounds
+08:25:17 silesia r1 arca-balanced: 57256424 5.08s / 0.15s
+08:25:22 silesia r2 arca-balanced: 57256421 4.95s / 0.15s
+08:25:45 saved: start (load 3.6, AppleScript floor 52 ms), 1 tools x 2 rounds
+08:25:59 saved r1 arca-balanced: 246649281 7.90s / 1.99s
+08:26:10 saved r2 arca-balanced: 246649309 8.17s / 1.88s
+08:28:48 mixed: start (load 3.9, AppleScript floor 56 ms), 1 tools x 2 rounds
+08:29:01 mixed r1 arca-balanced: 214258184 8.80s / 1.71s
+08:29:12 mixed r2 arca-balanced: 214257593 9.02s / 1.62s
+08:30:58 dmgs: start (load 3.6, AppleScript floor 55 ms), 1 tools x 2 rounds
+08:31:00 dmgs r1 arca-balanced: 601794858 1.11s / 0.41s
+08:31:02 dmgs r2 arca-balanced: 601787313 1.16s / 0.39s
+08:31:04 thirdparty: start (load 3.6, AppleScript floor 52 ms), 1 tools x 2 rounds
+08:31:12 thirdparty r1 arca-balanced: 402765439 6.94s / 0.56s
+08:31:21 thirdparty r2 arca-balanced: 402981742 7.11s / 0.52s
+08:31:21 done

@@ -10,7 +10,7 @@
     "appearance": "dark"
   },
   "tools": {
-    "zipling": {"version": "0.1.0 (1)", "engine": "Arca, archive format 3, locked presets of 2026-10-31", "how": "the installed /Applications/Zipling.app, driven through its AppleScript compress and extract commands; the row's time is the app's own clock (its timing log, from the command's arrival in the app to the finished file; make_s_app); the AppleScript wall time minus a measured no-work round trip (make_s_osa) and the raw wall time (make_s_raw) are kept beside it; CPU and peak footprint of the app process sampled through proc_pid_rusage"},
+    "zipling": {"version": "0.1.0 (1)", "engine": "Arca, archive format 3, locked presets of 2026-10-31; Default's code lane (bsc on static libraries, ELF, PE and tar, the binary lane's zstd 12 as fallback) added 2026-11-01, and Default measured again that morning in the rebuilt app", "how": "the installed /Applications/Zipling.app, driven through its AppleScript compress and extract commands; the row's time is the app's own clock (its timing log, from the command's arrival in the app to the finished file; make_s_app); the AppleScript wall time minus a measured no-work round trip (make_s_osa) and the raw wall time (make_s_raw) are kept beside it; CPU and peak footprint of the app process sampled through proc_pid_rusage"},
     "zipgeist": {"version": "1.0.0 (1)", "how": "the installed app, driven through its Finder menu (Compress As > Options), the only way it compresses; timed by a stopwatch from the click on Compress to the last busy moment of its processes, with the archive's write time as a floor; six settings: ZIP Fast, ZIP Normal, tar.zst Fast, 7z Normal, 7z Best, tar.xz Best"},
     "finder": {"version": "macOS 27.0.1", "how": "Finder's Compress command and double-click to expand (Archive Utility), timed by the same stopwatch on Archive Utility's processes; also ditto -c -k --sequesterRsrc --keepParent / ditto -x -k from the command line, which is the same engine (finder-zip rows)"},
     "7zip": {"version": "7-Zip (z) 26.05 arm64, 2026-10-21", "how": "7zz a -t7z -mx=5 (Normal) and -mx=9 (Ultra), symbolic links kept (-snl); extract with -snld20. Stands in for Keka and BetterZip, which use 7-Zip's code; neither has its own engine"},
@@ -36,13 +36,16 @@
     "Zipling and the command-line rivals alternate within a set (bench/research/apprun.py). The main run (phase 3) ran unattended from 00:05 to 02:32 on 1 November 2026; the log's clock jumps back an hour between the disk images and the third-party apps because daylight saving time ended at 02:00.",
     "zstd and xz were measured twice: the main run picked up zstd 1.5.6 and XZ Utils 5.6.4 from a conda environment first in the harness's PATH; a second pass of the same four settings on all nine sets with the Homebrew releases (zstd 1.5.7, XZ Utils 5.8.4; APPRUN_LOAD=4, same night) replaces those rows in the report and on the website. The first-pass rows stay in the main file for the record.",
     "Zipgeist and Finder's Compress need the screen: they ran under full-screen control, which keeps WindowServer and the Claude app at about one core together; one Zipling Fast run per set in the same session (arca-fast-clock) shows the effect on the clock.",
-    "A row is won when Zipling is smaller, faster to make and faster to extract at once; 1:1 by level (Fast against the fast settings, Default against the normal ones, Max and Ultra against the best), upsets listed separately (bench/research/levels.py)."
+    "A row is won when Zipling is smaller, faster to make and faster to extract at once; 1:1 by level (Fast against the fast settings, Default against the normal ones, Max and Ultra against the best), upsets listed separately (bench/research/levels.py).",
+    "Default was measured again on the morning of 1 November 2026 after the engine's code lane change, in the app rebuilt and reinstalled with it (bench/results-2026-11-01-apps-default.jsonl): the same harness and clock, two rounds, APPRUN_LOAD=4 (the idle load sat near 3 with the animated wallpaper), every round trip identical. Those rows replace the main run's Default rows in the report, the benchmark document and the website; the main run's stay in its file for the record. No rival was re-run."
   ],
   "files": {
     "zipling_and_cli_rivals": "bench/results-2026-10-31-apps.jsonl",
     "zstd_xz_second_pass": "bench/results-2026-10-31-apps-zx.jsonl",
     "report": "bench/report-2026-10-31-apps.md",
     "zipgeist": "bench/results-2026-10-31-apps-zipgeist.jsonl",
-    "finder_gui": "bench/results-2026-10-31-apps-finder.jsonl"
+    "finder_gui": "bench/results-2026-10-31-apps-finder.jsonl",
+    "default_rerun": "bench/results-2026-11-01-apps-default.jsonl",
+    "default_lane_study": "bench/results-2026-11-01-default-lanes-r1.jsonl, -r2.jsonl, -r3.jsonl (engine runs behind the code lane decision) and bench/results-2026-11-01-default-codelane.jsonl (the new preset through the engine CLI)"
   }
 }

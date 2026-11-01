@@ -75,7 +75,9 @@ def load(path):
         ok = [r for r in rs if "error" not in r]
         b = {"tool": key[1], "errors": [r["error"] for r in rs if "error" in r], "load": [r["load"] for r in rs]}
         if ok:
-            b["size"] = ok[0]["size"]
+            # Zipling's zstd blocks take one worker or two as blocks are in flight,
+            # 0.05 to 0.3% of size between rounds: the larger archive counts.
+            b["size"] = max(r["size"] for r in ok)
             for m in ("make_s", "extract_s", "make_cpu", "extract_cpu"):
                 vals = [r[m] for r in ok if r.get(m) is not None]
                 b[m] = min(vals) if vals else None

@@ -34,6 +34,7 @@ def load(path, keep=None, drop=None):
         else:
             for m in ("make_s", "extract_s"):
                 b[m] = min(b[m], r[m])
+            b["size"] = max(b["size"], r["size"])  # rounds can differ by 0.05-0.3%: the larger counts
             for m in ("make_mb", "extract_mb"):
                 if r.get(m) is not None:
                     b[m] = max(b.get(m) or 0, r[m])
@@ -45,6 +46,10 @@ assert len(zx) == 36, f"second pass incomplete: {len(zx)} rows"
 rows = load(R + "results-2026-10-31-apps.jsonl", drop=ZX)
 rows.update(zx)
 rows.update(load(R + "results-2026-10-31-apps-finder.jsonl"))
+# Default again on 1 November, in the app rebuilt with the engine's code lane.
+default = load(R + "results-2026-11-01-apps-default.jsonl", keep={"arca-balanced"})
+assert len(default) == 9, f"Default re-run incomplete: {len(default)} sets"
+rows.update(default)
 
 
 def mb(v):
@@ -119,7 +124,9 @@ identical.**
 
 **Machine.** MacBook Pro, Apple M1 Pro (8 performance + 2 efficiency cores), 32 GB, internal SSD,
 macOS 27.0.1. Each dataset is read once before its runs, so every tool starts with the files in the
-page cache. Two rounds per tool, the second in reverse order, the better kept. A dataset's runs start
+page cache. Two rounds per tool, the second in reverse order, the better time kept; where the two
+rounds differ in size (Zipling's blocks take one or two threads as the machine allows, 0.05 to 0.3%),
+the larger archive counts. A dataset's runs start
 only when the 1-minute load is under 2.5. Back-to-back runs vary by about ±10%, so treat small
 differences as ties.
 
@@ -128,9 +135,13 @@ Utility by double-click), timed from the click to the finished file. Zipling and
 tools in one unattended session the night of 31 October to 1 November 2026, alternating within each
 dataset so that no tool gets a quieter machine than another. zstd and xz were re-measured in a second
 pass the same night with the current Homebrew releases, after the first pass had picked up older
-copies; the second pass is what the tables show.
+copies; the second pass is what the tables show. Zipling's Default was measured again on the morning
+of 1 November 2026, in the app rebuilt after the engine's code lane change (static libraries and
+executables compressed with BWT where it pays), with the same harness and clock; those rows replace
+the earlier Default rows in the tables. Nothing else was re-run.
 
-**Versions.** Zipling 0.1.0 (Arca engine, archive format 3, the presets locked on 31 October 2026);
+**Versions.** Zipling 0.1.0 (Arca engine, archive format 3, the presets locked on 31 October 2026,
+Default's code lane added 1 November);
 7-Zip 26.05 (`7zz -mx5` Normal and `-mx9` Ultra, links kept); WinRAR 7.23 for macOS, command line
 (`rar -m1`, `-m3`, `-m5 -s`); zstd 1.5.7 (`tar | zstd -3 -T0` and `-19 --long=27 -T0`); XZ Utils 5.8.4
 (`tar | xz -6 -T0` and `-9e -T0`); Finder from macOS 27.0.1. Keka and BetterZip compress 7z through
@@ -147,8 +158,9 @@ dataset) is not charged to the app. Peak memory is the app process's physical fo
 
 Raw rows: `bench/results-2026-10-31-apps.jsonl` (Zipling, 7-Zip, WinRAR, and the first zstd and xz
 pass), `bench/results-2026-10-31-apps-zx.jsonl` (zstd and xz, second pass),
-`bench/results-2026-10-31-apps-finder.jsonl` (Finder), `bench/results-2026-10-31-apps-machine.json`
-(machine, versions, method). Harness: `bench/research/apprun.py`; scoring: `bench/research/levels.py`.
+`bench/results-2026-10-31-apps-finder.jsonl` (Finder), `bench/results-2026-11-01-apps-default.jsonl`
+(Default, 1 November), `bench/results-2026-10-31-apps-machine.json` (machine, versions, method).
+Harness: `bench/research/apprun.py`; scoring: `bench/research/levels.py`.
 
 ## Datasets
 

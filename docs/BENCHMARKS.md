@@ -7,7 +7,9 @@ identical.**
 
 **Machine.** MacBook Pro, Apple M1 Pro (8 performance + 2 efficiency cores), 32 GB, internal SSD,
 macOS 27.0.1. Each dataset is read once before its runs, so every tool starts with the files in the
-page cache. Two rounds per tool, the second in reverse order, the better kept. A dataset's runs start
+page cache. Two rounds per tool, the second in reverse order, the better time kept; where the two
+rounds differ in size (Zipling's blocks take one or two threads as the machine allows, 0.05 to 0.3%),
+the larger archive counts. A dataset's runs start
 only when the 1-minute load is under 2.5. Back-to-back runs vary by about ±10%, so treat small
 differences as ties.
 
@@ -16,9 +18,13 @@ Utility by double-click), timed from the click to the finished file. Zipling and
 tools in one unattended session the night of 31 October to 1 November 2026, alternating within each
 dataset so that no tool gets a quieter machine than another. zstd and xz were re-measured in a second
 pass the same night with the current Homebrew releases, after the first pass had picked up older
-copies; the second pass is what the tables show.
+copies; the second pass is what the tables show. Zipling's Default was measured again on the morning
+of 1 November 2026, in the app rebuilt after the engine's code lane change (static libraries and
+executables compressed with BWT where it pays), with the same harness and clock; those rows replace
+the earlier Default rows in the tables. Nothing else was re-run.
 
-**Versions.** Zipling 0.1.0 (Arca engine, archive format 3, the presets locked on 31 October 2026);
+**Versions.** Zipling 0.1.0 (Arca engine, archive format 3, the presets locked on 31 October 2026,
+Default's code lane added 1 November);
 7-Zip 26.05 (`7zz -mx5` Normal and `-mx9` Ultra, links kept); WinRAR 7.23 for macOS, command line
 (`rar -m1`, `-m3`, `-m5 -s`); zstd 1.5.7 (`tar | zstd -3 -T0` and `-19 --long=27 -T0`); XZ Utils 5.8.4
 (`tar | xz -6 -T0` and `-9e -T0`); Finder from macOS 27.0.1. Keka and BetterZip compress 7z through
@@ -35,8 +41,9 @@ dataset) is not charged to the app. Peak memory is the app process's physical fo
 
 Raw rows: `bench/results-2026-10-31-apps.jsonl` (Zipling, 7-Zip, WinRAR, and the first zstd and xz
 pass), `bench/results-2026-10-31-apps-zx.jsonl` (zstd and xz, second pass),
-`bench/results-2026-10-31-apps-finder.jsonl` (Finder), `bench/results-2026-10-31-apps-machine.json`
-(machine, versions, method). Harness: `bench/research/apprun.py`; scoring: `bench/research/levels.py`.
+`bench/results-2026-10-31-apps-finder.jsonl` (Finder), `bench/results-2026-11-01-apps-default.jsonl`
+(Default, 1 November), `bench/results-2026-10-31-apps-machine.json` (machine, versions, method).
+Harness: `bench/research/apprun.py`; scoring: `bench/research/levels.py`.
 
 ## Datasets
 
@@ -53,9 +60,9 @@ Public and system data only; no personal files were read. Sizes are the folders'
 
 ## Headline (mixed folder, 736 MB)
 
-- **Zipling Default against 7-Zip Ultra:** 8% smaller, 5.8× faster to compress, 2.6× faster to extract (1.49 against 3.84 s).
+- **Zipling Default against 7-Zip Ultra:** 9% smaller, 5.5× faster to compress, 2.4× faster to extract (1.62 against 3.84 s).
 - **Zipling Max against 7-Zip Ultra:** 18% smaller (192.6 against 235.0 MB) in 40% of the compression time, 1.5× faster to extract.
-- **Zipling Default against Finder's Compress:** 33% smaller, 2.9× faster to compress, 5.3× faster to extract.
+- **Zipling Default against Finder's Compress:** 34% smaller, 2.7× faster to compress, 4.9× faster to extract.
 - **Zipling Fast against Finder's Compress:** 13% smaller, 47× faster to compress, 10× faster to extract.
 - **Zipling Fast against `tar | zstd -3`:** 5% smaller, 11× faster to compress, 7× faster to extract.
 - **PDFs and screenshots:** Default is 42% smaller than 7-Zip Ultra and 2.1× faster to compress; Max is 52% smaller.
@@ -64,9 +71,9 @@ Public and system data only; no personal files were read. Sizes are the folders'
 ## Where Zipling is behind
 
 - **Default on Mac apps** is 4% larger than 7-Zip Ultra and 2% larger than 7-Zip Normal, for 12× to 20× less compression time and 5× to 6× less extraction time. Max is 9% smaller than 7-Zip Ultra there, in 12.1 s against 27.7 s.
-- **Default on source code** is 32% larger than 7-Zip Ultra and 22% larger than 7-Zip Normal, for 7× to 12× less compression time and 2× less extraction time. Max is 2% smaller than 7-Zip Ultra there, in 1.55 s against 21.9 s.
-- **Default on generic data** is 18% larger than 7-Zip Ultra and 15% larger than 7-Zip Normal, for 5× to 10× less compression time and 7× to 12× less extraction time. Max is 4% smaller than 7-Zip Ultra there, in 6.22 s against 48.2 s.
-- **Max on PDFs and screenshots** takes 10.5 s to compress against 7-Zip Ultra's 2.86 s, for an archive 52% smaller: re-creating the compression inside PDFs and PNGs is work the other tools skip. Default is 42% smaller than 7-Zip Ultra on the same folder in 1.38 s.
+- **Default on source code** is 11% larger than 7-Zip Ultra and 3% larger than 7-Zip Normal, for 7× to 12× less compression time and 2× less extraction time. Max is 2% smaller than 7-Zip Ultra there, in 1.55 s against 21.9 s.
+- **Default on generic data** is 18% larger than 7-Zip Ultra and 15% larger than 7-Zip Normal, for 5× to 10× less compression time and 7× to 11× less extraction time. Max is 4% smaller than 7-Zip Ultra there, in 6.22 s against 48.2 s.
+- **Max on PDFs and screenshots** takes 10.5 s to compress against 7-Zip Ultra's 2.86 s, for an archive 52% smaller: re-creating the compression inside PDFs and PNGs is work the other tools skip. Default is 42% smaller than 7-Zip Ultra on the same folder in 1.35 s.
 - **Fast on generic data** loses to `zstd -3` on compression time (0.17 against 0.15 s) at a file 2% smaller that extracts 1.9× faster.
 - **Ultra*** is 0 to 3% smaller than Max for 5 to 117% more compression time. It is experimental and not in the released app.
 
@@ -90,7 +97,7 @@ All five sets below in one folder. A realistic "compress this folder" job.
 | 7-Zip Normal (-mx5) | 237.8 MB | 32% | 26.1 s | 2.96 s | 2523 MB |
 | WinRAR Normal (-m3) | 277.8 MB | 38% | 10.6 s | 3.26 s | 306 MB |
 | tar + xz -6 | 251.2 MB | 34% | 25.1 s | 5.79 s | 1357 MB |
-| **Zipling Default** | 216.0 MB | 29% | 8.39 s | 1.49 s | 3549 MB |
+| **Zipling Default** | 214.3 MB | 29% | 8.80 s | 1.62 s | 3972 MB |
 | *Strongest settings* | | | | | |
 | 7-Zip Ultra (-mx9) | 235.0 MB | 32% | 48.5 s | 3.84 s | 6874 MB |
 | WinRAR Best (-m5, solid) | 247.4 MB | 34% | 21.6 s | 2.98 s | 578 MB |
@@ -114,7 +121,7 @@ All five sets below in one folder. A realistic "compress this folder" job.
 | 7-Zip Normal (-mx5) | 38.29 MB | 43% | 2.47 s | 0.80 s | 382 MB |
 | WinRAR Normal (-m3) | 49.75 MB | 56% | 1.08 s | 0.36 s | 126 MB |
 | tar + xz -6 | 43.29 MB | 49% | 4.14 s | 0.64 s | 505 MB |
-| **Zipling Default** | 22.14 MB | 25% | 1.38 s | 0.26 s | 1224 MB |
+| **Zipling Default** | 22.14 MB | 25% | 1.35 s | 0.26 s | 1452 MB |
 | *Strongest settings* | | | | | |
 | 7-Zip Ultra (-mx9) | 38.25 MB | 43% | 2.86 s | 0.83 s | 920 MB |
 | WinRAR Best (-m5, solid) | 38.74 MB | 44% | 1.74 s | 0.30 s | 567 MB |
@@ -138,7 +145,7 @@ All five sets below in one folder. A realistic "compress this folder" job.
 | 7-Zip Normal (-mx5) | 85.29 MB | 87% | 6.01 s | 1.59 s | 381 MB |
 | WinRAR Normal (-m3) | 90.93 MB | 93% | 1.12 s | 0.36 s | 131 MB |
 | tar + xz -6 | 89.04 MB | 91% | 8.22 s | 0.65 s | 554 MB |
-| **Zipling Default** | 69.18 MB | 71% | 2.00 s | 0.70 s | 2238 MB |
+| **Zipling Default** | 69.18 MB | 71% | 1.98 s | 0.66 s | 2270 MB |
 | *Strongest settings* | | | | | |
 | 7-Zip Ultra (-mx9) | 85.29 MB | 87% | 6.40 s | 1.58 s | 983 MB |
 | WinRAR Best (-m5, solid) | 86.21 MB | 88% | 2.89 s | 0.38 s | 571 MB |
@@ -162,7 +169,7 @@ All five sets below in one folder. A realistic "compress this folder" job.
 | 7-Zip Normal (-mx5) | 55.26 MB | 32% | 16.8 s | 1.41 s | 878 MB |
 | WinRAR Normal (-m3) | 64.68 MB | 37% | 2.51 s | 0.76 s | 300 MB |
 | tar + xz -6 | 58.97 MB | 34% | 8.47 s | 1.26 s | 938 MB |
-| **Zipling Default** | 56.44 MB | 32% | 1.38 s | 0.26 s | 1572 MB |
+| **Zipling Default** | 56.44 MB | 32% | 1.39 s | 0.26 s | 973 MB |
 | *Strongest settings* | | | | | |
 | 7-Zip Ultra (-mx9) | 54.10 MB | 31% | 27.7 s | 1.66 s | 1759 MB |
 | WinRAR Best (-m5, solid) | 58.69 MB | 34% | 5.40 s | 0.70 s | 574 MB |
@@ -186,7 +193,7 @@ All five sets below in one folder. A realistic "compress this folder" job.
 | 7-Zip Normal (-mx5) | 9.15 MB | 6% | 12.9 s | 1.14 s | 794 MB |
 | WinRAR Normal (-m3) | 18.15 MB | 11% | 2.38 s | 1.46 s | 59 MB |
 | tar + xz -6 | 9.96 MB | 6% | 6.22 s | 3.48 s | 932 MB |
-| **Zipling Default** | 11.20 MB | 7% | 1.88 s | 0.53 s | 880 MB |
+| **Zipling Default** | 9.46 MB | 6% | 1.80 s | 0.61 s | 1101 MB |
 | *Strongest settings* | | | | | |
 | 7-Zip Ultra (-mx9) | 8.51 MB | 5% | 21.9 s | 1.16 s | 1676 MB |
 | WinRAR Best (-m5, solid) | 10.15 MB | 6% | 4.48 s | 1.23 s | 551 MB |
@@ -210,7 +217,7 @@ The standard Silesia compression corpus. Data with no file-type tricks to exploi
 | 7-Zip Normal (-mx5) | 49.60 MB | 23% | 22.9 s | 0.98 s | 904 MB |
 | WinRAR Normal (-m3) | 54.21 MB | 26% | 3.64 s | 0.45 s | 297 MB |
 | tar + xz -6 | 49.50 MB | 23% | 13.2 s | 0.51 s | 1088 MB |
-| **Zipling Default** | 57.26 MB | 27% | 4.95 s | 0.13 s | 1011 MB |
+| **Zipling Default** | 57.26 MB | 27% | 4.95 s | 0.15 s | 1407 MB |
 | *Strongest settings* | | | | | |
 | 7-Zip Ultra (-mx9) | 48.69 MB | 23% | 48.2 s | 1.56 s | 2084 MB |
 | WinRAR Best (-m5, solid) | 53.12 MB | 25% | 6.36 s | 0.45 s | 572 MB |

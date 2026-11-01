@@ -14,9 +14,11 @@ Machine: MacBook Pro, Apple M1 Pro (8 performance + 2 efficiency cores), 32 GB, 
 27.0.1. Method, versions and set descriptions: `results-2026-10-31-apps-machine.json`. Raw rows:
 `results-2026-10-31-apps.jsonl` (Zipling, 7-Zip, WinRAR, first-pass zstd and xz),
 `results-2026-10-31-apps-zx.jsonl` (zstd and xz, second pass), `results-2026-10-31-apps-zipgeist.jsonl`,
-`results-2026-10-31-apps-finder.jsonl`. Scoring: `bench/research/levels.py`.
+`results-2026-10-31-apps-finder.jsonl`, `results-2026-11-01-apps-default.jsonl` (Default, 1 November). Scoring: `bench/research/levels.py`.
 
 zstd and xz were measured twice. The main run picked up zstd 1.5.6 and XZ Utils 5.6.4 from a conda environment that sat first in the harness's PATH; a second pass of the same four settings on all nine sets (72 rows, `results-2026-10-31-apps-zx.jsonl`, Homebrew zstd 1.5.7 and XZ Utils 5.8.4, the current releases) replaces those rows everywhere below. The first-pass rows stay in the raw file for the record.
+
+Default was measured again on the morning of 1 November, after the engine's code lane change (bsc on static libraries, ELF, PE and tar, with the binary lane's zstd as its fallback; docs/RESEARCH.md, "Default, lane by lane"), in the app rebuilt and reinstalled with it: 18 rows, `results-2026-11-01-apps-default.jsonl`, the same harness and clock, two rounds, every round trip identical. Those rows replace the main run's Default rows everywhere below; the main run's stay in its file for the record. Where a tool's two rounds differ in size (Zipling's zstd blocks take one worker or two depending on how many blocks are in flight, 0.05 to 0.3% of size on Apple's apps and the third-party apps), the larger archive counts.
 
 How each tool was timed. Zipling: the app's timing log (`defaults write com.observantsystems.zipling
 timing -bool true`), command arrived to file finished; the AppleScript round trip itself (50 to 60 ms
@@ -41,27 +43,27 @@ the released app.
 | Level | Rows won | Lost on |
 |---|---:|---|
 | Fast | 42 of 45 | Zipgeist tar.zst Fast: make on Silesia · zstd -3: make on Silesia · WinRAR Fastest: size on Disk images |
-| Default | 23 of 45 | Zipgeist ZIP Normal: make, extract on Photos; make on PDFs and screenshots, Source code, Apple apps, Silesia, Saved folder, Mixed folder, Disk images · Zipgeist 7z Normal: size on Source code, Silesia, Third-party apps · 7-Zip Normal: size on Source code, Apple apps, Silesia, Third-party apps · WinRAR Normal: make, extract on Photos; make on PDFs and screenshots; size, make on Silesia · xz -6: extract on Photos; size on Source code, Silesia, Third-party apps |
+| Default | 25 of 45 | Zipgeist ZIP Normal: make, extract on Photos, Saved folder, Mixed folder; make on PDFs and screenshots, Source code, Apple apps, Silesia, Disk images · Zipgeist 7z Normal: size on Silesia, Third-party apps · 7-Zip Normal: size on Source code, Apple apps, Silesia, Third-party apps · WinRAR Normal: make, extract on Photos; make on PDFs and screenshots; size, make on Silesia · xz -6: extract on Photos; size on Silesia, Third-party apps |
 | Max | 36 of 54 | Zipgeist 7z Best: make on PDFs and screenshots, Apple apps; make, extract on Disk images · Zipgeist tar.xz Best: make on PDFs and screenshots, Apple apps; make, extract on Disk images · 7-Zip Ultra: make on PDFs and screenshots; make, extract on Disk images · WinRAR Best: extract on Photos, Silesia; make, extract on PDFs and screenshots, Disk images; make on Apple apps · zstd -19 --long: extract on Photos, Silesia; make, extract on PDFs and screenshots, Disk images · xz -9e: extract on Disk images |
 | Ultra* | 28 of 54 | Zipgeist 7z Best: make on PDFs and screenshots, Apple apps, Saved folder, Third-party apps; make, extract on Disk images · Zipgeist tar.xz Best: make on PDFs and screenshots, Apple apps, Saved folder, Mixed folder, Third-party apps; make, extract on Disk images · 7-Zip Ultra: make on PDFs and screenshots; make, extract on Disk images · WinRAR Best: extract on Photos; make, extract on PDFs and screenshots, Apple apps, Silesia, Disk images; make on Saved folder, Mixed folder, Third-party apps · zstd -19 --long: extract on Photos, Silesia; make, extract on PDFs and screenshots, Disk images · xz -9e: extract on Disk images |
 
-**All levels: 129 of 198.** Allowing any Zipling level against each rival
+**All levels: 131 of 198.** Allowing any Zipling level against each rival
 result, 135 of 144 results are beaten.
 
-By rival family, level against level: Zipgeist Fast 17/18, Default 7/18, Max 12/18, Ultra* 7/18
+By rival family, level against level: Zipgeist Fast 17/18, Default 8/18, Max 12/18, Ultra* 7/18
 (any level: 53 of 54); the command-line tools (7-Zip, WinRAR, zstd, xz)
-Fast 16/18, Default 16/27, Max 24/36, Ultra* 21/36 (any level: 73 of 81);
+Fast 16/18, Default 17/27, Max 24/36, Ultra* 21/36 (any level: 73 of 81);
 Finder's Compress 9 of 9.
 
 ## Upsets: a lower level beating a higher rival setting on all three
 
 - **Zipling Fast beats Zipgeist ZIP Normal** on 9 of 9 sets (Photos, PDFs and screenshots, Source code, Apple apps, Silesia, Saved folder, Mixed folder, Disk images, Third-party apps): 1 to 53% smaller, 1.1 to 12.1x faster to make, 1.7 to 6.8x faster to extract.
-- **Zipling Default beats Zipgeist 7z Best** on 6 of 9 sets (Photos, PDFs and screenshots, Apple apps, Saved folder, Mixed folder, Disk images): 2 to 43% smaller, 1.3 to 8.0x faster to make, 1.9 to 6.6x faster to extract.
-- **Zipling Default beats Zipgeist tar.xz Best** on 6 of 9 sets (Photos, PDFs and screenshots, Apple apps, Saved folder, Mixed folder, Disk images): 2 to 43% smaller, 1.3 to 8.0x faster to make, 1.5 to 5.0x faster to extract.
-- **Zipling Default beats 7-Zip Ultra** on 5 of 9 sets (Photos, PDFs and screenshots, Saved folder, Mixed folder, Disk images): 1 to 42% smaller, 2.1 to 18.5x faster to make, 2.3 to 5.3x faster to extract.
-- **Zipling Default beats WinRAR Best** on 5 of 9 sets (PDFs and screenshots, Apple apps, Saved folder, Mixed folder, Disk images): 2 to 43% smaller, 1.3 to 16.9x faster to make, 1.2 to 4.4x faster to extract.
-- **Zipling Default beats xz -9e** on 5 of 9 sets (Photos, PDFs and screenshots, Saved folder, Mixed folder, Disk images): 1 to 43% smaller, 10.5 to 97.3x faster to make, 2.8 to 7.9x faster to extract.
-- **Zipling Default beats zstd -19 --long** on 5 of 9 sets (PDFs and screenshots, Apple apps, Saved folder, Mixed folder, Disk images): 1 to 43% smaller, 4.5 to 34.5x faster to make, 1.3 to 6.1x faster to extract.
+- **Zipling Default beats Zipgeist 7z Best** on 7 of 9 sets (Photos, PDFs and screenshots, Source code, Apple apps, Saved folder, Mixed folder, Disk images): 2 to 43% smaller, 1.4 to 7.4x faster to make, 1.7 to 6.7x faster to extract.
+- **Zipling Default beats WinRAR Best** on 6 of 9 sets (PDFs and screenshots, Source code, Apple apps, Saved folder, Mixed folder, Disk images): 2 to 43% smaller, 1.3 to 15.6x faster to make, 1.2 to 3.8x faster to extract.
+- **Zipling Default beats Zipgeist tar.xz Best** on 6 of 9 sets (Photos, PDFs and screenshots, Apple apps, Saved folder, Mixed folder, Disk images): 2 to 43% smaller, 1.3 to 7.3x faster to make, 1.6 to 4.7x faster to extract.
+- **Zipling Default beats 7-Zip Ultra** on 5 of 9 sets (Photos, PDFs and screenshots, Saved folder, Mixed folder, Disk images): 1 to 42% smaller, 2.1 to 17.0x faster to make, 2.1 to 4.6x faster to extract.
+- **Zipling Default beats xz -9e** on 5 of 9 sets (Photos, PDFs and screenshots, Saved folder, Mixed folder, Disk images): 1 to 43% smaller, 10.0 to 89.6x faster to make, 3.0 to 6.9x faster to extract.
+- **Zipling Default beats zstd -19 --long** on 5 of 9 sets (PDFs and screenshots, Apple apps, Saved folder, Mixed folder, Disk images): 1 to 43% smaller, 4.6 to 31.8x faster to make, 1.2 to 5.7x faster to extract.
 - **Zipling Fast beats WinRAR Normal** on 4 of 9 sets (Photos, PDFs and screenshots, Source code, Saved folder): 0 to 25% smaller, 9.7 to 20.6x faster to make, 2.8 to 4.8x faster to extract.
 - **Zipling Fast beats xz -6** on 1 of 9 sets (PDFs and screenshots): 5% smaller, 55.0x faster to make, 5.4x faster to extract.
 
@@ -87,17 +89,17 @@ Finder's Compress 9 of 9.
 
 | Set | Zipgeist ZIP Normal | Zipgeist 7z Normal | 7-Zip Normal | WinRAR Normal | xz -6 |
 |---|---|---|---|---|---|
-| Photos | ❌ 25x slower to make, 1.3x slower to extract | ✅ | ✅ | ❌ 1.8x slower to make, 1.9x slower to extract | ❌ 1.1x slower to extract |
-| PDFs and screenshots | ❌ 11x slower to make | ✅ | ✅ | ❌ 1.3x slower to make | ✅ |
-| Source code | ❌ 4x slower to make | ❌ 7% bigger | ❌ 22% bigger | ✅ | ❌ 12% bigger |
+| Photos | ❌ 25x slower to make, 1.3x slower to extract | ✅ | ✅ | ❌ 1.8x slower to make, 1.8x slower to extract | ❌ 1.0x slower to extract |
+| PDFs and screenshots | ❌ 10x slower to make | ✅ | ✅ | ❌ 1.3x slower to make | ✅ |
+| Source code | ❌ 4x slower to make | ✅ | ❌ 3% bigger | ✅ | ✅ |
 | Apple apps | ❌ 1.4x slower to make | ✅ | ❌ 2% bigger | ✅ | ✅ |
 | Silesia | ❌ 4x slower to make | ❌ 15% bigger | ❌ 15% bigger | ❌ 6% bigger, 1.4x slower to make | ❌ 16% bigger |
-| Saved folder | ❌ 4x slower to make | ✅ | ✅ | ✅ | ✅ |
-| Mixed folder | ❌ 3x slower to make | ✅ | ✅ | ✅ | ✅ |
-| Disk images | ❌ 4x slower to make | ✅ | ✅ | ✅ | ✅ |
+| Saved folder | ❌ 3x slower to make, 1.0x slower to extract | ✅ | ✅ | ✅ | ✅ |
+| Mixed folder | ❌ 4x slower to make, 1.0x slower to extract | ✅ | ✅ | ✅ | ✅ |
+| Disk images | ❌ 5x slower to make | ✅ | ✅ | ✅ | ✅ |
 | Third-party apps | ✅ | ❌ 6% bigger | ❌ 9% bigger | ✅ | ❌ 3% bigger |
 
-**Default: 23 of 45 won.**
+**Default: 25 of 45 won.**
 
 ### Zipling Max
 
@@ -143,7 +145,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 92.06 MB | 0.10 s | 0.48 s |
 | tar + zstd -3 | 91.72 MB | 0.24 s | 0.25 s |
 | WinRAR Fastest (-m1) | 92.51 MB | 1.05 s | 0.30 s |
-| **Zipling Default** | 69.18 MB | 2.00 s | 0.70 s |
+| **Zipling Default** | 69.18 MB | 1.98 s | 0.66 s |
 | Zipgeist ZIP Normal | 98.47 MB | 0.08 s | 0.52 s |
 | Zipgeist 7z Normal | 86.04 MB | 2.66 s | 1.75 s |
 | 7-Zip Normal (-mx5) | 85.29 MB | 6.01 s | 1.59 s |
@@ -168,7 +170,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 45.24 MB | 0.11 s | 0.50 s |
 | tar + zstd -3 | 45.07 MB | 0.40 s | 0.42 s |
 | WinRAR Fastest (-m1) | 50.04 MB | 0.84 s | 0.39 s |
-| **Zipling Default** | 22.14 MB | 1.38 s | 0.26 s |
+| **Zipling Default** | 22.14 MB | 1.35 s | 0.26 s |
 | Zipgeist ZIP Normal | 87.89 MB | 0.13 s | 0.58 s |
 | Zipgeist 7z Normal | 38.71 MB | 1.72 s | 1.75 s |
 | 7-Zip Normal (-mx5) | 38.29 MB | 2.47 s | 0.80 s |
@@ -193,7 +195,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 16.99 MB | 0.51 s | 0.88 s |
 | tar + zstd -3 | 15.09 MB | 3.72 s | 3.53 s |
 | WinRAR Fastest (-m1) | 21.82 MB | 1.72 s | 1.42 s |
-| **Zipling Default** | 11.20 MB | 1.88 s | 0.53 s |
+| **Zipling Default** | 9.46 MB | 1.80 s | 0.61 s |
 | Zipgeist ZIP Normal | 21.20 MB | 0.48 s | 0.90 s |
 | Zipgeist 7z Normal | 10.47 MB | 5.42 s | 1.05 s |
 | 7-Zip Normal (-mx5) | 9.15 MB | 12.9 s | 1.14 s |
@@ -218,7 +220,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 86.23 MB | 0.29 s | 0.71 s |
 | tar + zstd -3 | 76.47 MB | 1.06 s | 1.14 s |
 | WinRAR Fastest (-m1) | 78.68 MB | 1.24 s | 0.70 s |
-| **Zipling Default** | 56.44 MB | 1.38 s | 0.26 s |
+| **Zipling Default** | 56.44 MB | 1.39 s | 0.26 s |
 | Zipgeist ZIP Normal | 86.33 MB | 0.98 s | 0.77 s |
 | Zipgeist 7z Normal | 59.58 MB | 5.79 s | 0.97 s |
 | 7-Zip Normal (-mx5) | 55.26 MB | 16.8 s | 1.41 s |
@@ -243,7 +245,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 73.31 MB | 0.13 s | 0.64 s |
 | tar + zstd -3 | 66.25 MB | 0.15 s | 0.21 s |
 | WinRAR Fastest (-m1) | 66.68 MB | 0.92 s | 0.41 s |
-| **Zipling Default** | 57.26 MB | 4.95 s | 0.13 s |
+| **Zipling Default** | 57.26 MB | 4.95 s | 0.15 s |
 | Zipgeist ZIP Normal | 68.53 MB | 1.12 s | 0.67 s |
 | Zipgeist 7z Normal | 49.95 MB | 16.3 s | 0.81 s |
 | 7-Zip Normal (-mx5) | 49.60 MB | 22.9 s | 0.98 s |
@@ -268,7 +270,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 341.0 MB | 2.17 s | 1.48 s |
 | tar + zstd -3 | 328.2 MB | 6.46 s | 10.5 s |
 | WinRAR Fastest (-m1) | 339.5 MB | 5.40 s | 3.23 s |
-| **Zipling Default** | 248.8 MB | 8.08 s | 1.75 s |
+| **Zipling Default** | 246.6 MB | 7.90 s | 1.88 s |
 | Zipgeist ZIP Normal | 381.8 MB | 2.26 s | 1.79 s |
 | Zipgeist 7z Normal | 285.2 MB | 15.1 s | 3.29 s |
 | 7-Zip Normal (-mx5) | 276.4 MB | 21.4 s | 2.84 s |
@@ -293,7 +295,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 313.8 MB | 2.04 s | 1.46 s |
 | tar + zstd -3 | 294.6 MB | 5.63 s | 5.50 s |
 | WinRAR Fastest (-m1) | 309.8 MB | 5.61 s | 3.18 s |
-| **Zipling Default** | 216.0 MB | 8.39 s | 1.49 s |
+| **Zipling Default** | 214.3 MB | 8.80 s | 1.62 s |
 | Zipgeist ZIP Normal | 362.6 MB | 2.45 s | 1.59 s |
 | Zipgeist 7z Normal | 245.4 MB | 25.5 s | 3.32 s |
 | 7-Zip Normal (-mx5) | 237.8 MB | 26.1 s | 2.96 s |
@@ -318,7 +320,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 617.6 MB | 0.33 s | 0.64 s |
 | tar + zstd -3 | 616.1 MB | 0.26 s | 0.45 s |
 | WinRAR Fastest (-m1) | 615.2 MB | 3.35 s | 1.40 s |
-| **Zipling Default** | 601.8 MB | 1.02 s | 0.34 s |
+| **Zipling Default** | 601.8 MB | 1.11 s | 0.39 s |
 | Zipgeist ZIP Normal | 620.1 MB | 0.23 s | 0.75 s |
 | Zipgeist 7z Normal | 611.9 MB | 8.09 s | 1.51 s |
 | 7-Zip Normal (-mx5) | 610.6 MB | 9.16 s | 1.41 s |
@@ -343,7 +345,7 @@ Finder's Compress 9 of 9.
 | Zipgeist tar.zst Fast | 569.6 MB | 0.62 s | 1.76 s |
 | tar + zstd -3 | 513.0 MB | 1.47 s | 15.1 s |
 | WinRAR Fastest (-m1) | 517.2 MB | 6.12 s | 3.08 s |
-| **Zipling Default** | 403.0 MB | 6.82 s | 0.49 s |
+| **Zipling Default** | 403.0 MB | 6.94 s | 0.52 s |
 | Zipgeist ZIP Normal | 540.5 MB | 7.08 s | 2.13 s |
 | Zipgeist 7z Normal | 380.0 MB | 51.0 s | 3.96 s |
 | 7-Zip Normal (-mx5) | 371.2 MB | 74.1 s | 2.15 s |
@@ -381,19 +383,19 @@ is the ratio app / engine; extract time is the app's extra in milliseconds, with
 | Set | Fast make | Fast extract | Default make | Default extract | Max make | Max extract | Ultra* make | Ultra* extract |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Photos | 0.99x | +28 ms (1.60x) | 0.97x | +11 ms (1.02x) | 0.97x | -5 ms (0.99x) | 0.96x | +8 ms (1.01x) |
-| PDFs and screenshots | 1.18x | +49 ms (1.71x) | 1.03x | +32 ms (1.14x) | 0.97x | +40 ms (1.10x) | 0.98x | +49 ms (1.12x) |
-| Source code | 1.00x | +155 ms (1.42x) | 0.94x | +166 ms (1.46x) | 0.97x | +148 ms (1.22x) | 0.98x | +91 ms (1.10x) |
-| Apple apps | 0.94x | +87 ms (1.60x) | 0.97x | +56 ms (1.27x) | 0.97x | +54 ms (1.08x) | 0.96x | +86 ms (1.14x) |
-| Silesia | 1.09x | +55 ms (1.99x) | 1.05x | +37 ms (1.39x) | 1.01x | +23 ms (1.04x) | 0.99x | +28 ms (1.03x) |
-| Saved folder | 1.11x | +330 ms (1.47x) | 1.00x | +226 ms (1.15x) | 0.97x | +243 ms (1.10x) | 0.99x | +236 ms (1.09x) |
-| Mixed folder | 0.98x | +219 ms (1.36x) | 0.98x | +206 ms (1.16x) | 1.01x | +183 ms (1.08x) | 0.96x | +300 ms (1.12x) |
-| Disk images | 1.04x | +112 ms (1.89x) | 0.97x | -2 ms (0.99x) | 0.99x | -26 ms (0.99x) | 1.00x | -8 ms (1.00x) |
-| Third-party apps | 1.03x | +44 ms (1.11x) | 0.95x | +0 ms (1.00x) | 0.95x | +31 ms (1.02x) | 0.95x | -13 ms (0.99x) |
+| PDFs and screenshots | 1.18x | +49 ms (1.71x) | 0.99x | +37 ms (1.17x) | 0.97x | +40 ms (1.10x) | 0.98x | +49 ms (1.12x) |
+| Source code | 1.00x | +155 ms (1.42x) | 0.86x | +86 ms (1.16x) | 0.97x | +148 ms (1.22x) | 0.98x | +91 ms (1.10x) |
+| Apple apps | 0.94x | +87 ms (1.60x) | 0.95x | +62 ms (1.31x) | 0.97x | +54 ms (1.08x) | 0.96x | +86 ms (1.14x) |
+| Silesia | 1.09x | +55 ms (1.99x) | 0.91x | +38 ms (1.35x) | 1.01x | +23 ms (1.04x) | 0.99x | +28 ms (1.03x) |
+| Saved folder | 1.11x | +330 ms (1.47x) | 0.91x | +213 ms (1.13x) | 0.97x | +243 ms (1.10x) | 0.99x | +236 ms (1.09x) |
+| Mixed folder | 0.98x | +219 ms (1.36x) | 0.98x | +196 ms (1.14x) | 1.01x | +183 ms (1.08x) | 0.96x | +300 ms (1.12x) |
+| Disk images | 1.04x | +112 ms (1.89x) | 1.10x | +92 ms (1.31x) | 0.99x | -26 ms (0.99x) | 1.00x | -8 ms (1.00x) |
+| Third-party apps | 1.03x | +44 ms (1.11x) | 0.96x | +108 ms (1.26x) | 0.95x | +31 ms (1.02x) | 0.95x | -13 ms (0.99x) |
 
 Make time is the same within noise (the geometric mean of the ratios is 0.99x). Extraction in the app
 differs by -26 to +330 ms, nearly always more: it decodes the listing, hops to the main actor and walks the
 extracted tree for safety, about 30 ms plus a few microseconds per file. On the quick Fast rows that is
-the difference between 0.05 and 0.08 s. Scored against the same rival rows, the engine's times would win 127 of 198 and the app's win 129. No row turns on the app's extra time. Rows that go the other way, on noise: Mixed folder, Zipling Ultra* against Zipgeist 7z Best; Third-party apps, Zipling Default against Zipgeist ZIP Normal. Skipping the listing for a
+the difference between 0.05 and 0.08 s. Scored against the same rival rows, the engine's times would win 130 of 198 and the app's win 131. The app's extra extraction time turns 1 row: Photos, Zipling Default against xz -6. Rows that go the other way, on noise: Mixed folder, Zipling Ultra* against Zipgeist 7z Best; Third-party apps, Zipling Default against Zipgeist ZIP Normal. Skipping the listing for a
 whole-archive extract and a cheaper safety walk are the two follow-ups, worth 30 to 300 ms per
 extraction, no row at stake.
 
@@ -405,15 +407,15 @@ processes and is not comparable, so it is left out.
 
 | Set | Fast | Default | Max | Ultra* | 7-Zip Ultra | WinRAR Best | zstd -19 --long | xz -9e |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Photos | 1374 | 2238 | 2283 | 2201 | 983 | 571 | 409 | 850 |
-| PDFs and screenshots | 1000 | 1224 | 1611 | 1455 | 920 | 567 | 359 | 794 |
-| Source code | 577 | 880 | 916 | 897 | 1676 | 551 | 508 | 861 |
-| Apple apps | 1082 | 1572 | 1962 | 1425 | 1759 | 574 | 547 | 899 |
-| Silesia | 874 | 1011 | 2104 | 1302 | 2084 | 572 | 656 | 1080 |
-| Saved folder | 2216 | 3591 | 4324 | 4038 | 6623 | 579 | 1834 | 3624 |
-| Mixed folder | 1704 | 3549 | 3644 | 4213 | 6874 | 578 | 1871 | 3656 |
-| Disk images | 3339 | 3744 | 4137 | 5593 | 6555 | 571 | 2052 | 3398 |
-| Third-party apps | 3200 | 3223 | 3623 | 5166 | 8922 | 574 | 1989 | 5541 |
+| Photos | 1374 | 2270 | 2283 | 2201 | 983 | 571 | 409 | 850 |
+| PDFs and screenshots | 1000 | 1452 | 1611 | 1455 | 920 | 567 | 359 | 794 |
+| Source code | 577 | 1101 | 916 | 897 | 1676 | 551 | 508 | 861 |
+| Apple apps | 1082 | 973 | 1962 | 1425 | 1759 | 574 | 547 | 899 |
+| Silesia | 874 | 1407 | 2104 | 1302 | 2084 | 572 | 656 | 1080 |
+| Saved folder | 2216 | 3648 | 4324 | 4038 | 6623 | 579 | 1834 | 3624 |
+| Mixed folder | 1704 | 3972 | 3644 | 4213 | 6874 | 578 | 1871 | 3656 |
+| Disk images | 3339 | 3063 | 4137 | 5593 | 6555 | 571 | 2052 | 3398 |
+| Third-party apps | 3200 | 3610 | 3623 | 5166 | 8922 | 574 | 1989 | 5541 |
 
 ## Default: what is fixable and what is not
 
@@ -421,7 +423,7 @@ Default loses two kinds of rows, for two different reasons.
 
 **1. Against Zipgeist ZIP Normal, on make time, on 8 of nine sets.** ZIP Normal is a near-store
 Deflate: 0.08 s on the photos, 0.13 s on the PDFs, 2.26 s on the Saved folder. Default makes files
-3 to 75% smaller than it and extracts faster on 8 of nine sets, but takes 1.0x to 25x longer, because it runs
+3 to 75% smaller than it and extracts faster on 6 of nine sets, but takes 1.0x to 25x longer, because it runs
 the transforms. No preset that compresses can beat a near-store ZIP on make time; the Zipling setting
 that answers it is Fast, and Fast beats ZIP Normal on all nine sets on all three measures (the first
 upset above). The same holds for WinRAR Normal on the photos and PDFs, where Fast wins too. If the
@@ -429,21 +431,24 @@ website compares level against level these rows stay red; if it compares the riv
 with the Zipling button that answers it, they are green rows for Fast.
 
 **2. Against the LZMA-class normal settings on size: 7-Zip Normal, Zipgeist 7z Normal and xz -6 on
-Source code, Apple apps, Silesia, Third-party apps.** Default's lanes are zstd 15 and 12 with every transform; those rivals are LZMA.
+Source code, Apple apps, Silesia, Third-party apps.** Default's lanes are zstd 15 for text and 12 for binaries, with every transform, and since
+1 November bsc on the code lane (static libraries, ELF, PE, tar; the binary lane's zstd where BWT does not pay); those rivals are LZMA.
 Default is 2 to 12x faster to make and 2 to 7x faster to extract than 7-Zip Normal on every set, and smaller on
-5 of nine; on the three code- and text-heavy sets it is 22%, 2%, 15%, 9% bigger. This is the part a codec change
-could fix, and the measured options (engine runs, quiet machine, 30 and 31 October) are:
+5 of nine; on the 4 code- and binary-heavy sets it is 3%, 2%, 15%, 9% bigger. The lane-by-lane study of 1 November
+(docs/RESEARCH.md, "Default, lane by lane"; `results-2026-11-01-default-lanes-r1.jsonl` to `-r3.jsonl`, engine runs) measured what a
+stronger codec on one lane buys, and the code lane was taken:
 
 | Option | Source code | Silesia | Third-party apps | Cost |
 |---|---|---|---|---|
-| Default as is (this run, the app) | 11.20 MB, 1.88 s | 57.26 MB, 4.95 s | 403.0 MB, 6.82 s | — |
-| Default with bsc on the text lane | 10.21 MB, 0.95 s: wins the row | 53.07 MB, 2.32 s: still 6% bigger | 402.61 MB: still 6% bigger | extract 1.3 to 4x slower on text-heavy sets (still 2x faster than 7z Normal); DMGs make 1.05 to 5.1 s |
-| Max's codecs at Default (bsc text, LZMA2 7 binaries) | 8.23 MB, 1.61 s: wins | 49.41 MB, 6.14 s: wins | 350.23 MB, 39 s: wins | make 2 to 40x slower than today's Default; loses the normal-class rows it wins today on PDFs, apps, Saved, DMGs (make time) |
-| The lzt codec (LZMA's parse at a symbol coder's decode speed, research stage) | within 3 to 5% of LZMA at 2x its decode speed, measured on Silesia | | | needs a format change and a quiet month; the only route to LZMA's size at Default's extract speed |
+| Default before the code lane (the main run, 31 October, the app) | 11.20 MB, 1.88 s | 57.26 MB, 4.95 s | 403.0 MB, 6.82 s | — |
+| **Default as it is (1 November, the app)** | 9.46 MB, 1.80 s: beats Zipgeist 7z Normal and xz -6 | 57.26 MB, 4.95 s | 403.0 MB, 6.94 s | none: the other sets are byte for byte as before, extraction 0.1 s more on source and the Saved folder |
+| With bsc on the text lane too | 8.47 MB, 0.89 s: beats all three LZMA settings | 53.07 MB, 2.7 s: beats WinRAR Normal, the LZMA settings still 7% smaller | unchanged | extraction 1.3 to 4.6x slower wherever text is (mixed folder 1.35 to 1.93 s), still under every rival of the class; not taken, to keep the extraction margin |
+| Mach-O on LZMA2 (apps) | — | — | 342 MB, 39 s: beats the three LZMA settings, loses WinRAR and ZIP Normal on make | 6x the make time; on Apple's apps 1 row of 5 instead of 3 |
+| Max's codecs at Default (bsc text, LZMA2 7 binaries) | 8.23 MB, 1.61 s | 49.41 MB, 6.14 s | 350.23 MB, 39 s | make 2 to 40x slower; loses the normal-class rows Default wins on PDFs, apps, Saved, DMGs |
 
-Recommendation unchanged: keep Default's codecs and present Default as the middle it is, smaller
-than every normal setting on most sets and several times faster than the LZMA settings that beat it on
-size on the other three. The rows Default loses on make time are Fast's rows.
+Default stays here: smaller than every normal setting on most sets, several times faster than the LZMA
+settings that beat it on size on the others, and the rows it loses on make time are Fast's rows. The
+three LZMA rows on Silesia and 7-Zip Normal's 2% on Apple's apps need LZMA-class time; nothing cheaper buys them.
 
 ## Max and Ultra*: where the transforms cost time
 
@@ -467,11 +472,11 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.90    0.68    0.14  won 
   Fast     vs WinRAR Fastest (-m1)        0.96    0.05    0.25  won 
   Fast     vs Finder Compress / Expand    0.95    0.02    0.06  won 
-  Default  vs 7-Zip normal (-mx5)         0.81    0.33    0.44  won 
-  Default  vs Zipgeist 7z Normal          0.80    0.75    0.40  won 
-  Default  vs Zipgeist ZIP Normal         0.70   24.95    1.35  LOST on make, extract
-  Default  vs WinRAR Normal (-m3)         0.76    1.79    1.92  LOST on make, extract
-  Default  vs tar + xz -6                 0.78    0.24    1.08  LOST on extract
+  Default  vs 7-Zip normal (-mx5)         0.81    0.33    0.41  won 
+  Default  vs Zipgeist 7z Normal          0.80    0.74    0.37  won 
+  Default  vs Zipgeist ZIP Normal         0.70   24.73    1.26  LOST on make, extract
+  Default  vs WinRAR Normal (-m3)         0.76    1.77    1.80  LOST on make, extract
+  Default  vs tar + xz -6                 0.78    0.24    1.01  LOST on extract
   Max      vs 7-Zip Ultra (-mx9)          0.81    0.32    0.43  won 
   Max      vs tar + zstd -19 --long       0.81    0.14    2.70  LOST on extract
   Max      vs tar + xz -9e                0.81    0.05    0.34  won 
@@ -491,11 +496,11 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.47    0.68    0.20  won 
   Fast     vs WinRAR Fastest (-m1)        0.82    0.09    0.31  won 
   Fast     vs Finder Compress / Expand    0.82    0.04    0.09  won 
-  Default  vs 7-Zip normal (-mx5)         0.58    0.56    0.33  won 
-  Default  vs Zipgeist 7z Normal          0.57    0.80    0.15  won 
-  Default  vs Zipgeist ZIP Normal         0.25   10.63    0.45  LOST on make
-  Default  vs WinRAR Normal (-m3)         0.44    1.28    0.72  LOST on make
-  Default  vs tar + xz -6                 0.51    0.33    0.41  won 
+  Default  vs 7-Zip normal (-mx5)         0.58    0.55    0.32  won 
+  Default  vs Zipgeist 7z Normal          0.57    0.79    0.15  won 
+  Default  vs Zipgeist ZIP Normal         0.25   10.39    0.44  LOST on make
+  Default  vs WinRAR Normal (-m3)         0.44    1.25    0.71  LOST on make
+  Default  vs tar + xz -6                 0.51    0.33    0.40  won 
   Max      vs 7-Zip Ultra (-mx9)          0.48    3.66    0.54  LOST on make
   Max      vs tar + zstd -19 --long       0.47    1.67    1.08  LOST on make, extract
   Max      vs tar + xz -9e                0.47    0.50    0.39  won 
@@ -515,11 +520,11 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.56    0.55    0.56  won 
   Fast     vs WinRAR Fastest (-m1)        0.62    0.14    0.37  won 
   Fast     vs Finder Compress / Expand    0.54    0.04    0.10  won 
-  Default  vs 7-Zip normal (-mx5)         1.22    0.15    0.46  LOST on size
-  Default  vs Zipgeist 7z Normal          1.07    0.35    0.50  LOST on size
-  Default  vs Zipgeist ZIP Normal         0.53    3.91    0.59  LOST on make
-  Default  vs WinRAR Normal (-m3)         0.62    0.79    0.36  won 
-  Default  vs tar + xz -6                 1.12    0.30    0.15  LOST on size
+  Default  vs 7-Zip normal (-mx5)         1.03    0.14    0.54  LOST on size
+  Default  vs Zipgeist 7z Normal          0.90    0.33    0.58  won 
+  Default  vs Zipgeist ZIP Normal         0.45    3.74    0.68  LOST on make
+  Default  vs WinRAR Normal (-m3)         0.52    0.75    0.42  won 
+  Default  vs tar + xz -6                 0.95    0.29    0.17  won 
   Max      vs 7-Zip Ultra (-mx9)          0.98    0.07    0.72  won 
   Max      vs tar + zstd -19 --long       0.89    0.06    0.24  won 
   Max      vs tar + xz -9e                1.00    0.02    0.24  won 
@@ -539,10 +544,10 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.79    0.26    0.30  won 
   Fast     vs WinRAR Fastest (-m1)        0.92    0.10    0.33  won 
   Fast     vs Finder Compress / Expand    0.83    0.02    0.10  won 
-  Default  vs 7-Zip normal (-mx5)         1.02    0.08    0.19  LOST on size
+  Default  vs 7-Zip normal (-mx5)         1.02    0.08    0.18  LOST on size
   Default  vs Zipgeist 7z Normal          0.95    0.24    0.27  won 
   Default  vs Zipgeist ZIP Normal         0.65    1.41    0.34  LOST on make
-  Default  vs WinRAR Normal (-m3)         0.87    0.55    0.35  won 
+  Default  vs WinRAR Normal (-m3)         0.87    0.55    0.34  won 
   Default  vs tar + xz -6                 0.96    0.16    0.21  won 
   Max      vs 7-Zip Ultra (-mx9)          0.91    0.44    0.42  won 
   Max      vs tar + zstd -19 --long       0.83    0.57    0.60  won 
@@ -563,11 +568,11 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.84    0.45    0.16  won 
   Fast     vs WinRAR Fastest (-m1)        0.98    0.19    0.27  won 
   Fast     vs Finder Compress / Expand    0.96    0.03    0.08  won 
-  Default  vs 7-Zip normal (-mx5)         1.15    0.22    0.14  LOST on size
-  Default  vs Zipgeist 7z Normal          1.15    0.30    0.16  LOST on size
-  Default  vs Zipgeist ZIP Normal         0.84    4.42    0.20  LOST on make
-  Default  vs WinRAR Normal (-m3)         1.06    1.36    0.29  LOST on size, make
-  Default  vs tar + xz -6                 1.16    0.38    0.26  LOST on size
+  Default  vs 7-Zip normal (-mx5)         1.15    0.22    0.15  LOST on size
+  Default  vs Zipgeist 7z Normal          1.15    0.30    0.18  LOST on size
+  Default  vs Zipgeist ZIP Normal         0.84    4.42    0.22  LOST on make
+  Default  vs WinRAR Normal (-m3)         1.06    1.36    0.32  LOST on size, make
+  Default  vs tar + xz -6                 1.16    0.38    0.29  LOST on size
   Max      vs 7-Zip Ultra (-mx9)          0.96    0.13    0.38  won 
   Max      vs tar + zstd -19 --long       0.89    0.21    2.57  LOST on extract
   Max      vs tar + xz -9e                0.96    0.07    0.30  won 
@@ -587,11 +592,11 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.79    0.31    0.57  won 
   Fast     vs WinRAR Fastest (-m1)        0.92    0.10    0.32  won 
   Fast     vs Finder Compress / Expand    0.87    0.02    0.11  won 
-  Default  vs 7-Zip normal (-mx5)         0.90    0.38    0.61  won 
-  Default  vs Zipgeist 7z Normal          0.87    0.53    0.53  won 
-  Default  vs Zipgeist ZIP Normal         0.65    3.57    0.98  LOST on make
-  Default  vs WinRAR Normal (-m3)         0.80    0.91    0.52  won 
-  Default  vs tar + xz -6                 0.85    0.36    0.16  won 
+  Default  vs 7-Zip normal (-mx5)         0.89    0.37    0.66  won 
+  Default  vs Zipgeist 7z Normal          0.86    0.52    0.57  won 
+  Default  vs Zipgeist ZIP Normal         0.65    3.50    1.05  LOST on make, extract
+  Default  vs WinRAR Normal (-m3)         0.79    0.89    0.56  won 
+  Default  vs tar + xz -6                 0.84    0.35    0.18  won 
   Max      vs 7-Zip Ultra (-mx9)          0.81    0.30    0.68  won 
   Max      vs tar + zstd -19 --long       0.78    0.40    0.26  won 
   Max      vs tar + xz -9e                0.80    0.19    0.26  won 
@@ -611,11 +616,11 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.74    0.33    0.49  won 
   Fast     vs WinRAR Fastest (-m1)        0.91    0.09    0.26  won 
   Fast     vs Finder Compress / Expand    0.87    0.02    0.10  won 
-  Default  vs 7-Zip normal (-mx5)         0.91    0.32    0.50  won 
-  Default  vs Zipgeist 7z Normal          0.88    0.33    0.45  won 
-  Default  vs Zipgeist ZIP Normal         0.60    3.42    0.94  LOST on make
-  Default  vs WinRAR Normal (-m3)         0.78    0.79    0.46  won 
-  Default  vs tar + xz -6                 0.86    0.33    0.26  won 
+  Default  vs 7-Zip normal (-mx5)         0.90    0.34    0.55  won 
+  Default  vs Zipgeist 7z Normal          0.87    0.35    0.49  won 
+  Default  vs Zipgeist ZIP Normal         0.59    3.59    1.02  LOST on make, extract
+  Default  vs WinRAR Normal (-m3)         0.77    0.83    0.50  won 
+  Default  vs tar + xz -6                 0.85    0.35    0.28  won 
   Max      vs 7-Zip Ultra (-mx9)          0.82    0.40    0.66  won 
   Max      vs tar + zstd -19 --long       0.78    0.42    0.46  won 
   Max      vs tar + xz -9e                0.81    0.22    0.36  won 
@@ -635,11 +640,11 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.99    0.87    0.34  won 
   Fast     vs WinRAR Fastest (-m1)        1.00    0.06    0.17  LOST on size
   Fast     vs Finder Compress / Expand    1.00    0.02    0.13  won 
-  Default  vs 7-Zip normal (-mx5)         0.99    0.11    0.24  won 
-  Default  vs Zipgeist 7z Normal          0.98    0.13    0.23  won 
-  Default  vs Zipgeist ZIP Normal         0.97    4.45    0.46  LOST on make
-  Default  vs WinRAR Normal (-m3)         0.98    0.05    0.23  won 
-  Default  vs tar + xz -6                 0.98    0.03    0.29  won 
+  Default  vs 7-Zip normal (-mx5)         0.99    0.12    0.28  won 
+  Default  vs Zipgeist 7z Normal          0.98    0.14    0.26  won 
+  Default  vs Zipgeist ZIP Normal         0.97    4.84    0.52  LOST on make
+  Default  vs WinRAR Normal (-m3)         0.98    0.06    0.26  won 
+  Default  vs tar + xz -6                 0.98    0.04    0.34  won 
   Max      vs 7-Zip Ultra (-mx9)          0.75    2.14    2.33  LOST on make, extract
   Max      vs tar + zstd -19 --long       0.75    1.15    9.16  LOST on make, extract
   Max      vs tar + xz -9e                0.75    0.41    1.56  LOST on extract
@@ -659,10 +664,10 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
   Fast     vs Zipgeist ZIP Fast           0.87    0.20    0.20  won 
   Fast     vs WinRAR Fastest (-m1)        0.98    0.10    0.14  won 
   Fast     vs Finder Compress / Expand    0.94    0.01    0.10  won 
-  Default  vs 7-Zip normal (-mx5)         1.09    0.09    0.23  LOST on size
-  Default  vs Zipgeist 7z Normal          1.06    0.13    0.12  LOST on size
-  Default  vs Zipgeist ZIP Normal         0.75    0.96    0.23  won 
-  Default  vs WinRAR Normal (-m3)         0.96    0.27    0.12  won 
+  Default  vs 7-Zip normal (-mx5)         1.09    0.09    0.24  LOST on size
+  Default  vs Zipgeist 7z Normal          1.06    0.14    0.13  LOST on size
+  Default  vs Zipgeist ZIP Normal         0.75    0.98    0.24  won 
+  Default  vs WinRAR Normal (-m3)         0.96    0.27    0.13  won 
   Default  vs tar + xz -6                 1.03    0.13    0.03  LOST on size
   Max      vs 7-Zip Ultra (-mx9)          0.99    0.45    0.49  won 
   Max      vs tar + zstd -19 --long       0.92    0.55    0.12  won 
@@ -679,10 +684,10 @@ Ratios are Zipling / rival for size, make and extract; under 1 is a win.
 
 Rows won, 1:1 by level:
   Fast     42 of 45
-  Default  23 of 45
+  Default  25 of 45
   Max      36 of 54
   Ultra    28 of 54
-  all      129 of 198
+  all      131 of 198
 
 Rows lost:
   jpeg: Default vs Zipgeist ZIP Normal on make, extract  (beaten by Fast)
@@ -705,9 +710,7 @@ Rows lost:
   docs: Ultra vs Zipgeist 7z Best on make  (beaten by Default)
   docs: Ultra vs Zipgeist tar.xz Best on make  (beaten by Default)
   source: Default vs 7-Zip normal (-mx5) on size  (beaten by Max, Ultra)
-  source: Default vs Zipgeist 7z Normal on size  (beaten by Max, Ultra)
   source: Default vs Zipgeist ZIP Normal on make  (beaten by Fast)
-  source: Default vs tar + xz -6 on size  (beaten by Max, Ultra)
   apps: Default vs 7-Zip normal (-mx5) on size  (beaten by Max, Ultra)
   apps: Default vs Zipgeist ZIP Normal on make  (beaten by Fast)
   apps: Max vs WinRAR Best (-m5, solid) on make  (beaten by Default)
@@ -727,11 +730,11 @@ Rows lost:
   silesia: Max vs WinRAR Best (-m5, solid) on extract  (no Arca setting beats it)
   silesia: Ultra vs tar + zstd -19 --long on extract  (no Arca setting beats it)
   silesia: Ultra vs WinRAR Best (-m5, solid) on make, extract  (no Arca setting beats it)
-  saved: Default vs Zipgeist ZIP Normal on make  (beaten by Fast)
+  saved: Default vs Zipgeist ZIP Normal on make, extract  (beaten by Fast)
   saved: Ultra vs WinRAR Best (-m5, solid) on make  (beaten by Default, Max)
   saved: Ultra vs Zipgeist 7z Best on make  (beaten by Default, Max)
   saved: Ultra vs Zipgeist tar.xz Best on make  (beaten by Default, Max)
-  mixed: Default vs Zipgeist ZIP Normal on make  (beaten by Fast)
+  mixed: Default vs Zipgeist ZIP Normal on make, extract  (beaten by Fast)
   mixed: Ultra vs WinRAR Best (-m5, solid) on make  (beaten by Default, Max)
   mixed: Ultra vs Zipgeist tar.xz Best on make  (beaten by Default, Max)
   dmgs: Fast vs WinRAR Fastest (-m1) on size  (beaten by Default)
@@ -758,49 +761,51 @@ Rows lost:
 Upsets: a lower Arca level beating a rival of a higher class on all three
   jpeg        Fast     beats Zipgeist ZIP Normal          9.5% smaller,   1.5x faster make,   6.8x faster extract
   jpeg        Fast     beats WinRAR Normal (-m3)          2.0% smaller,  20.6x faster make,   4.8x faster extract
-  jpeg        Default  beats 7-Zip Ultra (-mx9)          18.9% smaller,   3.2x faster make,   2.3x faster extract
-  jpeg        Default  beats tar + xz -9e                19.2% smaller,  19.3x faster make,   2.8x faster extract
-  jpeg        Default  beats Zipgeist 7z Best            19.6% smaller,   1.3x faster make,   2.5x faster extract
-  jpeg        Default  beats Zipgeist tar.xz Best        20.1% smaller,   1.5x faster make,   1.5x faster extract
+  jpeg        Default  beats 7-Zip Ultra (-mx9)          18.9% smaller,   3.2x faster make,   2.4x faster extract
+  jpeg        Default  beats tar + xz -9e                19.2% smaller,  19.5x faster make,   3.0x faster extract
+  jpeg        Default  beats Zipgeist 7z Best            19.6% smaller,   1.4x faster make,   2.7x faster extract
+  jpeg        Default  beats Zipgeist tar.xz Best        20.1% smaller,   1.5x faster make,   1.6x faster extract
   docs        Fast     beats Zipgeist ZIP Normal         53.3% smaller,   1.7x faster make,   4.9x faster extract
   docs        Fast     beats WinRAR Normal (-m3)         17.5% smaller,  14.3x faster make,   3.1x faster extract
   docs        Fast     beats tar + xz -6                  5.1% smaller,  55.0x faster make,   5.4x faster extract
   docs        Default  beats 7-Zip Ultra (-mx9)          42.1% smaller,   2.1x faster make,   3.2x faster extract
-  docs        Default  beats tar + zstd -19 --long       43.0% smaller,   4.5x faster make,   1.6x faster extract
-  docs        Default  beats tar + xz -9e                42.9% smaller,  15.1x faster make,   4.4x faster extract
+  docs        Default  beats tar + zstd -19 --long       43.0% smaller,   4.6x faster make,   1.6x faster extract
+  docs        Default  beats tar + xz -9e                42.9% smaller,  15.4x faster make,   4.5x faster extract
   docs        Default  beats WinRAR Best (-m5, solid)    42.8% smaller,   1.3x faster make,   1.2x faster extract
-  docs        Default  beats Zipgeist 7z Best            42.7% smaller,   1.4x faster make,   6.6x faster extract
+  docs        Default  beats Zipgeist 7z Best            42.7% smaller,   1.4x faster make,   6.7x faster extract
   docs        Default  beats Zipgeist tar.xz Best        43.0% smaller,   1.3x faster make,   4.0x faster extract
   source      Fast     beats Zipgeist ZIP Normal         36.1% smaller,   2.0x faster make,   1.7x faster extract
   source      Fast     beats WinRAR Normal (-m3)         25.4% smaller,   9.7x faster make,   2.8x faster extract
+  source      Default  beats WinRAR Best (-m5, solid)     6.8% smaller,   2.5x faster make,   2.0x faster extract
+  source      Default  beats Zipgeist 7z Best             6.2% smaller,   3.7x faster make,   1.7x faster extract
   apps        Fast     beats Zipgeist ZIP Normal         16.3% smaller,   7.7x faster make,   3.3x faster extract
-  apps        Default  beats tar + zstd -19 --long        4.9% smaller,  15.4x faster make,   4.4x faster extract
+  apps        Default  beats tar + zstd -19 --long        4.9% smaller,  15.4x faster make,   4.5x faster extract
   apps        Default  beats WinRAR Best (-m5, solid)     3.8% smaller,   3.9x faster make,   2.7x faster extract
-  apps        Default  beats Zipgeist 7z Best             4.8% smaller,   4.4x faster make,   3.6x faster extract
-  apps        Default  beats Zipgeist tar.xz Best         3.8% smaller,   4.7x faster make,   4.6x faster extract
+  apps        Default  beats Zipgeist 7z Best             4.8% smaller,   4.4x faster make,   3.7x faster extract
+  apps        Default  beats Zipgeist tar.xz Best         3.8% smaller,   4.7x faster make,   4.7x faster extract
   silesia     Fast     beats Zipgeist ZIP Normal          4.9% smaller,   6.4x faster make,   6.1x faster extract
   saved       Fast     beats Zipgeist ZIP Normal         18.5% smaller,   4.1x faster make,   1.7x faster extract
   saved       Fast     beats WinRAR Normal (-m3)          0.3% smaller,  16.2x faster make,   3.2x faster extract
-  saved       Default  beats 7-Zip Ultra (-mx9)           9.2% smaller,   6.6x faster make,   2.3x faster extract
-  saved       Default  beats tar + zstd -19 --long       12.0% smaller,   5.0x faster make,   6.1x faster extract
-  saved       Default  beats tar + xz -9e                10.5% smaller,  10.6x faster make,   6.1x faster extract
-  saved       Default  beats WinRAR Best (-m5, solid)    12.7% smaller,   2.4x faster make,   1.8x faster extract
-  saved       Default  beats Zipgeist 7z Best            12.5% smaller,   2.2x faster make,   1.9x faster extract
-  saved       Default  beats Zipgeist tar.xz Best        12.7% smaller,   2.2x faster make,   1.7x faster extract
+  saved       Default  beats 7-Zip Ultra (-mx9)          10.0% smaller,   6.7x faster make,   2.1x faster extract
+  saved       Default  beats tar + zstd -19 --long       12.7% smaller,   5.1x faster make,   5.7x faster extract
+  saved       Default  beats tar + xz -9e                11.3% smaller,  10.8x faster make,   5.7x faster extract
+  saved       Default  beats WinRAR Best (-m5, solid)    13.5% smaller,   2.5x faster make,   1.7x faster extract
+  saved       Default  beats Zipgeist 7z Best            13.2% smaller,   2.2x faster make,   1.7x faster extract
+  saved       Default  beats Zipgeist tar.xz Best        13.4% smaller,   2.3x faster make,   1.6x faster extract
   mixed       Fast     beats Zipgeist ZIP Normal         22.5% smaller,   4.8x faster make,   1.9x faster extract
-  mixed       Default  beats 7-Zip Ultra (-mx9)           8.1% smaller,   5.8x faster make,   2.6x faster extract
-  mixed       Default  beats tar + zstd -19 --long       12.1% smaller,   5.5x faster make,   3.7x faster extract
-  mixed       Default  beats tar + xz -9e                 8.7% smaller,  10.5x faster make,   4.8x faster extract
-  mixed       Default  beats WinRAR Best (-m5, solid)    12.7% smaller,   2.6x faster make,   2.0x faster extract
-  mixed       Default  beats Zipgeist 7z Best            11.4% smaller,   3.4x faster make,   2.2x faster extract
-  mixed       Default  beats Zipgeist tar.xz Best        11.4% smaller,   3.2x faster make,   1.9x faster extract
+  mixed       Default  beats 7-Zip Ultra (-mx9)           8.8% smaller,   5.5x faster make,   2.4x faster extract
+  mixed       Default  beats tar + zstd -19 --long       12.8% smaller,   5.2x faster make,   3.4x faster extract
+  mixed       Default  beats tar + xz -9e                 9.5% smaller,  10.0x faster make,   4.4x faster extract
+  mixed       Default  beats WinRAR Best (-m5, solid)    13.4% smaller,   2.5x faster make,   1.8x faster extract
+  mixed       Default  beats Zipgeist 7z Best            12.1% smaller,   3.3x faster make,   2.0x faster extract
+  mixed       Default  beats Zipgeist tar.xz Best        12.1% smaller,   3.1x faster make,   1.8x faster extract
   dmgs        Fast     beats Zipgeist ZIP Normal          0.8% smaller,   1.1x faster make,   3.2x faster extract
-  dmgs        Default  beats 7-Zip Ultra (-mx9)           1.3% smaller,  18.5x faster make,   5.3x faster extract
-  dmgs        Default  beats tar + zstd -19 --long        1.4% smaller,  34.5x faster make,   1.3x faster extract
-  dmgs        Default  beats tar + xz -9e                 1.5% smaller,  97.3x faster make,   7.9x faster extract
-  dmgs        Default  beats WinRAR Best (-m5, solid)     1.7% smaller,  16.9x faster make,   4.4x faster extract
-  dmgs        Default  beats Zipgeist 7z Best             1.6% smaller,   8.0x faster make,   4.3x faster extract
-  dmgs        Default  beats Zipgeist tar.xz Best         1.6% smaller,   8.0x faster make,   5.0x faster extract
+  dmgs        Default  beats 7-Zip Ultra (-mx9)           1.3% smaller,  17.0x faster make,   4.6x faster extract
+  dmgs        Default  beats tar + zstd -19 --long        1.4% smaller,  31.8x faster make,   1.2x faster extract
+  dmgs        Default  beats tar + xz -9e                 1.5% smaller,  89.6x faster make,   6.9x faster extract
+  dmgs        Default  beats WinRAR Best (-m5, solid)     1.7% smaller,  15.6x faster make,   3.8x faster extract
+  dmgs        Default  beats Zipgeist 7z Best             1.6% smaller,   7.4x faster make,   3.8x faster extract
+  dmgs        Default  beats Zipgeist tar.xz Best         1.6% smaller,   7.3x faster make,   4.4x faster extract
   thirdparty  Fast     beats Zipgeist ZIP Normal          6.7% smaller,  12.1x faster make,   4.8x faster extract
 ```
 

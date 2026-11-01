@@ -35,6 +35,7 @@ def load(path, keep=None, drop=None):
             best[k] = dict(r)
         else:
             b["make_s"], b["extract_s"] = min(b["make_s"], r["make_s"]), min(b["extract_s"], r["extract_s"])
+            b["size"] = max(b["size"], r["size"])  # rounds can differ by 0.05-0.3%: the larger counts
     return best
 
 
@@ -42,7 +43,12 @@ zx = load(R + "results-2026-10-31-apps-zx.jsonl", keep=ZX)
 rows = load(R + "results-2026-10-31-apps.jsonl")
 rows.update(zx)
 rows.update(load(R + "results-2026-10-31-apps-finder.jsonl"))
+# Default again on 1 November, in the app rebuilt with the engine's code lane.
+default = load(R + "results-2026-11-01-apps-default.jsonl", keep={"arca-balanced"})
+rows.update(default)
 stale = [(s, t) for s, *_ in SITE for t in ZX if (s, t) not in zx]
+if default and len(default) < 9:
+    print("WARNING: the Default re-run has only", len(default), "sets")
 if stale:
     print("WARNING: first-pass zstd/xz rows still in use for", stale)
 
