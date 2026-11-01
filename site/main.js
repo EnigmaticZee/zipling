@@ -98,6 +98,108 @@ function grow(host) {
   host.querySelectorAll(".chart").forEach((c) => (growObserver ? growObserver.observe(c) : c.classList.add("grown")));
 }
 
+// The trade-off chart: archive size (% of the original) against time, one dot per tool,
+// Zipling's levels joined in order so the curve they make is visible. Time is on a log
+// axis, since the tools span 0.05 to 90 seconds. Lower-left is better.
+const FRONTIER_LABELS = new Set(["fast", "balanced", "max", "ultra", "7z", "7zn", "finder"]);
+const US_ORDER = ["fast", "balanced", "max", "ultra"];
+let frontierMetric = 1;
+
+function renderFrontier(host, ds, ids) {
+  host.innerHTML = "";
+  const fig = document.createElement("figure");
+  fig.className = "chart";
+  const m = METRICS[frontierMetric];
+  fig.innerHTML = `<figcaption><strong>Size against ${m.label.toLowerCase()}</strong>` +
+    `<span>% of the original against seconds, log scale · lower-left is better</span>` +
+    `<span class="fr-toggle" role="group" aria-label="Time axis">` +
+    `<button type="button" aria-pressed="${frontierMetric === 1}" data-m="1">Compress</button>` +
+    `<button type="button" aria-pressed="${frontierMetric === 2}" data-m="2">Extract</button></span></figcaption>`;
+  fig.querySelectorAll(".fr-toggle button").forEach((b) => b.addEventListener("click", () => {
+    frontierMetric = +b.dataset.m;
+    renderFrontier(host, ds, ids);
+  }));
+
+  const W = Math.max(320, host.clientWidth - 44), H = Math.round(Math.min(380, Math.max(260, W * 0.46)));
+  const pad = { l: 46, r: 24, t: 14, b: 40 };
+  const pts = ids.map((id) => ({ id, t: TOOL[id], x: ds.r[id][m.key], y: (ds.r[id][0] / ds.mb) * 100 }));
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const lx0 = Math.log10(Math.min(...xs)) - 0.12, lx1 = Math.log10(Math.max(...xs)) + 0.12;
+  const yspan = Math.max(...ys) - Math.min(...ys);
+  const y0 = Math.max(0, Math.min(...ys) - yspan * 0.14), y1 = Math.min(100, Math.max(...ys) + yspan * 0.14);
+  const X = (v) => pad.l + ((Math.log10(v) - lx0) / (lx1 - lx0)) * (W - pad.l - pad.r);
+  const Y = (v) => pad.t + ((y1 - v) / (y1 - y0)) * (H - pad.t - pad.b);
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, text) => {
+    const e = document.createElementNS(ns, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img",
+    "aria-label": `${ds.name}: archive size against ${m.label.toLowerCase()} for every tool; Zipling's levels joined` });
+
+  // Grid and axes: a few y steps, and the decades on x.
+  const ystep = yspan > 40 ? 10 : yspan > 16 ? 5 : yspan > 6 ? 2 : 1;
+  for (let v = Math.ceil(y0 / ystep) * ystep; v <= y1; v += ystep) {
+    svg.appendChild(el("line", { class: "fr-grid", x1: pad.l, x2: W - pad.r, y1: Y(v), y2: Y(v) }));
+    svg.appendChild(el("text", { class: "fr-axis", x: pad.l - 8, y: Y(v) + 4, "text-anchor": "end" }, `${v}%`));
+  }
+  for (let d = Math.ceil(lx0); d <= Math.floor(lx1); d++) {
+    const v = 10 ** d;
+    svg.appendChild(el("line", { class: "fr-grid", x1: X(v), x2: X(v), y1: pad.t, y2: H - pad.b }));
+    svg.appendChild(el("text", { class: "fr-axis", x: X(v), y: H - pad.b + 18, "text-anchor": "middle" }, `${v} s`));
+  }
+  const narrow = W < 560;
+  svg.appendChild(el("text", { class: "fr-axis-title", x: W - pad.r, y: H - 6, "text-anchor": "end" }, `${m.label}, seconds, log scale`));
+  // The caption already says what the y axis is; at phone width the two titles would collide.
+  if (!narrow) svg.appendChild(el("text", { class: "fr-axis-title", x: pad.l, y: H - 6 }, "Archive size, % of the original"));
+
+  // Zipling's levels, joined in order.
+  const us = US_ORDER.filter((id) => ds.r[id]).map((id) => pts.find((p) => p.id === id));
+  svg.appendChild(el("path", { class: "fr-line", d: us.map((p, i) => `${i ? "L" : "M"}${X(p.x).toFixed(1)} ${Y(p.y).toFixed(1)}`).join(" ") }));
+
+  // Dots: rivals first so Zipling's sit on top; labels for the tools the page talks about.
+  const dots = pts.map((p) => ({ p, cx: X(p.x), cy: Y(p.y), r: p.t.us ? 6.5 : 5.5 }));
+  for (const d of [...dots.filter((d) => !d.p.t.us), ...dots.filter((d) => d.p.t.us)]) {
+    const dot = el("circle", { class: `fr-dot ${d.p.t.us ? "us" : "them"}`, cx: d.cx.toFixed(1), cy: d.cy.toFixed(1), r: d.r, tabindex: 0,
+      "aria-label": `${d.p.t.name}: ${fmt(ds.r[d.p.id][0], "MB")}, ${m.label.toLowerCase()} ${fmt(d.p.x, "s")}` });
+    bindTip(dot, () => toolTip(d.p.t, ds));
+    svg.appendChild(dot);
+  }
+  // Each label takes the first free spot around its dot: right, left, above, below,
+  // then the diagonals; free means clear of every dot, every placed label and the edges.
+  const placed = [];
+  const fontW = narrow ? 6.5 : 6.9, lineH = 14;
+  const clear = (box) => box.x >= pad.l - 40 && box.x + box.w <= W - 2 && box.y >= 0 &&
+    dots.every((d) => d.cx + d.r + 2 < box.x || d.cx - d.r - 2 > box.x + box.w || d.cy + d.r + 2 < box.y || d.cy - d.r - 2 > box.y + box.h) &&
+    placed.every((o) => o.x > box.x + box.w || o.x + o.w < box.x || o.y > box.y + box.h || o.y + o.h < box.y);
+  // At phone width only Zipling's levels and 7-Zip Ultra are labeled; the rest show on hover.
+  const wanted = (d) => FRONTIER_LABELS.has(d.p.id) && (!narrow || d.p.t.us || d.p.id === "7z");
+  for (const d of dots.filter(wanted).sort((a, b) => (a.p.t.us ? 0 : 1) - (b.p.t.us ? 0 : 1))) {
+    const w = d.p.t.name.length * fontW, g = d.r + 5;
+    const spots = [
+      [d.cx + g, d.cy - lineH / 2, "start"], [d.cx - g - w, d.cy - lineH / 2, "start"],
+      [d.cx - w / 2, d.cy - g - lineH, "start"], [d.cx - w / 2, d.cy + g, "start"],
+      [d.cx + g, d.cy - g - lineH, "start"], [d.cx - g - w, d.cy - g - lineH, "start"],
+      [d.cx + g, d.cy + g, "start"], [d.cx - g - w, d.cy + g, "start"],
+    ];
+    let box = null;
+    for (const [x, y] of spots) {
+      const b = { x, y, w, h: lineH };
+      if (clear(b)) { box = b; break; }
+    }
+    // A rival's label with no clear spot is left to the hover; Zipling's take the right.
+    if (!box && !d.p.t.us) continue;
+    box = box || { x: spots[0][0], y: spots[0][1], w, h: lineH };
+    placed.push(box);
+    svg.appendChild(el("text", { class: `fr-label${d.p.t.us ? " us" : ""}`, x: box.x.toFixed(1), y: (box.y + lineH - 3).toFixed(1) }, d.p.t.name));
+  }
+  fig.appendChild(svg);
+  host.appendChild(fig);
+  host.classList.add("in");
+}
+
 function renderTable(tbody, ds, ids, grouped) {
   let group = null;
   tbody.innerHTML = ids.map((id) => {
@@ -178,8 +280,18 @@ function benchmarksPage() {
     tabs.querySelectorAll("button").forEach((b, j) => b.setAttribute("aria-selected", String(i === j)));
     info.innerHTML = `<strong>${ds.name}</strong> · ${ds.mb} MB · ${ds.what}. <span>${ds.why}.</span>`;
     renderCharts(host, ds, ids, true);
+    renderFrontier(frontier, ds, ids);
     renderTable(tbody, ds, ids, true);
   }
+  const frontier = document.getElementById("bench-frontier");
+  let resizeTimer = 0;
+  addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const cur = [...tabs.children].findIndex((b) => b.getAttribute("aria-selected") === "true");
+      if (cur >= 0) renderFrontier(frontier, Z.datasets[cur], ids);
+    }, 120);
+  });
   tabs.innerHTML = Z.datasets.map((d, i) =>
     `<button type="button" role="tab" aria-selected="false" data-i="${i}">${d.name}</button>`).join("");
   tabs.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) select(+b.dataset.i); });
