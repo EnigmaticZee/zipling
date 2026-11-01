@@ -65,11 +65,13 @@ enum Engine {
         }
     }
 
+    /// `recoveryPercent` of 1 to 50 writes a recovery record inside the archive; 0 none.
     static func pack(
-        _ inputs: [URL], into output: URL, level: Level, task: EngineTask,
+        _ inputs: [URL], into output: URL, level: Level, recoveryPercent: Int = 0, task: EngineTask,
         progress: @escaping @Sendable (UInt64, UInt64) -> Void
     ) async throws -> PackResult {
-        let request = try json(PackRequest(inputs: inputs.map(\.path), output: output.path, level: level.rawValue))
+        let request = try json(PackRequest(inputs: inputs.map(\.path), output: output.path, level: level.rawValue,
+                                           recoveryPercent: recoveryPercent))
         return try await withProgress(progress) { ctx in
             Timing.mark("engine.pack: calling")
             let raw = arca_pack(request, task.handle, trampoline, ctx)
@@ -148,6 +150,46 @@ enum Engine {
         }
     }
 
+    // MARK: Recovery record
+
+    /// The archive's recovery record, or nil when it has none. Works on a damaged
+    /// archive too: the engine finds the record even when the footer is gone.
+    static func recoveryInfo(_ archive: URL) async throws -> RecordInfo? {
+        let path = archive.path
+        return try await detached { try decodeOptional(arca_recovery_info(path)) }
+    }
+
+    /// Checks the archive against its record; repairs nothing.
+    static func recoveryCheck(
+        _ archive: URL, task: EngineTask, progress: @escaping @Sendable (UInt64, UInt64) -> Void
+    ) async throws -> CheckReport {
+        let path = archive.path
+        return try await withProgress(progress) { ctx in
+            try decode(arca_recovery_check(path, task.handle, trampoline, ctx))
+        }
+    }
+
+    /// Writes a repaired copy to `output`; the report is the copy's.
+    static func recoveryRepair(
+        _ archive: URL, to output: URL, task: EngineTask, progress: @escaping @Sendable (UInt64, UInt64) -> Void
+    ) async throws -> CheckReport {
+        let (path, out) = (archive.path, output.path)
+        return try await withProgress(progress) { ctx in
+            try decode(arca_recovery_repair(path, out, task.handle, trampoline, ctx))
+        }
+    }
+
+    /// Writes a copy of the archive to `output` with a record of `percent` (1 to 50).
+    static func recoveryAdd(
+        _ archive: URL, to output: URL, percent: Int, task: EngineTask,
+        progress: @escaping @Sendable (UInt64, UInt64) -> Void
+    ) async throws -> RecordInfo {
+        let (path, out) = (archive.path, output.path)
+        return try await withProgress(progress) { ctx in
+            try decode(arca_recovery_add(path, out, UInt16(clamping: percent), task.handle, trampoline, ctx))
+        }
+    }
+
     // MARK: - Plumbing
 
     private static let trampoline: ArcaProgress = { ctx, done, total in
@@ -188,6 +230,17 @@ enum Engine {
         return ok
     }
 
+    /// As `decode`, for calls whose answer may be `{"ok": null}`.
+    private static func decodeOptional<T: Decodable>(_ raw: UnsafeMutablePointer<CChar>?) throws -> T? {
+        guard let raw else { throw EngineError(message: "The archive engine returned nothing.") }
+        defer { arca_string_free(raw) }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let envelope = try decoder.decode(Envelope<T>.self, from: Data(bytes: raw, count: strlen(raw)))
+        if let error = envelope.error { throw EngineError(message: error) }
+        return envelope.ok
+    }
+
     private static func json<T: Encodable>(_ value: T) throws -> String {
         String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
     }
@@ -196,6 +249,12 @@ enum Engine {
         let inputs: [String]
         let output: String
         let level: String
+        let recoveryPercent: Int
+
+        enum CodingKeys: String, CodingKey {
+            case inputs, output, level
+            case recoveryPercent = "recovery_percent"
+        }
     }
 
     private struct ExtractRequest: Encodable {

@@ -136,17 +136,38 @@ Mixed folder (726 MB, the website's headline set), the app's clock:
 Level for level against the rival setting of the same class: 131 of 198 rows;
 any Zipling level against each rival result: 135 of 144.
 
-## The file format (`format.rs`, `wire.rs`), version 3
+## The file format (`format.rs`, `wire.rs`), version 4
 
 ```
-header   12 bytes: magic "ARCA\0\r\n\x1a", version u16, flags u16
+header   32 bytes: magic "ARCA\0\r\n\x1a", version u16, flags u16
 blocks   each lane's compressed blocks, in the order they closed
+record   optional (version 4): the recovery record, see below
 index    zstd-compressed: created time, the archive's hash key, entries (paths
          front-coded, times and object numbers delta-coded), objects (size,
          transform, content hash, stored length, chunk list), chunks (block,
          offset, length), blocks (codec, offsets, lengths, checksum, raw hash)
-footer   64 bytes: index offset and lengths, BLAKE3-128 of the index, magic "ARCAEND\0"
+footer   64 bytes: index offset and lengths, BLAKE3-128 of the index, the record's
+         offset and length (0 without one), magic "ARCAEND\0"
 ```
+
+**The recovery record** (`recovery.rs`, 1 November 2026): Reed-Solomon parity
+over the header and the blocks, computed region by region (128 MiB each, its own
+code) in 64 KiB slices (4 KiB for small archives) with the `reed-solomon-simd`
+crate (O(n log n), GF(2^16)); a BLAKE3-128 hash per slice to locate damage
+without the key; a copy of the compressed index and of the footer; the record's
+header written twice, before and after the parity, so one hit cannot take the
+only copy; a trailer so a record whose footer is gone is found again, and a
+forward scan for its magic when the trailer is gone too. A record of X% repairs any X% of damage in each region,
+wherever it falls. Repair writes a corrected copy, never touches the damaged
+file, restores the index and footer from the copies, regenerates lost parity from
+the intact data, and when damage exceeds the budget names the files it would
+lose from the index copy. Off unless asked for (`PackOptions::recovery_percent`,
+1 to 50; `arca pack --recovery N`, `arca protect`, `arca check`, `arca repair`;
+FFI `arca_recovery_info/check/repair/add`). Cost on the 214 MB mixed-folder
+archive at 3%: about one second more to compress and 6.8 MB of size; a check
+0.14 s, a repair of forty damaged spots 0.7 s; extraction unchanged, since the
+record is read only when something fails. Version 3 archives (no record) still
+open; a version 4 reader is needed for archives with a record only to repair them.
 
 The footer is last so a 100 GB archive opens by reading its end. Every block
 carries a hash of its compressed bytes (checked before decoding) and of its raw

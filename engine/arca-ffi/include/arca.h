@@ -37,6 +37,15 @@ char *arca_extract(const char *request, ArcaTask *task, ArcaProgress progress, v
 
 char *arca_verify(const char *archive_path, ArcaTask *task, ArcaProgress progress, void *ctx);
 
+/* Recovery record (format version 4). Each returns the usual JSON; see lib.rs.
+   arca_recovery_info: {"ok": null} without a record, else the record's description.
+   arca_recovery_check: the check report; arca_recovery_repair: the repaired copy's report.
+   arca_recovery_add: writes a copy with a record of `percent` (1 to 50). */
+char *arca_recovery_info(const char *archive_path);
+char *arca_recovery_check(const char *archive_path, ArcaTask *task, ArcaProgress progress, void *ctx);
+char *arca_recovery_repair(const char *archive_path, const char *out_path, ArcaTask *task, ArcaProgress progress, void *ctx);
+char *arca_recovery_add(const char *archive_path, const char *out_path, uint16_t percent, ArcaTask *task, ArcaProgress progress, void *ctx);
+
 // Extracts a ZIP archive with Arca's own reader: every core, CRCs checked, Mac
 // metadata from __MACOSX applied in memory, unsafe links left out.
 // request: {"archive": path, "dest": dir, "only": [paths], "overwrite": bool,

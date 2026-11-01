@@ -75,6 +75,7 @@ struct CompressView: View {
                         Toggle("Shrink it to Max later, while the Mac is idle and plugged in", isOn: $shrinkLater)
                             .font(.callout)
                     }
+                    recoveryControl
                 } else {
                     settings
                 }
@@ -242,8 +243,66 @@ struct CompressView: View {
                 Text("Mac files").foregroundStyle(.secondary)
                 Toggle("Leave out .DS_Store and other Mac-only files", isOn: $options.leaveOutMacFiles)
             }
+            if options.splitBytes == nil {
+                GridRow {
+                    Text("Recovery").foregroundStyle(.secondary)
+                    recoveryControl
+                }
+            }
         }
         .font(.callout)
+    }
+
+    // MARK: Recovery
+
+    /// Repair data: off, inside a Zipling archive, or a file next to any archive;
+    /// and how much, as a share of the archive that can be rebuilt.
+    private var recoveryControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                if options.format == .zlg { Text("Recovery").foregroundStyle(.secondary) }
+                Picker("Recovery", selection: Binding(get: { options.effectiveRecovery }, set: { options.recovery = $0 })) {
+                    Text("Off").tag(CreateOptions.RecoveryChoice.off)
+                    if options.format == .zlg { Text("In the archive").tag(CreateOptions.RecoveryChoice.inArchive) }
+                    Text("Separate file").tag(CreateOptions.RecoveryChoice.separateFile)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                if options.effectiveRecovery != .off {
+                    Picker("Amount", selection: $options.recoveryPercent) {
+                        ForEach([3, 5, 10, 25], id: \.self) { Text("\($0)%").tag($0) }
+                        if ![3, 5, 10, 25].contains(options.recoveryPercent) {
+                            Text("\(options.recoveryPercent)%").tag(options.recoveryPercent)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    Stepper("Amount", value: $options.recoveryPercent, in: 1...50)
+                        .labelsHidden()
+                }
+            }
+            Text(recoveryNote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.callout)
+    }
+
+    private var recoveryNote: String {
+        switch options.effectiveRecovery {
+        case .off:
+            return "Repair data can fix an archive damaged later by a failing disk or a broken download. Off: nothing added."
+        case .inArchive, .separateFile:
+            let where_ = options.effectiveRecovery == .inArchive ? "inside the archive" : "in a file next to the archive"
+            let share = Double(options.recoveryPercent) / 100
+            if let bytes = estimate?.bytes {
+                let amount = Format.bytes(UInt64(Double(bytes) * share))
+                return "Adds about \(amount) \(where_) and repairs up to \(amount) of damage, wherever it falls. More than that cannot be repaired."
+            }
+            return "Adds about \(options.recoveryPercent)% of the archive's size \(where_) and repairs up to that much damage, wherever it falls."
+        }
     }
 
     private var destination: some View {

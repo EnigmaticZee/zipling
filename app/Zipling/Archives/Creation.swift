@@ -44,9 +44,46 @@ struct CreateOptions: Codable, Equatable, Sendable {
     var leaveOutMacFiles = true
     /// Zipling archives only: pick the level from a sample of the files.
     var autoLevel: Bool?
+    /// Repair data: none, inside the archive (Zipling archives only) or a file next to it.
+    var recovery: RecoveryChoice = .off
+    /// Percent of the archive the repair data can rebuild, 1 to 50.
+    var recoveryPercent: Int = 3
 
     var hasLevels: Bool { format != .tarGz }
     var isAuto: Bool { autoLevel == true && format == .zlg }
+    /// The choice as it applies to this format: a record inside a non-Zipling archive becomes a file.
+    var effectiveRecovery: RecoveryChoice {
+        recovery == .inArchive && format != .zlg ? .separateFile : recovery
+    }
+
+    enum RecoveryChoice: String, Codable, Sendable, CaseIterable {
+        case off, inArchive, separateFile
+    }
+
+    init(format: ArchiveFormat = .zlg, level: Level = .balanced, encryptNames: Bool = true, splitBytes: UInt64? = nil,
+         leaveOutMacFiles: Bool = true, autoLevel: Bool? = nil, recovery: RecoveryChoice = .off, recoveryPercent: Int = 3) {
+        self.format = format
+        self.level = level
+        self.encryptNames = encryptNames
+        self.splitBytes = splitBytes
+        self.leaveOutMacFiles = leaveOutMacFiles
+        self.autoLevel = autoLevel
+        self.recovery = recovery
+        self.recoveryPercent = recoveryPercent
+    }
+
+    // Options saved before the recovery setting existed decode with its defaults.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        format = try c.decodeIfPresent(ArchiveFormat.self, forKey: .format) ?? .zlg
+        level = try c.decodeIfPresent(Level.self, forKey: .level) ?? .balanced
+        encryptNames = try c.decodeIfPresent(Bool.self, forKey: .encryptNames) ?? true
+        splitBytes = try c.decodeIfPresent(UInt64.self, forKey: .splitBytes)
+        leaveOutMacFiles = try c.decodeIfPresent(Bool.self, forKey: .leaveOutMacFiles) ?? true
+        autoLevel = try c.decodeIfPresent(Bool.self, forKey: .autoLevel)
+        recovery = try c.decodeIfPresent(RecoveryChoice.self, forKey: .recovery) ?? .off
+        recoveryPercent = min(max(try c.decodeIfPresent(Int.self, forKey: .recoveryPercent) ?? 3, 1), 50)
+    }
 }
 
 /// Makes archives: Zipling's own through the Arca engine, the rest through 7-Zip
@@ -76,7 +113,9 @@ enum Creation {
         let result: PackResult
         switch options.format {
         case .zlg:
-            result = try await Engine.pack(items, into: target, level: options.level, task: task, progress: progress)
+            let percent = options.effectiveRecovery == .inArchive ? options.recoveryPercent : 0
+            result = try await Engine.pack(items, into: target, level: options.level, recoveryPercent: percent, task: task,
+                                           progress: progress)
             Timing.mark("create: engine returned")
         case .zip where engineWritesZip(options, password: password):
             let made = try await Engine.zip(items, into: target, level: engineZipLevel,
@@ -116,6 +155,12 @@ enum Creation {
             placed.append(destination)
         }
         Timing.mark("create: moved into place")
+        // A recovery file next to the archive (split archives are left out: one file each).
+        if options.effectiveRecovery == .separateFile, placed.count == 1, let archive = placed.first {
+            let file = try await Recovery.create(for: archive, redundancy: Double(options.recoveryPercent) / 100,
+                                                 cancel: cancel) { _, _ in }
+            placed.append(file)
+        }
         return Made(result: result, files: placed)
     }
 

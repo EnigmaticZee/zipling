@@ -110,6 +110,11 @@ final class ArchiveModel {
     var converting = false
     /// A recovery file sits next to the archive.
     private(set) var hasRecovery = false
+    /// The recovery record inside a Zipling archive, when it has one (format version 4).
+    private(set) var recordInfo: RecordInfo?
+    var isZipling: Bool { url.pathExtension.lowercased() == "zlg" }
+    /// Repair data of either kind: a record inside the archive or a file next to it.
+    var canRepair: Bool { recordInfo != nil || hasRecovery }
     /// Files opened in other apps from this archive and changed there, waiting to go back in.
     private(set) var changedOutside: [EditedFile] = []
 
@@ -140,6 +145,9 @@ final class ArchiveModel {
     func load(password: String? = nil) async {
         quarantine = SafeExtraction.quarantine(of: url)
         hasRecovery = Placement.exists(Recovery.file(for: url))
+        // The engine finds a record even in a damaged archive, so a file that won't
+        // open can still offer Repair.
+        recordInfo = isZipling ? try? await Engine.recoveryInfo(url) : nil
         do {
             let archive = try await Archives.open(url, password: password, scratch: scratch)
             levels = [await Self.makeLevel(name: url.lastPathComponent, archive: archive)]
@@ -1022,6 +1030,27 @@ final class ArchiveModel {
 
     var recoveryCapacity: UInt64? { hasRecovery ? Recovery.capacity(of: Recovery.file(for: url)) : nil }
 
+    /// Rewrites the archive with a recovery record of `percent` inside it.
+    func addRecord(percent: Int) {
+        let job = Job(title: "Adding repair data to “\(url.lastPathComponent)”…")
+        start(job)
+        let archive = url
+        Task {
+            do {
+                let staged = archive.deletingLastPathComponent().appending(path: ".zipling-protect-\(UUID().uuidString).zlg")
+                defer { try? FileManager.default.removeItem(at: staged) }
+                let info = try await Engine.recoveryAdd(archive, to: staged, percent: percent, task: job.task,
+                                                        progress: job.progressHandler)
+                _ = try FileManager.default.replaceItemAt(archive, withItemAt: staged)
+                recordInfo = info
+                job.finish(nil, outcome: "“\(archive.lastPathComponent)” now carries \(info.percent)% repair data: up to \(Format.bytes(info.repairsUpTo)) of damage in any 128 MB stretch can be rebuilt.")
+                await load()
+            } catch {
+                job.finish(error)
+            }
+        }
+    }
+
     /// Saves repair data next to the archive: `redundancy` of its size can be rebuilt.
     func addRecovery(redundancy: Double) {
         let job = Job(title: "Making a recovery file for “\(url.lastPathComponent)”…")
@@ -1081,18 +1110,34 @@ final class ArchiveModel {
     }
 
     /// A repaired copy as "Name (Repaired).zip", or nil when nothing was damaged.
+    /// A Zipling archive with a record inside is repaired by the engine; anything
+    /// else by the recovery file next to it.
     private static func repair(_ archive: URL, job: Job) async throws -> URL? {
+        let name = (archive.lastPathComponent as NSString)
+        let base = Archives.baseName(archive.lastPathComponent)
+        let ext = String(archive.lastPathComponent.dropFirst(base.count))
+        let output = Placement.unique("\(base) (Repaired)\(ext.isEmpty ? "." + name.pathExtension : ext)",
+                                      in: archive.deletingLastPathComponent())
+        if archive.pathExtension.lowercased() == "zlg", let _ = try await Engine.recoveryInfo(archive) {
+            let report = try await Engine.recoveryCheck(archive, task: job.task, progress: job.progressHandler)
+            if report.intact { return nil }
+            guard report.repairable else {
+                let lost = report.lostFiles.count
+                throw EngineError(message: "Too much is damaged to repair: \(Format.bytes(report.damagedDataBytes)) in \(report.unrepairableRegions.count) stretch(es), more than its \(report.record?.percent ?? 0)% repair data covers. \(lost) file(s) would be lost.")
+            }
+            let after = try await Engine.recoveryRepair(archive, to: output, task: job.task, progress: job.progressHandler)
+            guard after.intact else {
+                try? FileManager.default.removeItem(at: output)
+                throw EngineError(message: "The repair did not bring every part back; the copy was discarded.")
+            }
+            return output
+        }
         let recovery = Recovery.file(for: archive)
         let report = try await Recovery.check(archive, recovery: recovery, cancel: job.cancelToken)
         if report.intact { return nil }
         guard report.repairable else {
             throw EngineError(message: "\(report.damagedSlices) parts are damaged, and its recovery file can rebuild \(report.repairableSlices). Too much is damaged to repair.")
         }
-        let name = (archive.lastPathComponent as NSString)
-        let base = Archives.baseName(archive.lastPathComponent)
-        let ext = String(archive.lastPathComponent.dropFirst(base.count))
-        let output = Placement.unique("\(base) (Repaired)\(ext.isEmpty ? "." + name.pathExtension : ext)",
-                                      in: archive.deletingLastPathComponent())
         try await Recovery.repair(archive, recovery: recovery, to: output, cancel: job.cancelToken,
                                   progress: job.progressHandler)
         return output

@@ -196,6 +196,9 @@ struct PackRequest {
     level: String,
     #[serde(default)]
     threads: usize,
+    /// Recovery record inside the archive, percent of the data (1 to 50); 0 for none.
+    #[serde(default)]
+    recovery_percent: u16,
 }
 
 #[derive(Serialize)]
@@ -236,6 +239,7 @@ pub unsafe extern "C" fn arca_pack(
         if req.threads > 0 {
             opts.threads = req.threads;
         }
+        opts.recovery_percent = req.recovery_percent;
         opts.hooks = hooks;
         let s = pack(&req.inputs, &req.output, &opts)?;
         Ok(PackResult {
@@ -441,4 +445,68 @@ pub unsafe extern "C" fn arca_verify(
         let s = a.verify_with(&ExtractOptions { hooks, ..Default::default() })?;
         Ok(ExtractResult { files: s.files, bytes: s.bytes, seconds: s.seconds })
     })
+}
+
+// ---------------------------------------------------------------- recovery record
+
+/// Whether the archive carries a recovery record and what it protects:
+/// `{"ok": null}` when it has none, else the record's description.
+///
+/// # Safety
+/// `archive_path` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn arca_recovery_info(archive_path: *const c_char) -> *mut c_char {
+    respond(|| arca_core::recovery::info(&PathBuf::from(arg(archive_path)?)))
+}
+
+/// Checks an archive against its recovery record: what is damaged, whether it
+/// can be repaired, which files would be lost if not. Repairs nothing.
+///
+/// # Safety
+/// `archive_path` must be a valid NUL-terminated string; `task` null or live.
+#[no_mangle]
+pub unsafe extern "C" fn arca_recovery_check(
+    archive_path: *const c_char,
+    task: *mut ArcaTask,
+    progress: ArcaProgress,
+    ctx: *mut c_void,
+) -> *mut c_char {
+    let hooks = hooks(task, progress, ctx);
+    respond(|| arca_core::recovery::check(&PathBuf::from(arg(archive_path)?), &hooks))
+}
+
+/// Writes a repaired copy of `archive_path` to `out_path` and returns the check
+/// report of the copy (`repairable` false when some damage was beyond the record;
+/// `lost_files` then names what could not be recovered).
+///
+/// # Safety
+/// Both paths must be valid NUL-terminated strings; `task` null or live.
+#[no_mangle]
+pub unsafe extern "C" fn arca_recovery_repair(
+    archive_path: *const c_char,
+    out_path: *const c_char,
+    task: *mut ArcaTask,
+    progress: ArcaProgress,
+    ctx: *mut c_void,
+) -> *mut c_char {
+    let hooks = hooks(task, progress, ctx);
+    respond(|| arca_core::recovery::repair(&PathBuf::from(arg(archive_path)?), &PathBuf::from(arg(out_path)?), &hooks))
+}
+
+/// Writes a copy of `archive_path` to `out_path` with a recovery record of
+/// `percent` (1 to 50), replacing any record it had.
+///
+/// # Safety
+/// Both paths must be valid NUL-terminated strings; `task` null or live.
+#[no_mangle]
+pub unsafe extern "C" fn arca_recovery_add(
+    archive_path: *const c_char,
+    out_path: *const c_char,
+    percent: u16,
+    task: *mut ArcaTask,
+    progress: ArcaProgress,
+    ctx: *mut c_void,
+) -> *mut c_char {
+    let hooks = hooks(task, progress, ctx);
+    respond(|| arca_core::recovery::protect(&PathBuf::from(arg(archive_path)?), &PathBuf::from(arg(out_path)?), percent, &hooks))
 }

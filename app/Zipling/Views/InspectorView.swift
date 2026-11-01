@@ -255,7 +255,16 @@ private struct ArchiveTools: View {
         }
         if model.canAddRecovery {
             InspectorSection("Recovery") {
-                if let capacity = model.recoveryCapacity {
+                if let record = model.recordInfo {
+                    Text("Protected inside the archive: \(record.percent)% repair data that can rebuild up to \(Format.bytes(record.repairsUpTo)) of damage in any 128 MB stretch, from a failing disk or a broken download.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        model.checkAndRepair()
+                    } label: {
+                        Label("Check and Repair", systemImage: "bandage")
+                    }
+                } else if let capacity = model.recoveryCapacity {
                     Text("Its recovery file can repair up to \(Format.bytes(capacity)) of damage, from a failing disk or a broken download.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -265,15 +274,30 @@ private struct ArchiveTools: View {
                         Label("Check and Repair", systemImage: "bandage")
                     }
                 } else {
-                    Text("Save repair data next to the archive, so damage from a failing disk or a broken download can be fixed later.")
+                    Text(model.isZipling
+                         ? "Add repair data, inside the archive or in a file next to it, so damage from a failing disk or a broken download can be fixed later."
+                         : "Save repair data next to the archive, so damage from a failing disk or a broken download can be fixed later.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Menu {
-                        Button("5% of its size") { model.addRecovery(redundancy: 0.05) }
-                        Button("10% of its size") { model.addRecovery(redundancy: 0.10) }
-                        Button("20% of its size") { model.addRecovery(redundancy: 0.20) }
+                        if model.isZipling {
+                            Section("In the archive") {
+                                ForEach([3, 5, 10, 25], id: \.self) { percent in
+                                    Button("\(percent)% of its size") { model.addRecord(percent: percent) }
+                                }
+                            }
+                            Section("Separate file") {
+                                ForEach([5, 10, 20], id: \.self) { percent in
+                                    Button("\(percent)% of its size") { model.addRecovery(redundancy: Double(percent) / 100) }
+                                }
+                            }
+                        } else {
+                            Button("5% of its size") { model.addRecovery(redundancy: 0.05) }
+                            Button("10% of its size") { model.addRecovery(redundancy: 0.10) }
+                            Button("20% of its size") { model.addRecovery(redundancy: 0.20) }
+                        }
                     } label: {
-                        Label("Add Recovery File", systemImage: "cross.case")
+                        Label(model.isZipling ? "Add Recovery" : "Add Recovery File", systemImage: "cross.case")
                     }
                     .fixedSize()
                 }

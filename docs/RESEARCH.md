@@ -18,7 +18,7 @@ every commit after 2026-10-28 a new hash. The engine as built, by file:
   classes (`classify.rs`), content-defined chunks and keyed POLYVAL dedup
   (`hash.rs`), lanes (text, binary, image, code, store) filling blocks, presets per
   level in `PackOptions::preset`. Extraction and its scheduler: `unpack.rs`.
-  Format 3: `format.rs`, `wire.rs`. ZIP reader and writer: `zip.rs`, `zipwrite.rs`.
+  Format 4 (the recovery record, 2026-11-01; version 3 archives still open): `format.rs`, `wire.rs`, `recovery.rs`. ZIP reader and writer: `zip.rs`, `zipwrite.rs`.
 - **Codecs** `codec.rs`: zstd (tables and job cuts per block size), LZMA2 (the
   vendored LZMA SDK encoder, its own decoder), bsc (libbsc, LZP + BWT), and our own
   `lzt.rs` (LZMA's parse, per-context tables, rANS; research switch `ARCA_EXP_LZT`).
@@ -1317,6 +1317,40 @@ and the probe is not involved (disk images take the quick-images lane, which it
 does not touch). So the row waits on a rebuild about 15% faster with zlib-only
 expansion, or 2.3x faster with both, or on expanding only what pays: an exact
 LZFSE encoder faster than Apple's is the research question left here.
+
+**The recovery record: format version 4 (2026-11-01, afternoon).** Decided with
+the user in the morning: Reed-Solomon repair data inside the `.zlg`, off unless
+asked for, 1 to 50% of the data, 3% the default in the app; the separate
+`.recovery` file stays for every other format. Built in `arca-core/src/recovery.rs`
+with the `reed-solomon-simd` crate (Leopard-RS, GF(2^16), O(n log n); MIT and
+BSD-3-Clause). The record sits between the blocks and the index, so a truncated
+tail that took the index and the footer is rebuilt from the copies the record
+carries; parity covers the header and the blocks, region by region (128 MiB, its
+own code) in 64 KiB slices (4 KiB for small archives), so one bad sector costs
+64 KiB of the budget, not megabytes; a BLAKE3-128 hash per slice locates damage
+without the key; the record's header is written twice, before and after the
+parity (the app's first test caught a tiny archive where one hit took the only
+copy), and a trailer and a forward scan find the record when the footer is gone. Repair writes a corrected copy, restores the index and footer from the
+copies, regenerates lost parity from intact data, and names the files it would
+lose when damage exceeds the budget (slices → blocks → chunks → entries from the
+index copy). Footer bytes 40..56 point at the record; version 3 archives still
+open. CLI: `pack --recovery N`, `check`, `repair`, `protect`; FFI:
+`arca_recovery_info`, `_check`, `_repair`, `_add`; `PackRequest.recovery_percent`.
+Seven engine tests damage archives on purpose: scattered sectors, the index and
+the footer, a truncated tail into the parity, damage past the budget (reported
+with the lost files, not guessed), protecting an existing archive, and version 3
+archives. Cost on the mixed-folder archive (214 MB) at 3%: 10.7 → 11.4-11.8 s
+to compress, 6.75 MB (3.15%) of size; `check` 0.14 s; a repair of forty
+2,000-byte damaged spots 0.73 s and the result extracts identical; extraction
+of an undamaged archive unchanged, since the record is read only when a block
+fails its hash. In the app: the compress sheet's Recovery setting (Off, In the
+archive, Separate file; 3/5/10/25% quick picks and a 1-50 stepper, the cost
+shown from the estimate), the inspector's Recovery section and the archive menu
+offer "Add Recovery" in the archive or as a file, Check and Repair and the
+window's Repair button route `.zlg` archives with a record to the engine. The
+realignment scan for inserted or dropped bytes is not built: a shifted file
+shows as damage past the budget. Not measured yet: the app's clock on the
+record's cost; the engine's says about one second per 200 MB at 3%.
 
 **Default, lane by lane: what a stronger codec on one lane buys (2026-11-01,
 06:30-07:30, `bench/results-2026-11-01-default-lanes-r{1,2,3}.jsonl`,

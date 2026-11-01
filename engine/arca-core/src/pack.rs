@@ -10,7 +10,7 @@
 
 use crate::classify::{self, Class, Lane, SNIFF_LEN};
 use crate::codec::{self, CodecConfig};
-use crate::format::{self, BlockInfo, Chunk, Codec, Entry, EntryKind, Footer, Index, Object, Transform};
+use crate::format::{self, BlockInfo, Chunk, Codec, Entry, EntryKind, Index, Object, Transform};
 use crate::hash;
 use crate::hooks::Hooks;
 use crate::prof;
@@ -95,6 +95,9 @@ pub struct PackOptions {
     /// Order files by their sniffed content class (one extra pass that opens
     /// every file) instead of by extension alone.
     pub sniff_order: bool,
+    /// Recovery record inside the archive, as a percentage of the data (1 to 50);
+    /// 0 for none. See `recovery`.
+    pub recovery_percent: u16,
     pub hooks: Hooks,
 }
 
@@ -206,6 +209,7 @@ impl PackOptions {
             // Ordering by content is 0.15% smaller at Default and costs ~0.1 s; at
             // Fast (small blocks) it changes nothing and costs 15% of the time.
             sniff_order: level != Level::Fast,
+            recovery_percent: 0,
             hooks: Hooks::default(),
         }
     }
@@ -798,7 +802,14 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         if stats.input_bytes < opts.adaptive_below { (stats.input_bytes / opts.threads.max(1) as u64).max(1 << 20) as usize } else { 0 };
 
     // Write to a temporary name and rename at the end: never leave a half archive.
-    let mut out = File::create(tmp_path).with_context(|| format!("creating {}", tmp_path.display()))?;
+    // Read as well as write: the recovery record reads the blocks back.
+    let mut out = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(tmp_path)
+        .with_context(|| format!("creating {}", tmp_path.display()))?;
     out.write_all(&format::header_bytes(0))?;
 
     // Memory plan. Block encoders are the big consumers (xz -9e: ~0.67 GB each,
@@ -1100,15 +1111,12 @@ fn pack_to(inputs: &[PathBuf], output: &Path, tmp_path: &Path, opts: &PackOption
         let _p = prof::span("index.compress", raw.len() as u64);
         zstd::bulk::compress(&raw, opts.index_level)?
     };
-    let index_offset = index.blocks.iter().map(|b| b.file_offset + b.comp_len).max().unwrap_or(format::HEADER_LEN as u64);
-    out.write_all(&comp)?;
-    let footer = Footer {
-        index_offset,
-        index_comp_len: comp.len() as u64,
-        index_raw_len: raw.len() as u64,
-        index_hash: format::hash16(&comp),
-    };
-    out.write_all(&footer.to_bytes())?;
+    let data_len = index.blocks.iter().map(|b| b.file_offset + b.comp_len).max().unwrap_or(format::HEADER_LEN as u64);
+    // The recovery record (when asked for), the index and the footer.
+    {
+        let _p = prof::span("pack.tail", data_len);
+        crate::recovery::write_tail(&mut out, data_len, &comp, raw.len() as u64, opts.recovery_percent, &opts.hooks)?;
+    }
     {
         let _p = prof::span("pack.sync", 0);
         // The data before the rename, in order, which is what keeps a half archive

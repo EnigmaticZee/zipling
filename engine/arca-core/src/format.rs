@@ -37,7 +37,10 @@ pub const FOOTER_MAGIC: &[u8; 8] = b"ARCAEND\x00";
 /// delta-coded times and objects). Version 3 adds a random key to the index, and
 /// hashes under it with POLYVAL where earlier versions used BLAKE3. Versions 1
 /// and 2 still open.
-pub const VERSION: u16 = 3;
+/// Version 4 (2026-11-01) adds the recovery record between the blocks and the
+/// index and the footer fields that point at it; version 3 archives have none.
+pub const VERSION: u16 = 4;
+pub const OLDEST_READABLE: u16 = 3;
 pub const HEADER_LEN: usize = 32;
 pub const FOOTER_LEN: usize = 64;
 
@@ -191,7 +194,7 @@ pub fn check_header(h: &[u8]) -> Result<u16> {
     let version = u16::from_le_bytes([h[8], h[9]]);
     // Versions 1 and 2 were the research builds' layouts (BLAKE3 hashes, a row-wise
     // index); their readers were removed on 2026-11-01. Nothing released wrote them.
-    ensure!(version == VERSION, "unsupported archive version {version}");
+    ensure!((OLDEST_READABLE..=VERSION).contains(&version), "unsupported archive version {version}");
     Ok(u16::from_le_bytes([h[10], h[11]]))
 }
 
@@ -201,6 +204,10 @@ pub struct Footer {
     pub index_comp_len: u64,
     pub index_raw_len: u64,
     pub index_hash: [u8; 16],
+    /// Where the recovery record starts and how long it is; 0 and 0 without one
+    /// (version 3 archives, and version 4 ones written without a record).
+    pub recovery_offset: u64,
+    pub recovery_len: u64,
 }
 
 impl Footer {
@@ -210,6 +217,8 @@ impl Footer {
         f[8..16].copy_from_slice(&self.index_comp_len.to_le_bytes());
         f[16..24].copy_from_slice(&self.index_raw_len.to_le_bytes());
         f[24..40].copy_from_slice(&self.index_hash);
+        f[40..48].copy_from_slice(&self.recovery_offset.to_le_bytes());
+        f[48..56].copy_from_slice(&self.recovery_len.to_le_bytes());
         f[56..64].copy_from_slice(FOOTER_MAGIC);
         f
     }
@@ -222,6 +231,8 @@ impl Footer {
             index_comp_len: u(8..16),
             index_raw_len: u(16..24),
             index_hash: f[24..40].try_into().unwrap(),
+            recovery_offset: u(40..48),
+            recovery_len: u(48..56),
         })
     }
 }
@@ -415,7 +426,7 @@ impl Index {
     pub fn decode(data: &[u8]) -> Result<Self> {
         let mut r = Reader::new(data);
         let version = r.uv()?;
-        ensure!(version == VERSION as u64, "unsupported index version {version}");
+        ensure!((OLDEST_READABLE as u64..=VERSION as u64).contains(&version), "unsupported index version {version}");
         let created = r.iv()?;
         let key = Some(r.array::<16>()?);
         let entries = Self::entries(&mut r)?;

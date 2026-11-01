@@ -31,6 +31,8 @@ pub struct Archive {
     pub index: Index,
     hasher: Hasher,
     pub archive_bytes: u64,
+    /// The footer as read, for the recovery record's location.
+    footer: Footer,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -75,13 +77,22 @@ impl Archive {
         let raw = zstd::bulk::decompress(&comp, footer.index_raw_len as usize)?;
         let index = Index::decode(&raw)?;
         for b in &index.blocks {
-            ensure!(
-                b.file_offset >= HEADER_LEN as u64 && b.file_offset + b.comp_len <= footer.index_offset,
-                "block outside archive body"
-            );
+            let body_end = if footer.recovery_offset > 0 { footer.recovery_offset } else { footer.index_offset };
+            ensure!(b.file_offset >= HEADER_LEN as u64 && b.file_offset + b.comp_len <= body_end, "block outside archive body");
         }
         let hasher = index.hasher();
-        Ok(Archive { file, index, hasher, archive_bytes: len })
+        Ok(Archive { file, index, hasher, archive_bytes: len, footer })
+    }
+
+    /// The footer as read.
+    pub fn footer(&self) -> Footer {
+        self.footer
+    }
+
+    /// Whether the archive carries a recovery record (version 4 archives written
+    /// with one), and what it protects.
+    pub fn recovery(&self) -> Option<(u64, u64)> {
+        (self.footer.recovery_offset > 0).then_some((self.footer.recovery_offset, self.footer.recovery_len))
     }
 
     pub fn read_block(&self, id: u32) -> Result<Vec<u8>> {

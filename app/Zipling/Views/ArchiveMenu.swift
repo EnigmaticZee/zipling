@@ -31,12 +31,25 @@ struct ArchiveMenu: View {
         }
         if nested {
             // Recovery files belong to files on disk.
-        } else if model.hasRecovery {
+        } else if model.canRepair {
             Button("Check and Repair") { model.checkAndRepair() }
         } else if model.canAddRecovery {
-            Menu("Add Recovery File") {
-                ForEach([0.05, 0.10, 0.20], id: \.self) { redundancy in
-                    Button("\(Int(redundancy * 100))% of its size") { model.addRecovery(redundancy: redundancy) }
+            Menu(model.isZipling ? "Add Recovery" : "Add Recovery File") {
+                if model.isZipling {
+                    Section("In the archive") {
+                        ForEach([3, 5, 10, 25], id: \.self) { percent in
+                            Button("\(percent)% of its size") { model.addRecord(percent: percent) }
+                        }
+                    }
+                    Section("Separate file") {
+                        ForEach([5, 10, 20], id: \.self) { percent in
+                            Button("\(percent)% of its size") { model.addRecovery(redundancy: Double(percent) / 100) }
+                        }
+                    }
+                } else {
+                    ForEach([0.05, 0.10, 0.20], id: \.self) { redundancy in
+                        Button("\(Int(redundancy * 100))% of its size") { model.addRecovery(redundancy: redundancy) }
+                    }
                 }
             }
         }

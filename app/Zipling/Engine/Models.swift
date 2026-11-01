@@ -109,3 +109,33 @@ struct ExtractResult: Decodable, Sendable {
     /// archive's quarantine.
     var quarantined: Bool?
 }
+
+/// A recovery record inside a Zipling archive: what it protects (format version 4).
+struct RecordInfo: Decodable, Sendable, Equatable {
+    let percent: Int
+    /// Bytes the parity covers: the header and every data block.
+    let coveredBytes: UInt64
+    let parityBytes: UInt64
+    let slice: UInt32
+    let regions: UInt32
+    /// Damage repairable in any one 128 MB stretch, in bytes.
+    let repairsUpTo: UInt64
+}
+
+/// What checking an archive against its recovery record found.
+struct CheckReport: Decodable, Sendable, Equatable {
+    let record: RecordInfo?
+    let fileLen: UInt64
+    let expectedLen: UInt64
+    let footerOk: Bool
+    let indexOk: Bool
+    let damagedDataSlices: UInt64
+    let damagedDataBytes: UInt64
+    let damagedParitySlices: UInt64
+    let unrepairableRegions: [UInt32]
+    let repairable: Bool
+    /// Files whose data lies in damage the record cannot repair.
+    let lostFiles: [String]
+
+    var intact: Bool { footerOk && indexOk && damagedDataSlices == 0 && damagedParitySlices == 0 && fileLen == expectedLen }
+}

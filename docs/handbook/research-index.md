@@ -411,6 +411,14 @@ once; "1:1 by level" scores each level against the rivals' matching class.
 
 ---
 
+### The recovery record inside the archive (format version 4)
+**When:** 2026-11-01, decided in the morning, built in the afternoon.
+**What was tried:** Reed-Solomon parity inside the `.zlg`, off unless asked for, 1 to 50% of the data (3% the app's default), with the `reed-solomon-simd` crate (GF(2^16), O(n log n)). The record sits between the blocks and the index: parity covers the header and the blocks in 128 MiB regions of 64 KiB slices, a BLAKE3-128 hash per slice locates damage, and the record carries a copy of the index and the footer, its own header twice (before and after the parity) and a trailer, so a truncated tail is rebuilt from the copies and the record is found even when the footer or one header copy is gone. Repair writes a corrected copy and names the files it would lose when damage exceeds the budget. The separate `.recovery` file stays for ZIP and 7z.
+**Measured:** Mixed-folder archive, 214 MB, 3%: compress 10.7 → 11.4-11.8 s, +6.75 MB (3.15%); check 0.14 s; repair of forty 2,000-byte damaged spots 0.73 s, the result extracts identical; extraction of an undamaged archive unchanged. Seven engine tests: scattered sectors, damaged index and footer, a tail truncated into the parity, damage past the budget (reported with the lost files), protecting an existing archive, version 3 archives opening.
+**Verdict and why:** Taken: the only Mac archiver feature of its kind, worth a day before the format froze; off by default so benchmarks and speed are unchanged.
+**Where the code is:** `engine/arca-core/src/recovery.rs`, `format.rs` (footer bytes 40..56, version 4), `arca-cli` (`pack --recovery`, `check`, `repair`, `protect`), `arca-ffi` (`arca_recovery_info/check/repair/add`); app: `CreateOptions.recovery`, `ArchiveModel.addRecord`, the compress sheet, inspector and menu.
+**Revisit if:** inserted or dropped bytes should be repairable (a realignment scan over the slice hashes, not built); the record's cost should be measured on the app's clock.
+
 ## Parked (in the engine behind a flag)
 
 ### A codec with LZMA's ratio at a symbol coder's speed: the estimate (`lztok`)
@@ -989,11 +997,11 @@ once; "1:1 by level" scores each level against the rivals' matching class.
 **Where the code is:** none.
 **Revisit if:** an "archival" tier beyond Ultra is wanted.
 
-### Encryption, recovery data, versioned archives, split archives, shrink later block by block
+### Encryption, versioned archives, split archives, shrink later block by block
 **When:** `docs/ROADMAP.md`, backlog and engine v2.
 **What was tried:** Not designed. Password-protected `.zlg` (every block encrypted, names hidden, a memory-hard key function); Reed-Solomon recovery records inside the archive; snapshots sharing unchanged chunks; parts on several files; re-packing a Fast archive to Max one block at a time. Each is a format change.
 **Measured:** none.
-**Verdict and why:** Open, parked until the engine is opened up again; the format was frozen for 1.0 with the JPEG coder as its last change.
+**Verdict and why:** Open, parked until the engine is opened up again. The recovery record left this list on 1 November 2026 (Taken, below in that group); the format is now version 4.
 **Where the code is:** none.
 **Revisit if:** a release after 1.0 opens the format; the hash design (keyed POLYVAL, index under BLAKE3) is where encryption would start.
 

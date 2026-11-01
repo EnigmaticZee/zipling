@@ -258,8 +258,7 @@ fn rejects_path_traversal() {
         index_offset: file.len() as u64,
         index_comp_len: comp.len() as u64,
         index_raw_len: raw.len() as u64,
-        index_hash: arca_core::format::hash16(&comp),
-    };
+        index_hash: arca_core::format::hash16(&comp), recovery_offset: 0, recovery_len: 0 };
     file.extend_from_slice(&comp);
     file.extend_from_slice(&footer.to_bytes());
     let tmp = tempfile::tempdir().unwrap();

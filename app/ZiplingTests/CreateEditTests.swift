@@ -169,4 +169,58 @@ struct CreateEditTests {
         #expect(model.visibleItems.map(\.name).contains("Notes.txt"))
         model.close()
     }
+
+    // MARK: Recovery record
+
+    @Test func recoveryRecordInsideTheArchiveRepairsDamage() async throws {
+        let root = try makeTree()
+        var options = CreateOptions(format: .zlg, level: .fast)
+        options.recovery = .inArchive
+        options.recoveryPercent = 5
+        let made = try await create(root, "Safe.zlg", options)
+        #expect(made.files.count == 1, "nothing beside the archive")
+        let archive = made.files[0]
+        let info = try #require(try await Engine.recoveryInfo(archive))
+        #expect(info.percent == 5)
+        #expect(info.parityBytes >= info.coveredBytes * 5 / 100)
+        let original = try Data(contentsOf: archive)
+
+        // Junk over the first bytes of the blocks and over the footer.
+        var damaged = original
+        damaged.replaceSubrange(40..<40 + 300, with: Data(repeating: 0xAA, count: 300))
+        damaged.replaceSubrange(damaged.count - 64..<damaged.count, with: Data(repeating: 0, count: 64))
+        try damaged.write(to: archive)
+        await #expect(throws: (any Error).self) { try await Archives.open(archive, password: nil, scratch: root.appending(path: "s1")) }
+        let report = try await Engine.recoveryCheck(archive, task: EngineTask()) { _, _ in }
+        #expect(!report.intact && report.repairable && !report.footerOk, "\(report)")
+
+        let repaired = root.appending(path: "Safe (Repaired).zlg")
+        let after = try await Engine.recoveryRepair(archive, to: repaired, task: EngineTask()) { _, _ in }
+        #expect(after.intact, "\(after)")
+        #expect(try Data(contentsOf: repaired) == original, "bit for bit")
+        let listed = try await paths(repaired, in: root)
+        #expect(listed.contains("Project/docs/readme.txt"))
+
+        // The model offers Repair for a damaged archive with a record, and repairs it.
+        let model = ArchiveModel(url: archive)
+        await model.load()
+        #expect(model.canRepair && model.recordInfo != nil)
+        model.close()
+    }
+
+    @Test func recoveryFileBesideAnyFormat() async throws {
+        let root = try makeTree()
+        var options = CreateOptions(format: .zip, level: .fast)
+        options.recovery = .inArchive // not possible for ZIP: becomes a separate file
+        options.recoveryPercent = 10
+        #expect(options.effectiveRecovery == .separateFile)
+        let made = try await create(root, "Beside.zip", options)
+        #expect(made.files.map(\.lastPathComponent) == ["Beside.zip", "Beside.zip.recovery"])
+        #expect(Recovery.capacity(of: made.files[1]) ?? 0 > 0)
+    }
+
+    @Test func savedOptionsWithoutRecoveryStillDecode() throws {
+        let old = CreateOptions(encoded: #"{"format":"zlg","level":"max","encryptNames":true,"leaveOutMacFiles":true}"#)
+        #expect(old?.level == .max && old?.recovery == .off && old?.recoveryPercent == 3)
+    }
 }

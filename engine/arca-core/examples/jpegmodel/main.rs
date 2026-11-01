@@ -1,3 +1,5 @@
+// Research rounds: not every model's helpers are used by the current round.
+#![allow(dead_code, unused_mut, unused_parens)]
 //! Size estimate for a light JPEG coefficient coder.
 //! Decodes baseline JPEGs to quantised coefficients, then charges every binary
 //! decision of a candidate model to an adaptive probability (LZMA-style, 12-bit),

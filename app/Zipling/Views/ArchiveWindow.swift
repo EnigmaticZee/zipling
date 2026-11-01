@@ -28,9 +28,9 @@ struct ArchiveWindow: View {
                 } description: {
                     Text(message)
                 } actions: {
-                    // A damaged archive with a recovery file next to it can be rebuilt.
-                    if Placement.exists(Recovery.file(for: url)) {
-                        Button("Repair with Its Recovery File") { model.repairAndOpen() }
+                    // A damaged archive with repair data, inside it or in a file next to it, can be rebuilt.
+                    if model.canRepair {
+                        Button(model.recordInfo != nil ? "Repair" : "Repair with Its Recovery File") { model.repairAndOpen() }
                             .buttonStyle(.borderedProminent)
                     }
                 }

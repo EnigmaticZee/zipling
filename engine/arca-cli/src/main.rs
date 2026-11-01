@@ -65,9 +65,35 @@ enum Cmd {
         /// `--lane binary=xz:9e` (lanes: text, binary, image).
         #[arg(long)]
         lane: Vec<String>,
+        /// Recovery record inside the archive: 1 to 50 (percent of the data), 0 for none.
+        #[arg(long, default_value_t = 0)]
+        recovery: u16,
         /// Print a machine-readable stats line.
         #[arg(long)]
         json: bool,
+    },
+    /// Check an archive's recovery record: what is damaged and whether it can be repaired.
+    Check {
+        archive: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Write a repaired copy of a damaged archive, using its recovery record.
+    Repair {
+        archive: PathBuf,
+        #[arg(short = 'o', long)]
+        out: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Write a copy of an archive with a recovery record (replacing any it has).
+    Protect {
+        archive: PathBuf,
+        #[arg(short = 'o', long)]
+        out: PathBuf,
+        /// Percent of the data, 1 to 50.
+        #[arg(long, default_value_t = 3)]
+        percent: u16,
     },
     /// Extract an archive.
     Unpack {
@@ -135,6 +161,26 @@ fn human(n: u64) -> String {
     }
 }
 
+fn print_report(r: &arca_core::CheckReport) {
+    match &r.record {
+        None => println!("no recovery record ({} bytes)", r.file_len),
+        Some(i) => {
+            println!("recovery record: {}%, {} of parity over {}, {} regions of {} slices; repairs up to {} of damage per {} stretch",
+                i.percent, human(i.parity_bytes), human(i.covered_bytes), i.regions, human(i.slice as u64), human(i.repairs_up_to), human(arca_core::recovery::REGION));
+            println!("file {} of {} bytes; footer {}; index {}", r.file_len, r.expected_len, if r.footer_ok { "ok" } else { "DAMAGED" }, if r.index_ok { "ok" } else { "DAMAGED" });
+            println!("damaged: {} data slices ({}), {} parity slices", r.damaged_data_slices, human(r.damaged_data_bytes), r.damaged_parity_slices);
+            if r.repairable {
+                println!("{}", if r.damaged_data_slices + r.damaged_parity_slices == 0 && r.footer_ok && r.index_ok { "intact" } else { "repairable" });
+            } else {
+                println!("NOT fully repairable: regions {:?} have more damage than their parity", r.unrepairable_regions);
+                for f in &r.lost_files {
+                    println!("  lost: {f}");
+                }
+            }
+        }
+    }
+}
+
 /// Ends the process once the archive is complete and reported: freeing a few
 /// hundred MB of buffers took 4 ms of Fast's 0.14 s on Silesia, and the system
 /// reclaims them anyway.
@@ -146,7 +192,7 @@ fn done() -> ! {
 
 fn main() -> Result<()> {
     match Cli::parse().cmd {
-        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_level, text_block_mib, code_block_mib, image_block_mib, deflate_chain, disk_images, lane, json } => {
+        Cmd::Pack { output, inputs, level, threads, no_transforms, no_dedup, codec_level, block_mib, text_level, text_block_mib, code_block_mib, image_block_mib, deflate_chain, disk_images, lane, recovery, json } => {
             let level = match level {
                 LevelArg::Fast => Level::Fast,
                 LevelArg::Balanced => Level::Balanced,
@@ -154,6 +200,7 @@ fn main() -> Result<()> {
                 LevelArg::Ultra => Level::Ultra,
             };
             let mut o = PackOptions::preset(level);
+            o.recovery_percent = recovery;
             if let Some(t) = threads {
                 o.threads = t;
             }
@@ -243,6 +290,31 @@ fn main() -> Result<()> {
             }
             println!("  {} blocks, index {}", s.blocks, human(s.index_bytes));
             done();
+        }
+        Cmd::Check { archive, json } => {
+            let r = arca_core::recovery::check(&archive, &arca_core::Hooks::default())?;
+            if json {
+                println!("{}", serde_json::to_string(&r)?);
+            } else {
+                print_report(&r);
+            }
+        }
+        Cmd::Repair { archive, out, json } => {
+            let r = arca_core::recovery::repair(&archive, &out, &arca_core::Hooks::default())?;
+            if json {
+                println!("{}", serde_json::to_string(&r)?);
+            } else {
+                println!("repaired copy written to {}", out.display());
+                print_report(&r);
+            }
+            if !r.repairable {
+                std::process::exit(2);
+            }
+        }
+        Cmd::Protect { archive, out, percent } => {
+            let i = arca_core::recovery::protect(&archive, &out, percent, &arca_core::Hooks::default())?;
+            println!("{}: recovery record of {}%, {} of parity over {}, repairs up to {} of damage in any {} stretch",
+                out.display(), i.percent, human(i.parity_bytes), human(i.covered_bytes), human(i.repairs_up_to), human(arca_core::recovery::REGION));
         }
         Cmd::Unpack { archive, dest, threads, force, only, json } => {
             let a = Archive::open(&archive)?;

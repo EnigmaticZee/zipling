@@ -37,12 +37,12 @@ BWT for the decode time; smaller text blocks do not help (measured: 2 to 12 MiB,
 extraction unchanged, size up to 5% worse). Numbers in
 `bench/results-2026-11-01-default-lanes-r2.jsonl`, `-r3.jsonl`.
 
-## Planned: the recovery record (next engine work, before the format freeze)
+## Built: the recovery record (1 November 2026)
 
-Decided with the owner on 1 November 2026. Today the app can write a separate
-recovery file next to any archive (`Name.zip.recovery`, Reed-Solomon over k
-slices with m parity slices in GF(256), a hash per slice; `app/Zipling/Archives/Recovery.swift`).
-The plan:
+Decided with the owner on 1 November 2026 and built the same day; `engine.md`
+describes the format. The app keeps its separate recovery file for every other
+format (`Name.zip.recovery`, Reed-Solomon in GF(256); `app/Zipling/Archives/Recovery.swift`).
+What was planned, and holds:
 
 - Inside the `.zlg`: a recovery section between the index and the footer: slice
   size and counts, a hash per slice, the parity, and a copy of the footer so a
