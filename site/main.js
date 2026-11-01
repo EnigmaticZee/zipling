@@ -232,6 +232,16 @@ function reveals() {
   els.forEach((el) => io.observe(el));
 }
 
+// The app tiles' stages loop while a tile is on screen and pause when it scrolls away.
+function liveTiles() {
+  const tiles = document.querySelectorAll(".feat");
+  if (!tiles.length) return;
+  if (!("IntersectionObserver" in window)) { tiles.forEach((t) => t.classList.add("live")); return; }
+  const io = new IntersectionObserver((entries) =>
+    entries.forEach((e) => e.target.classList.toggle("live", e.isIntersecting)), { threshold: 0.3 });
+  tiles.forEach((t) => io.observe(t));
+}
+
 // Headline numbers count up once, the first time they're seen.
 function countUps() {
   const els = document.querySelectorAll("[data-count]");
@@ -374,6 +384,7 @@ homePage();
 benchmarksPage();
 comparePage();
 reveals();
+liveTiles();
 countUps();
 reel();
 chrome();

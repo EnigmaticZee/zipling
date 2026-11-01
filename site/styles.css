@@ -437,41 +437,151 @@ h2 { font-size: clamp(34px, 4.8vw, 56px); line-height: 1.06; font-weight: 700; l
 .app-shot { margin: 0; }
 .app-shot img { border-radius: 12px; box-shadow: var(--shot-shadow); }
 
-/* The app's six moves: each tile has a small stage whose motion plays when the tile
-   scrolls in (after its own reveal delay) and nudges again on hover. */
+/* The app's six jobs. Each tile has a small stage that keeps looping while the tile is on
+   screen (--cyc is one loop); off screen it pauses. Rest styles are the finished picture, so
+   with reduced motion every stage is a still of the job done. */
 .feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 48px; }
-.feat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px 24px; box-shadow: var(--shadow); transition: transform 0.25s, box-shadow 0.25s; }
+.feat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px 24px; box-shadow: var(--shadow); transition: transform 0.25s, box-shadow 0.25s; }
 .feat:hover { transform: translateY(-3px); }
 .feat h3 { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
 .feat p { color: var(--ink-2); font-size: 15px; margin-top: 6px; }
-.feat .stage { display: flex; flex-wrap: wrap; align-content: center; align-items: center; gap: 6px; min-height: 74px; margin-bottom: 16px; }
-.feat .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: var(--ink-2); background: var(--bg-alt); border: 1px solid var(--line); white-space: nowrap; }
+.feat .stage { position: relative; height: 128px; margin-bottom: 16px; padding: 12px 14px; border-radius: 14px; background: var(--bg-alt); border: 1px solid var(--line); overflow: hidden; font-size: 12.5px; font-weight: 600; line-height: 1.2; color: var(--ink-2); --cyc: 8s; }
+.feat .stage * { animation-duration: var(--cyc); animation-iteration-count: infinite; animation-fill-mode: both; }
+.js .feat:not(.live) .stage * { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .feat .stage * { animation: none !important; } }
+.feat .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.3; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); white-space: nowrap; }
 .feat .chip svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .feat .chip.hot { color: var(--brand); background: var(--brand-soft); border-color: transparent; }
-.feat .chip.us { color: #fff; background: linear-gradient(160deg, #6E86FF, #3B44D6); border-color: transparent; }
-.feat .sep { width: 6px; height: 6px; border-right: 1.8px solid var(--ink-3); border-bottom: 1.8px solid var(--ink-3); transform: rotate(-45deg); margin: 0 2px; }
-.feat .spin { display: inline-grid; place-items: center; width: 24px; height: 24px; color: var(--brand); }
-.feat .spin svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.feat .track { display: block; width: 100%; height: 10px; border-radius: 6px; background: var(--bg-alt); border: 1px solid var(--line); overflow: hidden; }
-.feat .track i { display: block; height: 100%; width: 100%; border-radius: 6px; background: linear-gradient(90deg, #6E86FF, #3B44D6); }
-.feat .blocks { display: flex; gap: 4px; width: 100%; margin-bottom: 4px; }
-.feat .blocks i { flex: 1; height: 16px; border-radius: 3px; background: var(--bar-them); }
-.feat .blocks i.x { background: #F08C28; }
-.js .feat .pop, .js .feat .up, .js .feat .light, .js .feat .spin { opacity: 0; }
-.js .feat.in .pop, .js .feat.in .up, .js .feat.in .light, .js .feat.in .spin { opacity: 1; }
-.js .feat.in .pop { animation: rv-pop 0.55s cubic-bezier(0.2, 1.4, 0.3, 1) both; animation-delay: calc(var(--d, 0ms) + var(--at, 0s)); }
-.js .feat.in .up, .js .feat.in .spin { animation: rv-up 0.5s ease both; animation-delay: calc(var(--d, 0ms) + var(--at, 0s)); }
-.js .feat.in .spin svg { animation: rv-spin 1.1s cubic-bezier(0.3, 0.7, 0.2, 1) both; animation-delay: calc(var(--d, 0ms) + var(--at, 0s) + 0.3s); }
-.js .feat.in .light { opacity: 1; animation: rv-light 0.9s ease both; animation-delay: calc(var(--d, 0ms) + var(--at, 0s)); }
-.js .feat.in .track i { animation: rv-shrink 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--d, 0ms) + 0.3s); }
-.js .feat.in .blocks i { animation: rv-up 0.4s ease both; animation-delay: calc(var(--d, 0ms) + var(--at, 0s)); }
-.js .feat.in .blocks i.x { animation: rv-up 0.4s ease both, feat-heal 1.4s ease both; animation-delay: calc(var(--d, 0ms) + var(--at, 0s)), calc(var(--d, 0ms) + 1s); }
-@keyframes feat-heal { 0%, 35% { background: #F08C28; } 100% { background: #4B5BEA; } }
-@keyframes feat-nudge { 35% { translate: 0 -4px; } }
-.js .feat.in:hover .pop, .js .feat.in:hover .chip.light { animation: feat-nudge 0.5s ease both; animation-delay: calc(var(--at, 0s) * 0.35); }
-.js .feat.in:hover .spin svg { animation: rv-spin 0.9s cubic-bezier(0.3, 0.7, 0.2, 1) both; }
-.js .feat.in:hover .track i { animation: rv-shrink 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.js .feat.in:hover .blocks i.x { animation: feat-heal 1.2s ease both; }
+/* Shared bits: file icons and rows. */
+.stage .fi { position: relative; flex: none; width: 16px; height: 16px; border-radius: 4px; background: var(--ink-3); }
+.stage .fi.zip { background: linear-gradient(160deg, #A2ACBF, #5F6A80); }
+.stage .fi.zip::after { content: ""; position: absolute; top: 2px; bottom: 2px; left: 7px; width: 2px; border-radius: 1px; background: rgba(255, 255, 255, 0.55); }
+.stage .fi.sz { background: linear-gradient(160deg, #C9D1E0, #8A94A8); }
+.stage .fi.rar { background: linear-gradient(160deg, #B58CFF, #7B4FD6); }
+.stage .fi.zlg { background: linear-gradient(160deg, #6E86FF, #3B44D6); }
+.stage .fi.fold { background: linear-gradient(160deg, #7CC4FF, #3E8FE0); border-radius: 3px 3px 4px 4px; }
+.stage .fi.file { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; }
+.stage i { font-style: normal; }
+.stage .fi.img { background: linear-gradient(160deg, #FFB86C, #E0607A); }
+.stage .frow, .stage .edr, .stage .qlr { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px; border-radius: 7px; color: var(--ink); white-space: nowrap; }
+.stage .frow em, .stage .qlr em { margin-left: auto; font-style: normal; font-weight: 500; color: var(--ink-3); }
+/* Extract Here: right-click, the menu, progress under the Dock icon, a folder appears. */
+.st-x .rows { width: calc(100% - 52px); }
+.st-x .r2 { overflow: hidden; animation-name: k-x-r2; }
+.st-x .cmenu { position: absolute; left: 108px; top: 24px; z-index: 1; display: grid; gap: 1px; padding: 4px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 12px; font-weight: 500; color: var(--ink); opacity: 0; transform-origin: 12% 0; animation-name: k-x-menu; }
+.st-x .cmenu span { padding: 3px 10px; border-radius: 5px; white-space: nowrap; }
+.st-x .cmenu .sel { animation-name: k-x-sel; }
+.st-x .cur { position: absolute; left: 66px; top: 20px; z-index: 2; width: 10px; height: 10px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--surface); opacity: 0; animation-name: k-x-cur; }
+.st-x .dock { position: absolute; right: 14px; bottom: 12px; width: 40px; text-align: center; }
+.st-x .dock img { display: block; margin: 0 auto; width: 34px; height: 34px; border-radius: 8px; animation-name: k-x-bounce; }
+.st-x .pb { display: block; margin: 5px auto 0; width: 32px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; opacity: 0; animation-name: k-x-pb; }
+.st-x .pb i { display: block; height: 100%; width: 100%; border-radius: 2px; background: var(--brand); animation-name: k-x-fill; }
+@keyframes k-x-cur { 0%, 6% { opacity: 0; translate: 0 0; scale: 1; } 10%, 14% { opacity: 1; translate: 0 0; scale: 1; } 15% { scale: 0.75; } 16% { scale: 1; } 26%, 30% { opacity: 1; translate: 46px 34px; scale: 1; } 31% { scale: 0.75; } 32% { scale: 1; } 36%, 100% { opacity: 0; translate: 46px 34px; scale: 1; } }
+@keyframes k-x-menu { 0%, 14% { opacity: 0; scale: 0.92; } 18%, 32% { opacity: 1; scale: 1; } 38%, 100% { opacity: 0; scale: 1; } }
+@keyframes k-x-sel { 0%, 26% { background: transparent; color: var(--ink); } 28%, 36% { background: var(--brand); color: #fff; } 40%, 100% { background: transparent; color: var(--ink); } }
+@keyframes k-x-pb { 0%, 36% { opacity: 0; } 40%, 70% { opacity: 1; } 76%, 100% { opacity: 0; } }
+@keyframes k-x-fill { 0%, 40% { width: 0; } 68%, 100% { width: 100%; } }
+@keyframes k-x-bounce { 0%, 70% { translate: 0 0; } 73% { translate: 0 -7px; } 76%, 100% { translate: 0 0; } }
+@keyframes k-x-r2 { 0%, 70% { height: 0; opacity: 0; translate: 0 -8px; } 76%, 94% { height: 26px; opacity: 1; translate: 0 0; } 100% { height: 26px; opacity: 0; translate: 0 0; } }
+/* Quick Look: Space, and the archive's contents pop up. */
+.st-ql .key { position: absolute; left: 14px; bottom: 14px; padding: 3px 10px 2px; border-radius: 6px; border: 1px solid var(--line); border-bottom-width: 3px; background: var(--surface); font-family: inherit; font-size: 11px; font-weight: 600; color: var(--ink-3); animation-name: k-ql-key; }
+.st-ql .qlp { position: absolute; left: 100px; top: 10px; right: 10px; bottom: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); transform-origin: 0 100%; animation-name: k-ql-pop; }
+.st-ql .qlt { margin: 0 0 4px; font-size: 11px; font-weight: 500; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-ql .qlr { height: 22px; padding: 0 2px; gap: 6px; animation-name: k-ql-row; }
+.st-ql .qlr:nth-of-type(2) { animation-delay: calc(var(--cyc) * 0.03); }
+.st-ql .qlr:nth-of-type(3) { animation-delay: calc(var(--cyc) * 0.06); }
+@keyframes k-ql-key { 0%, 10% { translate: 0 0; border-bottom-width: 3px; } 13%, 16% { translate: 0 2px; border-bottom-width: 1px; } 19%, 84% { translate: 0 0; border-bottom-width: 3px; } 87%, 90% { translate: 0 2px; border-bottom-width: 1px; } 93%, 100% { translate: 0 0; border-bottom-width: 3px; } }
+@keyframes k-ql-pop { 0%, 15% { opacity: 0; scale: 0.9; } 21%, 89% { opacity: 1; scale: 1; } 94%, 100% { opacity: 0; scale: 0.9; } }
+@keyframes k-ql-row { 0%, 22% { opacity: 0; translate: -6px 0; } 28%, 100% { opacity: 1; translate: 0 0; } }
+/* Convert: three sources take turns becoming the same Zipling archive. Real sizes from the
+   benchmark's mixed folder: Finder's ZIP, 7-Zip Normal, WinRAR Normal, Zipling Default. */
+.st-cv { display: grid; grid-template-columns: 1fr 40px 1fr; grid-template-rows: 44px 30px; align-items: center; align-content: center; column-gap: 6px; }
+.st-cv .cvf { position: relative; height: 44px; }
+.st-cv .cvs, .st-cv .cvt { display: grid; grid-template-columns: 18px 1fr; column-gap: 7px; align-items: center; height: 44px; padding: 0 9px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
+.st-cv .cvs .fi, .st-cv .cvt .fi { grid-row: 1 / 3; }
+.st-cv b { font-weight: 650; font-size: 12.5px; }
+.st-cv em { font-style: normal; font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.st-cv .cvs { position: absolute; inset: 0; opacity: 0; animation-name: k-cv-src; }
+.st-cv .s1 { opacity: 1; }
+.st-cv .s2, .st-cv .b2 { animation-delay: calc(var(--cyc) / 3); }
+.st-cv .s3, .st-cv .b3 { animation-delay: calc(var(--cyc) * 2 / 3); }
+.st-cv .flow { position: relative; height: 2px; border-radius: 1px; background: var(--line); }
+.st-cv .flow i { position: absolute; top: -2px; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); opacity: 0; animation-name: k-flow; animation-duration: 1.5s; animation-timing-function: linear; }
+.st-cv .flow i:nth-child(2) { animation-delay: -0.5s; }
+.st-cv .flow i:nth-child(3) { animation-delay: -1s; }
+.st-cv .cvt { border-color: transparent; background: var(--brand-soft); color: var(--brand); }
+.st-cv .cvt em { color: var(--brand); opacity: 0.75; }
+.st-cv .cvb { grid-column: 1 / -1; position: relative; height: 26px; }
+.st-cv .cvb span { position: absolute; left: 50%; top: 3px; translate: -50% 0; padding: 3px 10px; border-radius: 999px; font-size: 12px; color: var(--brand); background: var(--brand-soft); white-space: nowrap; opacity: 0; animation-name: k-cv-badge; }
+.st-cv .b1 { opacity: 1; }
+@keyframes k-cv-src { 0% { opacity: 0; translate: 0 8px; } 5%, 29% { opacity: 1; translate: 0 0; } 33.3%, 100% { opacity: 0; translate: 0 -8px; } }
+@keyframes k-cv-badge { 0%, 9% { opacity: 0; scale: 0.7; } 14%, 29% { opacity: 1; scale: 1; } 33.3%, 100% { opacity: 0; scale: 1; } }
+@keyframes k-flow { 0% { left: 0; opacity: 0; } 15%, 85% { opacity: 1; } 100% { left: calc(100% - 6px); opacity: 0; } }
+/* Edit in place: a file drops in, another is deleted, the size follows. */
+.st-ed .edl { animation-name: k-ed-reset; }
+.st-ed .edh { display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 8px; color: var(--ink); }
+.st-ed .edsz { position: relative; margin-left: auto; width: 62px; height: 16px; }
+.st-ed .edsz em { position: absolute; right: 0; top: 0; font-style: normal; font-weight: 500; color: var(--ink-3); opacity: 0; }
+.st-ed .z1 { animation-name: k-ed-z1; }
+.st-ed .z2 { animation-name: k-ed-z2; }
+.st-ed .z3 { opacity: 1; animation-name: k-ed-z3; }
+.st-ed .edr { height: 24px; overflow: hidden; }
+.st-ed .del { height: 0; opacity: 0; animation-name: k-ed-del; }
+.st-ed .add { animation-name: k-ed-add; }
+@keyframes k-ed-reset { 0%, 3% { opacity: 0; } 7%, 93% { opacity: 1; } 97%, 100% { opacity: 0; } }
+@keyframes k-ed-add { 0%, 12% { height: 0; opacity: 0; translate: 28px 0; background: var(--brand-soft); } 19% { height: 24px; opacity: 1; translate: 0 0; background: var(--brand-soft); } 34%, 100% { height: 24px; opacity: 1; translate: 0 0; background: transparent; } }
+@keyframes k-ed-del { 0%, 46% { height: 24px; opacity: 1; translate: 0 0; color: var(--ink); } 48% { color: #F08C28; } 51% { height: 24px; opacity: 0; translate: -28px 0; color: #F08C28; } 56%, 100% { height: 0; opacity: 0; translate: -28px 0; } }
+@keyframes k-ed-z1 { 0%, 20% { opacity: 1; translate: 0 0; } 24%, 100% { opacity: 0; translate: 0 -6px; } }
+@keyframes k-ed-z2 { 0%, 20% { opacity: 0; translate: 0 6px; } 24%, 52% { opacity: 1; translate: 0 0; } 56%, 100% { opacity: 0; translate: 0 -6px; } }
+@keyframes k-ed-z3 { 0%, 52% { opacity: 0; translate: 0 6px; } 56%, 100% { opacity: 1; translate: 0 0; } }
+/* Lock and split: two switches flip on, the lock closes, the archive splits into parts. */
+.st-lk { display: grid; align-content: center; row-gap: 10px; }
+.st-lk .opt { display: flex; align-items: center; gap: 9px; height: 20px; color: var(--ink); }
+.st-lk .tg { position: relative; flex: none; width: 30px; height: 18px; border-radius: 9px; background: var(--brand); }
+.st-lk .tg i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); translate: 12px 0; }
+.st-lk .o1 .tg { animation-name: k-lk-t1; }
+.st-lk .o1 .tg i { animation-name: k-lk-k1; }
+.st-lk .o2 .tg { animation-name: k-lk-t2; }
+.st-lk .o2 .tg i { animation-name: k-lk-k2; }
+.st-lk .lock { width: 17px; height: 17px; margin-left: auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; color: var(--brand); animation-name: k-lk-lock; }
+.st-lk .lock .sh { animation-name: k-lk-sh; }
+.st-lk .parts { display: flex; gap: 6px; height: 10px; margin-top: 2px; animation-name: k-lk-gap; }
+.st-lk .parts i { position: relative; flex: 1; border-radius: 3px; background: linear-gradient(90deg, #6E86FF, #3B44D6); }
+.st-lk .parts i:nth-child(1) { animation-name: k-lk-r1; }
+.st-lk .parts i:nth-child(2) { animation-name: k-lk-r2; }
+.st-lk .parts i:nth-child(3) { animation-name: k-lk-r3; }
+.st-lk .parts b { position: absolute; left: 0; top: 13px; font-size: 10px; font-weight: 600; color: var(--ink-3); animation-name: k-lk-lbl; }
+@keyframes k-lk-t1 { 0%, 10% { background: var(--ink-3); } 14%, 76% { background: var(--brand); } 80%, 100% { background: var(--ink-3); } }
+@keyframes k-lk-k1 { 0%, 10% { translate: 0 0; } 14%, 76% { translate: 12px 0; } 80%, 100% { translate: 0 0; } }
+@keyframes k-lk-t2 { 0%, 36% { background: var(--ink-3); } 40%, 78% { background: var(--brand); } 82%, 100% { background: var(--ink-3); } }
+@keyframes k-lk-k2 { 0%, 36% { translate: 0 0; } 40%, 78% { translate: 12px 0; } 82%, 100% { translate: 0 0; } }
+@keyframes k-lk-lock { 0%, 12% { color: var(--ink-3); } 18%, 76% { color: var(--brand); } 82%, 100% { color: var(--ink-3); } }
+@keyframes k-lk-sh { 0%, 12% { translate: 0 -3px; } 18%, 76% { translate: 0 0; } 82%, 100% { translate: 0 -3px; } }
+@keyframes k-lk-gap { 0%, 38% { gap: 0px; } 46%, 78% { gap: 6px; } 86%, 100% { gap: 0px; } }
+@keyframes k-lk-lbl { 0%, 42% { opacity: 0; translate: 0 -3px; } 48%, 78% { opacity: 1; translate: 0 0; } 84%, 100% { opacity: 0; translate: 0 -3px; } }
+@keyframes k-lk-r1 { 0%, 38% { border-radius: 3px 0 0 3px; } 46%, 78% { border-radius: 3px; } 86%, 100% { border-radius: 3px 0 0 3px; } }
+@keyframes k-lk-r2 { 0%, 38% { border-radius: 0; } 46%, 78% { border-radius: 3px; } 86%, 100% { border-radius: 0; } }
+@keyframes k-lk-r3 { 0%, 38% { border-radius: 0 3px 3px 0; } 46%, 78% { border-radius: 3px; } 86%, 100% { border-radius: 0 3px 3px 0; } }
+/* Stays in its folder: an entry tries to climb out of the destination and is kept inside. */
+.st-sf { padding: 10px 14px; }
+.st-sf .box { position: relative; padding: 4px 8px 2px; border-radius: 10px; border: 1.5px dashed var(--ink-3); animation-name: k-sf-box; }
+.st-sf .bl { display: flex; align-items: center; gap: 6px; height: 16px; margin-bottom: 2px; font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.st-sf .bl .fi { width: 13px; height: 13px; }
+.st-sf .edr { height: 22px; padding: 0 4px; }
+.st-sf .climb { position: relative; animation-name: k-sf-climb; }
+.st-sf .climb b { font-weight: 600; }
+.st-sf .p1 { opacity: 0; animation-name: k-sf-p1; }
+.st-sf .p2 { position: absolute; left: 28px; animation-name: k-sf-p2; }
+.st-sf .chips { display: flex; gap: 6px; margin-top: 5px; }
+.st-sf .chips .chip { transform-origin: 0 50%; }
+.st-sf .kept { animation-name: k-sf-kept; }
+.st-sf .gk { animation-name: k-sf-gk; }
+@keyframes k-sf-box { 0%, 16% { border-color: var(--ink-3); } 22%, 31% { border-color: #F08C28; } 38%, 100% { border-color: var(--ink-3); } }
+@keyframes k-sf-climb { 0%, 14% { translate: 0 0; color: var(--ink); } 22% { color: #F08C28; } 27%, 31% { translate: -20px -10px; color: #F08C28; } 36% { translate: 2px 1px; color: var(--ink); } 40%, 100% { translate: 0 0; color: var(--ink); } }
+@keyframes k-sf-p1 { 0% { opacity: 0; } 4%, 32% { opacity: 1; } 36%, 100% { opacity: 0; } }
+@keyframes k-sf-p2 { 0%, 32% { opacity: 0; } 36%, 93% { opacity: 1; } 97%, 100% { opacity: 0; } }
+@keyframes k-sf-kept { 0%, 38% { opacity: 0; scale: 0.7; } 44%, 93% { opacity: 1; scale: 1; } 97%, 100% { opacity: 0; scale: 1; } }
+@keyframes k-sf-gk { 0%, 56% { opacity: 0; scale: 0.7; } 62%, 93% { opacity: 1; scale: 1; } 97%, 100% { opacity: 0; scale: 1; } }
 .roadmap { margin-top: 88px; background: linear-gradient(160deg, var(--surface), var(--bg-alt)); border: 1px solid var(--line); border-radius: 28px; padding: 40px 40px 32px; }
 .roadmap h3 { font-size: 26px; }
 .roadmap ul { list-style: none; padding: 0; margin: 26px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px 28px; }
