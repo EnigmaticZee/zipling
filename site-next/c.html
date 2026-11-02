@@ -24,11 +24,11 @@
         <span>Zipling</span>
       </a>
       <nav aria-label="Site">
-        <a href="#smaller">Smaller</a>
-        <a href="#speed">Faster</a>
+        <a href="#smaller">Smaller and faster</a>
         <a href="#opens">Opens anything</a>
         <a href="#repair">Repair</a>
         <a href="#app">The app</a>
+        <a href="how.html">How it works</a>
         <a href="#faq">FAQ</a>
       </nav>
       <div class="nav-right">
@@ -58,10 +58,41 @@
         <p class="fine reveal">One-time purchase, no subscription · For Macs with Apple silicon</p>
       </div>
 
-      <!-- The real app, and over it the one picture that explains Zipling: the same folder, zipped in Finder and packed by Zipling. -->
+      <!-- The app, drawn as it should feel, and over it the one picture that explains Zipling. -->
       <div class="wrap">
-        <div class="hero-stage reveal">
-          <div class="shot-main"><img src="shots/archive-dark.jpg" alt="A Zipling window showing a holiday folder's photos, 58% smaller, with a photo previewed in the inspector" width="2480" height="1440"></div>
+        <div class="hero-stage reveal" data-scene="hero">
+          <div class="zw hero-win" aria-label="The Holiday archive in Zipling: four photos, each 47 to 70% smaller, the whole archive 58% smaller, with a sunset photo previewed">
+      <div class="zw-bar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="zw-ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9 5v14"/></svg></span>
+        <span class="zw-ic"><svg viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/></svg></span>
+        <div class="zw-title"><b>Holiday</b><span>7 files · 283 KB · 58% smaller</span></div>
+        <div class="zw-tools"><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4M5 20h14"/></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/></svg></span><span class="zw-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>Search archive</span></div>
+      </div>
+      <div class="zw-body">
+        <aside class="zw-side">
+          <h4>Contents</h4>
+          <div><i class="ic zlg"></i>Holiday.zlg</div>
+          <div class="l1"><i class="ic fold"></i>Holiday</div>
+          <div class="l2"><i class="ic fold"></i>Documents</div>
+          <div class="l2 on"><i class="ic fold"></i>Photos</div>
+        </aside>
+        <div class="zw-main">
+          <div class="zw-crumb"><span>Holiday.zlg</span><span>Holiday</span><b>Photos</b><em>4 items</em></div>
+          <div class="zw-cols"><span>Name</span><span>Size</span><span>Saved</span><span>Method</span></div>
+        <div class="zw-row sel" style="--i:0"><span class="nm"><img src="shots/photos/sunset-thumb.jpg" alt="" width="160" height="107">Sunset at the pier.jpg</span><span>104 KB</span><span class="sv"><i style="--w:.61"></i>61%</span><span>JPEG coder</span></div>
+        <div class="zw-row" style="--i:1"><span class="nm"><img src="shots/photos/valley-thumb.jpg" alt="" width="160" height="107">Morning in the valley.jpg</span><span>108 KB</span><span class="sv"><i style="--w:.58"></i>58%</span><span>JPEG coder</span></div>
+        <div class="zw-row" style="--i:2"><span class="nm"><img src="shots/photos/beach-thumb.jpg" alt="" width="160" height="107">Beach from the hotel.jpg</span><span>158 KB</span><span class="sv"><i style="--w:.70"></i>70%</span><span>JPEG coder</span></div>
+        <div class="zw-row" style="--i:3"><span class="nm"><img src="shots/photos/night-thumb.jpg" alt="" width="160" height="107">Last night in town.jpg</span><span>256 KB</span><span class="sv"><i style="--w:.47"></i>47%</span><span>JPEG coder</span></div>
+        </div>
+      <aside class="zw-insp">
+        <div class="zw-prev"><img src="shots/photos/sunset.jpg" alt="" width="900" height="600"></div>
+        <b>Sunset at the pier.jpg</b><span class="path">Holiday / Photos</span>
+        <dl><dt>Size</dt><dd>104 KB</dd><dt>Packed</dt><dd>≈ 41 KB</dd><dt>Saved</dt><dd>61%</dd><dt>Method</dt><dd>JPEG coder</dd></dl>
+        <div class="zw-ring"><svg viewBox="0 0 80 80"><circle class="bg" cx="40" cy="40" r="34"/><circle class="arc" cx="40" cy="40" r="34" pathLength="100"/></svg><div><b>58%</b><span>smaller</span></div></div>
+      </aside>
+      </div>
+    </div>
           <figure class="hero-vis float reveal" data-scene="hero" aria-label="The same 736 MB folder: 325 MB as a zip from Finder, 193 MB as a Zipling archive">
           <div class="folder">
             <div class="folder-icon" aria-hidden="true">
@@ -116,13 +147,13 @@
       </div>
     </section>
 
-    <!-- ============================== Why smaller ============================== -->
+    <!-- ============================== Smaller and faster ============================== -->
     <section class="section" id="smaller">
       <div class="wrap">
         <header class="section-head reveal">
-          <p class="kicker">Why it's smaller</p>
+          <p class="kicker">Smaller, and faster</p>
           <h2>It looks before it squeezes.</h2>
-          <p class="sub">Most tools treat your files as one big pile of bytes. Zipling knows a photo from a PDF from an app, and shrinks each one the way it deserves.</p>
+          <p class="sub">Most tools treat your files as one big pile of bytes. Zipling knows a photo from a PDF from an app, shrinks each one the way it deserves, and uses every core of your Mac while it does.</p>
         </header>
         <div class="kinds">
           <article class="kind reveal">
@@ -166,17 +197,10 @@
             </div>
           </article>
         </div>
-        <p class="footnote reveal">Finder's zip of each folder next to Zipling at its default setting. The Max setting goes further still.</p>
-      </div>
-    </section>
-
-    <!-- ============================== Speed ============================== -->
-    <section class="section" id="speed">
-      <div class="wrap">
+        <p class="footnote reveal" style="margin-bottom:40px">Finder's zip of each folder next to Zipling at its default setting. The Max setting goes further still.</p>
         <header class="section-head reveal">
-          <p class="kicker">Speed</p>
           <h2>Fast enough to forget about it.</h2>
-          <p class="sub">Zipling uses every core of your Mac, all the time. The same 736 MB folder that takes Finder 24 seconds is done in 9 at the default setting, and in half a second at Fast.</p>
+          <p class="sub">The same 736 MB folder that takes Finder 24 seconds is done in 9 at the default setting, and in half a second at Fast.</p>
         </header>
         <div class="duo">
           <figure class="card race-card reveal" data-scene="race" aria-label="Time to compress 736 MB: Finder 24.1 seconds, Zipling 8.8 seconds, Zipling Fast 0.5 seconds">
@@ -207,6 +231,7 @@
             </div>
           </figure>
         </div>
+        <p class="footnote reveal">Measured on an idle M1 Pro, every archive extracted and compared byte for byte. <a href="../site/benchmarks.html">All six benchmarks, against 7-Zip, WinRAR and the rest →</a></p>
       </div>
     </section>
 
@@ -223,26 +248,26 @@
             <span class="ring r1"></span><span class="ring r2"></span>
             <img class="core" src="../site/assets/icon-512.png" alt="" width="96" height="96">
             <div class="orbit o1">
-              <span class="slot" style="--a:0deg"><b style="--at:.3s">ZIP</b></span>
-              <span class="slot" style="--a:60deg"><b style="--at:.38s">RAR</b></span>
-              <span class="slot" style="--a:120deg"><b style="--at:.46s">7z</b></span>
-              <span class="slot" style="--a:180deg"><b style="--at:.54s">TAR</b></span>
-              <span class="slot" style="--a:240deg"><b style="--at:.62s">DMG</b></span>
-              <span class="slot" style="--a:300deg"><b style="--at:.70s">ISO</b></span>
+              <span class="slot" style="--a:0deg"><span class="cs"><b style="--at:.3s">ZIP</b></span></span>
+              <span class="slot" style="--a:60deg"><span class="cs"><b style="--at:.38s">RAR</b></span></span>
+              <span class="slot" style="--a:120deg"><span class="cs"><b style="--at:.46s">7z</b></span></span>
+              <span class="slot" style="--a:180deg"><span class="cs"><b style="--at:.54s">TAR</b></span></span>
+              <span class="slot" style="--a:240deg"><span class="cs"><b style="--at:.62s">DMG</b></span></span>
+              <span class="slot" style="--a:300deg"><span class="cs"><b style="--at:.70s">ISO</b></span></span>
             </div>
             <div class="orbit o2">
-              <span class="slot" style="--a:15deg"><b style="--at:.8s">StuffIt</b></span>
-              <span class="slot" style="--a:45deg"><b style="--at:.86s">tar.gz</b></span>
-              <span class="slot" style="--a:75deg"><b style="--at:.92s">Zstandard</b></span>
-              <span class="slot" style="--a:105deg"><b style="--at:.98s">WIM</b></span>
-              <span class="slot" style="--a:135deg"><b style="--at:1.04s">CAB</b></span>
-              <span class="slot" style="--a:165deg"><b style="--at:1.10s">BinHex</b></span>
-              <span class="slot" style="--a:195deg"><b style="--at:1.16s">GZIP</b></span>
-              <span class="slot" style="--a:225deg"><b style="--at:1.22s">Split .001</b></span>
-              <span class="slot" style="--a:255deg"><b style="--at:1.28s">LZH</b></span>
-              <span class="slot" style="--a:285deg"><b style="--at:1.34s">Password</b></span>
-              <span class="slot" style="--a:315deg"><b style="--at:1.40s">BZIP2</b></span>
-              <span class="slot" style="--a:345deg"><b style="--at:1.46s">XZ</b></span>
+              <span class="slot" style="--a:15deg"><span class="cs"><b style="--at:.8s">StuffIt</b></span></span>
+              <span class="slot" style="--a:45deg"><span class="cs"><b style="--at:.86s">tar.gz</b></span></span>
+              <span class="slot" style="--a:75deg"><span class="cs"><b style="--at:.92s">Zstandard</b></span></span>
+              <span class="slot" style="--a:105deg"><span class="cs"><b style="--at:.98s">WIM</b></span></span>
+              <span class="slot" style="--a:135deg"><span class="cs"><b style="--at:1.04s">CAB</b></span></span>
+              <span class="slot" style="--a:165deg"><span class="cs"><b style="--at:1.10s">BinHex</b></span></span>
+              <span class="slot" style="--a:195deg"><span class="cs"><b style="--at:1.16s">GZIP</b></span></span>
+              <span class="slot" style="--a:225deg"><span class="cs"><b style="--at:1.22s">Split .001</b></span></span>
+              <span class="slot" style="--a:255deg"><span class="cs"><b style="--at:1.28s">LZH</b></span></span>
+              <span class="slot" style="--a:285deg"><span class="cs"><b style="--at:1.34s">Password</b></span></span>
+              <span class="slot" style="--a:315deg"><span class="cs"><b style="--at:1.40s">BZIP2</b></span></span>
+              <span class="slot" style="--a:345deg"><span class="cs"><b style="--at:1.46s">XZ</b></span></span>
             </div>
           </div>
           <ul class="format-notes">
@@ -264,8 +289,7 @@
         </header>
         <figure class="card repair reveal" data-scene="repair" aria-label="A damaged Zipling archive being repaired">
           <p class="card-head"><b>Holiday.zlg</b><span class="state bad">7 parts damaged</span><span class="state good">Repaired, byte for byte</span></p>
-          <div class="grid" aria-hidden="true"></div>
-          <span class="sweep" aria-hidden="true"></span>
+          <div class="grid-wrap"><div class="grid" aria-hidden="true"></div><span class="sweep" aria-hidden="true"></span></div>
           <p class="card-head small"><b>Repair data inside</b><span>3% of its size</span></p>
           <div class="parity" aria-hidden="true"></div>
           <figcaption>If more is damaged than the repair data can cover, Zipling says exactly which files are lost instead of guessing.</figcaption>
@@ -279,20 +303,20 @@
         <header class="section-head reveal">
           <p class="kicker">The app</p>
           <h2>The everyday, done right.</h2>
-          <p class="sub">A native Mac app that feels like part of the system. Here it is, as it is.</p>
+          <p class="sub">A native Mac app that feels like part of the system. Most of the time you won't even open it.</p>
         </header>
         <div class="reveal">
           <div class="ctabs" role="tablist" data-ctabs="app">
-            <button class="ctab on" role="tab" aria-selected="true">Extract Here</button>
-            <button class="ctab" role="tab" aria-selected="false">Quick Look</button>
-            <button class="ctab" role="tab" aria-selected="false">Compress</button>
-            <button class="ctab" role="tab" aria-selected="false">Convert</button>
-            <button class="ctab" role="tab" aria-selected="false">Edit in place</button>
-            <button class="ctab" role="tab" aria-selected="false">Lock and split</button>
+            <button class="ctab on" role="tab" aria-selected="true">Extract Here<i class="prog"></i></button>
+            <button class="ctab" role="tab" aria-selected="false">Quick Look<i class="prog"></i></button>
+            <button class="ctab" role="tab" aria-selected="false">Compress<i class="prog"></i></button>
+            <button class="ctab" role="tab" aria-selected="false">Convert<i class="prog"></i></button>
+            <button class="ctab" role="tab" aria-selected="false">Edit in place<i class="prog"></i></button>
+            <button class="ctab" role="tab" aria-selected="false">Lock and split<i class="prog"></i></button>
           </div>
           <div class="cstage" data-cpanels="app">
 
-            <div class="cpanel on" role="tabpanel" data-scene="extract">
+            <div class="cpanel on" role="tabpanel" data-dur="9000">
               <div class="cpanel-vis">
                 <div class="mac" aria-label="A Finder window with Lectures.zip selected and Zipling's Extract Here chosen from the right-click menu">
                   <div class="mac-bar"><span class="lights"><i></i><i></i><i></i></span>
@@ -338,79 +362,141 @@
               <div class="cpanel-copy">
                 <h3>Right-click. Extract Here. Done.</h3>
                 <p>Right-click an archive in Finder, or drop it on the menu bar, and keep working. The files land in one tidy folder next to it, and progress shows on the Dock.</p>
-                <p class="fine">Zipling's items in Finder's menu.</p>
               </div>
             </div>
 
-            <div class="cpanel" role="tabpanel" data-scene="ql">
+            <div class="cpanel" role="tabpanel" data-dur="12500">
               <div class="cpanel-vis">
-                <figure class="frame ql"><img src="shots/quicklook-dark.jpg" alt="Quick Look showing a sunset photo straight from a Zipling archive" width="2836" height="1964"></figure>
-                <kbd class="keycap" aria-hidden="true">space</kbd>
+                <div class="ql-scene" aria-label="Selecting a photo in the archive, pressing Space to preview it, and moving down the list with the arrow key while the preview follows">
+                  <div class="zw ql-win" aria-label="">
+      <div class="zw-bar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="zw-ic"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9 5v14"/></svg></span>
+        <span class="zw-ic"><svg viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/></svg></span>
+        <div class="zw-title"><b>Holiday</b><span>7 files · 283 KB · 58% smaller</span></div>
+        <div class="zw-tools"><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4M5 20h14"/></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/></svg></span><span class="zw-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>Search archive</span></div>
+      </div>
+      <div class="zw-body no-insp">
+        <aside class="zw-side">
+          <h4>Contents</h4>
+          <div><i class="ic zlg"></i>Holiday.zlg</div>
+          <div class="l1"><i class="ic fold"></i>Holiday</div>
+          <div class="l2"><i class="ic fold"></i>Documents</div>
+          <div class="l2 on"><i class="ic fold"></i>Photos</div>
+        </aside>
+        <div class="zw-main">
+          <div class="zw-crumb"><span>Holiday.zlg</span><span>Holiday</span><b>Photos</b><em>4 items</em></div>
+          <div class="zw-cols"><span>Name</span><span>Size</span><span>Saved</span><span>Method</span></div>
+        <div class="zw-row sel" style="--i:0"><span class="nm"><img src="shots/photos/sunset-thumb.jpg" alt="" width="160" height="107">Sunset at the pier.jpg</span><span>104 KB</span><span class="sv"><i style="--w:.61"></i>61%</span><span>JPEG coder</span></div>
+        <div class="zw-row" style="--i:1"><span class="nm"><img src="shots/photos/valley-thumb.jpg" alt="" width="160" height="107">Morning in the valley.jpg</span><span>108 KB</span><span class="sv"><i style="--w:.58"></i>58%</span><span>JPEG coder</span></div>
+        <div class="zw-row" style="--i:2"><span class="nm"><img src="shots/photos/beach-thumb.jpg" alt="" width="160" height="107">Beach from the hotel.jpg</span><span>158 KB</span><span class="sv"><i style="--w:.70"></i>70%</span><span>JPEG coder</span></div>
+        <div class="zw-row" style="--i:3"><span class="nm"><img src="shots/photos/night-thumb.jpg" alt="" width="160" height="107">Last night in town.jpg</span><span>256 KB</span><span class="sv"><i style="--w:.47"></i>47%</span><span>JPEG coder</span></div>
+        </div>
+      </div>
+    </div>
+                  <div class="qlp" aria-hidden="true">
+                    <div class="qlp-bar"><span class="qlp-x"></span><b class="t t1">Sunset at the pier.jpg</b><b class="t t2">Morning in the valley.jpg</b><b class="t t3">Beach from the hotel.jpg</b></div>
+                    <div class="qlp-img"><img class="p1" src="shots/photos/sunset.jpg" alt=""><img class="p2" src="shots/photos/valley.jpg" alt=""><img class="p3" src="shots/photos/beach.jpg" alt=""></div>
+                  </div>
+                  <kbd class="keycap k-space" aria-hidden="true">space</kbd>
+                  <kbd class="keycap k-down" aria-hidden="true">↓</kbd>
+                  <span class="cursor" aria-hidden="true"><svg viewBox="0 0 18 22"><path d="M2 2l5.5 15 2.6-5.6L16 9z"/></svg></span>
+                </div>
               </div>
               <div class="cpanel-copy">
                 <h3>Press Space. See inside.</h3>
-                <p>In Finder, press Space on an archive to see what is inside and how big each file is. In Zipling, Space previews any file straight from the archive, and the arrow keys walk through the rest.</p>
-                <p class="fine">A real preview, from inside Holiday.zlg.</p>
+                <p>Select any file in an archive and press Space to see it, straight from the archive. The arrow keys move down the list, and the preview follows. In Finder, Space on an archive shows what is inside before you open it.</p>
               </div>
             </div>
 
-            <div class="cpanel" role="tabpanel" data-scene="compress">
+            <div class="cpanel" role="tabpanel" data-dur="10000">
               <div class="cpanel-vis">
-                <figure class="frame sheet"><img src="shots/compress-dark.jpg" alt="The compress sheet: format, Auto, Fast, Balanced and Max, shrink later, recovery, and the size before you start" width="1200" height="1090"></figure>
+                <div class="sheet cmp" aria-label="The compress sheet: Max is chosen, the size estimate updates, Compress is pressed and the archive is written and checked">
+                  <div class="sh-head"><i class="fold-ic"></i><div><b>Compress “Holiday”</b><span>7 files · 675 KB</span></div><span class="presets">Presets</span></div>
+                  <div class="seg"><span class="on">Zipling</span><span>ZIP</span><span>7z</span><span>TAR.GZ</span><span>TAR.XZ</span></div>
+                  <p class="fine">Smallest, with every byte verified. Opens in Zipling.</p>
+                  <div class="levels">
+                    <div class="lv"><svg viewBox="0 0 24 24"><path d="M5 19l9-9M12 5l1 2 2 1-2 1-1 2-1-2-2-1 2-1zM18 13l.7 1.3 1.3.7-1.3.7-.7 1.3-.7-1.3-1.3-.7 1.3-.7z"/></svg><b>Auto</b><span>Picks the level for these files.</span></div>
+                    <div class="lv"><svg viewBox="0 0 24 24"><path d="M4 14c4-7 10-7 16-4-3 1-5 3-6 6-2-1-5-1-10-2z"/></svg><b>Fast</b><span>Done in seconds. Smaller than a Finder zip.</span></div>
+                    <div class="lv was"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 12l3-3"/></svg><b>Balanced</b><span>Smaller than 7-Zip Ultra, several times faster.</span><em>Default</em></div>
+                    <div class="lv pick"><svg viewBox="0 0 24 24"><path d="M4 4l6 6M10 4v6H4M20 20l-6-6M14 20v-6h6"/></svg><b>Max</b><span>Smallest archive that still opens quickly.</span></div>
+                  </div>
+                  <div class="est"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="7"/><path d="M12 9v4l2 2M9 3h6"/></svg><b class="e1">300 KB, 56% smaller · 46 ms</b><b class="e2">283 KB, 58% smaller · 62 ms</b></div>
+                  <div class="sh-foot"><span>Cancel</span><span class="go">Compress</span></div>
+                  <div class="prog-wrap"><i class="prog"></i></div>
+                  <div class="done"><svg viewBox="0 0 20 20"><path d="M5.5 10.5l3 3 6-7"/></svg>Holiday.zlg · 283 KB · every byte checked</div>
+                  <span class="cursor" aria-hidden="true"><svg viewBox="0 0 18 22"><path d="M2 2l5.5 15 2.6-5.6L16 9z"/></svg></span>
+                </div>
               </div>
               <div class="cpanel-copy">
                 <h3>One sheet, every choice.</h3>
-                <p>Pick a format, pick Fast, Balanced or Max, and see the size before you press Compress. Tick Recovery and the archive can repair itself years later.</p>
-                <p class="fine">The compress sheet, as it is in the app.</p>
+                <p>Pick a format, pick Fast, Balanced or Max, and see the size before you press Compress. Every byte is checked as the archive is written.</p>
               </div>
             </div>
 
-            <div class="cpanel" role="tabpanel" data-scene="convert">
+            <div class="cpanel" role="tabpanel" data-dur="9000">
               <div class="cpanel-vis">
-                <div class="sheet-mock" aria-label="Converting Mixed.zip into a Zipling archive: 325 MB becomes 214 MB">
-                  <div class="sh-head"><i></i><div><b>Convert “Mixed.zip”</b><span>ZIP · 48 files · 325 MB</span></div></div>
+                <div class="sheet cnv" aria-label="Converting Mixed.zip into a Zipling archive, 325 MB to 214 MB">
+                  <div class="sh-head"><i class="zip-ic"></i><div><b>Convert “Mixed.zip”</b><span>ZIP · 48 files · 325 MB</span></div></div>
                   <div class="seg"><span class="on">Zipling</span><span>ZIP</span><span>7z</span><span>TAR.XZ</span></div>
-                  <div class="est"><span>Mixed.zlg</span><span><b>214 MB</b> <span class="delta">34% smaller</span></span></div>
-                  <p class="fine" style="margin-top:12px">The old archive goes to the Trash only once the new one is checked.</p>
+                  <p class="fine">Re-packed with Zipling's engine. The files stay the same.</p>
+                  <div class="est"><span class="ic zlg"></span><div><b>Mixed.zlg</b><span>214 MB · <em>34% smaller</em> · about 9 s</span></div></div>
+                  <label class="chk"><i></i>Move the original to the Trash once the new archive is checked</label>
                   <div class="sh-foot"><span>Cancel</span><span class="go">Convert</span></div>
+                  <div class="prog-wrap"><i class="prog"></i></div>
+                  <div class="done"><svg viewBox="0 0 20 20"><path d="M5.5 10.5l3 3 6-7"/></svg>Mixed.zlg written and checked · Mixed.zip in the Trash</div>
+                  <span class="cursor" aria-hidden="true"><svg viewBox="0 0 18 22"><path d="M2 2l5.5 15 2.6-5.6L16 9z"/></svg></span>
                 </div>
               </div>
               <div class="cpanel-copy">
                 <h3>Make old zips smaller.</h3>
-                <p>Convert turns a ZIP, 7z or RAR you already have into a Zipling archive, or a Zipling archive into a zip for someone else. The new size shows before you start.</p>
-                <p class="fine">Drawn to match the app.</p>
+                <p>Convert turns a ZIP, 7z or RAR you already have into a Zipling archive, or a Zipling archive into a zip for someone else. The new size shows before you start, and the old file goes to the Trash only once the new one is checked.</p>
               </div>
             </div>
 
-            <div class="cpanel" role="tabpanel" data-scene="edit">
+            <div class="cpanel" role="tabpanel" data-dur="10000">
               <div class="cpanel-vis">
-                <figure class="frame"><img src="shots/archive-dark.jpg" alt="An open Zipling archive" width="2480" height="1440"></figure>
-                <span class="note" style="--at:.6s; left: 60px; top: 150px"><i></i>Notes.md added</span>
-                <span class="note" style="--at:1.4s; right: 60px; bottom: 70px"><i></i>Saved in place, nothing re-zipped</span>
+                <div class="edit-scene" aria-label="A file dragged into an open archive appears in its list and is saved in place; another is deleted">
+                  <div class="zw edit-win">
+                    <div class="zw-bar"><span class="lights"><i></i><i></i><i></i></span><div class="zw-title"><b>Holiday</b><span class="sz s1">7 files · 283 KB</span><span class="sz s2">8 files · 284 KB</span><span class="sz s3">7 files · 283 KB</span></div><div class="zw-tools"><span class="saved"><svg viewBox="0 0 20 20"><path d="M5.5 10.5l3 3 6-7"/></svg>Saved</span></div></div>
+                    <div class="zw-body no-side">
+                      <div class="zw-main">
+                        <div class="zw-crumb"><span>Holiday.zlg</span><span>Holiday</span><b>Documents</b></div>
+                        <div class="zw-cols"><span>Name</span><span>Size</span><span>Saved</span><span>Method</span></div>
+                        <div class="zw-row"><span class="nm"><i class="ic pdf"></i>Itinerary.pdf</span><span>38 KB</span><span class="sv"><i style="--w:.81"></i>81%</span><span>Unpacked</span></div>
+                        <div class="zw-row del"><span class="nm"><i class="ic txt"></i>Packing list.txt</span><span>1 KB</span><span class="sv"><i style="--w:.4"></i>40%</span><span>Zstandard</span></div>
+                        <div class="zw-row"><span class="nm"><i class="ic txt"></i>Notes.md</span><span>1 KB</span><span class="sv"><i style="--w:.35"></i>35%</span><span>Zstandard</span></div>
+                        <div class="zw-row new"><span class="nm"><i class="ic txt"></i>Booking.pdf</span><span>52 KB</span><span class="sv"><i style="--w:.77"></i>77%</span><span>Unpacked</span></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="dragged"><i class="ic pdf"></i>Booking.pdf</div>
+                  <kbd class="keycap k-del" aria-hidden="true">⌫</kbd>
+                  <span class="cursor" aria-hidden="true"><svg viewBox="0 0 18 22"><path d="M2 2l5.5 15 2.6-5.6L16 9z"/></svg></span>
+                </div>
               </div>
               <div class="cpanel-copy">
                 <h3>Change an archive without unpacking it.</h3>
                 <p>Drop files into an open archive, or delete some. Zipling saves the change where it is, with no extracting and no re-zipping.</p>
-                <p class="fine">Works for Zipling archives, ZIP and 7z.</p>
               </div>
             </div>
 
-            <div class="cpanel" role="tabpanel" data-scene="lock">
+            <div class="cpanel" role="tabpanel" data-dur="9000">
               <div class="cpanel-vis">
-                <div class="sheet-mock" aria-label="Compressing a folder as a ZIP with a password and 100 MB parts">
-                  <div class="sh-head"><i class="zip"></i><div><b>Compress “Tax 2026”</b><span>14 files · 48 MB</span></div></div>
-                  <div class="seg"><span>Zipling</span><span class="on">ZIP</span><span>7z</span><span>TAR.XZ</span></div>
-                  <p class="fine" style="margin-top:10px">Opens anywhere. AES-256 when locked.</p>
-                  <div class="opt"><span class="sw"><i></i></span><span>Password</span><span class="dots">••••••••••</span></div>
-                  <div class="opt"><span class="sw" style="--d:.5s"><i></i></span><span>Split into parts</span><span class="dots" style="letter-spacing:0">100 MB each</span></div>
-                  <div class="parts"><span style="--at:1.1s">Tax 2026.zip.001</span><span style="--at:1.25s">.002</span><span style="--at:1.4s">.003</span></div>
+                <div class="sheet lock" aria-label="Compressing a folder as a ZIP with a password and 100 MB parts">
+                  <div class="sh-head"><i class="fold-ic"></i><div><b>Compress “Tax 2026”</b><span>14 files · 48 MB</span></div></div>
+                  <div class="seg"><span>Zipling</span><span class="on">ZIP</span><span>7z</span><span>TAR.GZ</span><span>TAR.XZ</span></div>
+                  <p class="fine">Opens anywhere. AES-256 when locked.</p>
+                  <div class="opt o1"><span class="sw"><i></i></span><span>Password</span><span class="dots">••••••••••</span></div>
+                  <div class="opt o2"><span class="sw"><i></i></span><span>Split into parts</span><span class="dots" style="letter-spacing:0">100 MB each</span></div>
+                  <div class="parts"><span style="--at:0s">Tax 2026.zip.001</span><span style="--at:.15s">.002</span><span style="--at:.3s">.003</span></div>
                   <div class="sh-foot"><span>Cancel</span><span class="go">Compress</span></div>
+                  <span class="cursor" aria-hidden="true"><svg viewBox="0 0 18 22"><path d="M2 2l5.5 15 2.6-5.6L16 9z"/></svg></span>
                 </div>
               </div>
               <div class="cpanel-copy">
                 <h3>A password, or parts.</h3>
                 <p>ZIP and 7z archives with a password for anything private, or split into parts of any size for an email limit or an old USB stick.</p>
-                <p class="fine">Drawn to match the app.</p>
               </div>
             </div>
 
@@ -549,7 +635,8 @@
         <p>Smaller archives for your Mac.<br>© 2026 Observant Systems</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
-        <div><h3>Product</h3><a href="../site/benchmarks.html">Benchmarks</a><a href="../site/compare.html">Compare</a><a href="../site/arca.html">Inside the engine</a><a href="#faq">FAQ</a></div>
+        <div><h3>Product</h3><a href="../site/benchmarks.html">Benchmarks</a><a href="../site/compare.html">Compare</a><a href="how.html">How it works</a><a href="../site/arca.html">Inside the engine</a><a href="#faq">FAQ</a></div>
+        <div><h3>Help</h3><a href="bug.html">Report a bug</a><a href="#faq">Questions</a></div>
         <div><h3>Legal</h3><a href="../site/privacy.html">Privacy</a><a href="../site/legal.html">Legal notice</a></div>
       </nav>
     </div>

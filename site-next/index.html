@@ -218,26 +218,26 @@
             <span class="ring r1"></span><span class="ring r2"></span>
             <img class="core" src="../site/assets/icon-512.png" alt="" width="96" height="96">
             <div class="orbit o1">
-              <span class="slot" style="--a:0deg"><b style="--at:.3s">ZIP</b></span>
-              <span class="slot" style="--a:60deg"><b style="--at:.38s">RAR</b></span>
-              <span class="slot" style="--a:120deg"><b style="--at:.46s">7z</b></span>
-              <span class="slot" style="--a:180deg"><b style="--at:.54s">TAR</b></span>
-              <span class="slot" style="--a:240deg"><b style="--at:.62s">DMG</b></span>
-              <span class="slot" style="--a:300deg"><b style="--at:.70s">ISO</b></span>
+              <span class="slot" style="--a:0deg"><span class="cs"><b style="--at:.3s">ZIP</b></span></span>
+              <span class="slot" style="--a:60deg"><span class="cs"><b style="--at:.38s">RAR</b></span></span>
+              <span class="slot" style="--a:120deg"><span class="cs"><b style="--at:.46s">7z</b></span></span>
+              <span class="slot" style="--a:180deg"><span class="cs"><b style="--at:.54s">TAR</b></span></span>
+              <span class="slot" style="--a:240deg"><span class="cs"><b style="--at:.62s">DMG</b></span></span>
+              <span class="slot" style="--a:300deg"><span class="cs"><b style="--at:.70s">ISO</b></span></span>
             </div>
             <div class="orbit o2">
-              <span class="slot" style="--a:15deg"><b style="--at:.8s">StuffIt</b></span>
-              <span class="slot" style="--a:45deg"><b style="--at:.86s">tar.gz</b></span>
-              <span class="slot" style="--a:75deg"><b style="--at:.92s">Zstandard</b></span>
-              <span class="slot" style="--a:105deg"><b style="--at:.98s">WIM</b></span>
-              <span class="slot" style="--a:135deg"><b style="--at:1.04s">CAB</b></span>
-              <span class="slot" style="--a:165deg"><b style="--at:1.10s">BinHex</b></span>
-              <span class="slot" style="--a:195deg"><b style="--at:1.16s">GZIP</b></span>
-              <span class="slot" style="--a:225deg"><b style="--at:1.22s">Split .001</b></span>
-              <span class="slot" style="--a:255deg"><b style="--at:1.28s">LZH</b></span>
-              <span class="slot" style="--a:285deg"><b style="--at:1.34s">Password</b></span>
-              <span class="slot" style="--a:315deg"><b style="--at:1.40s">BZIP2</b></span>
-              <span class="slot" style="--a:345deg"><b style="--at:1.46s">XZ</b></span>
+              <span class="slot" style="--a:15deg"><span class="cs"><b style="--at:.8s">StuffIt</b></span></span>
+              <span class="slot" style="--a:45deg"><span class="cs"><b style="--at:.86s">tar.gz</b></span></span>
+              <span class="slot" style="--a:75deg"><span class="cs"><b style="--at:.92s">Zstandard</b></span></span>
+              <span class="slot" style="--a:105deg"><span class="cs"><b style="--at:.98s">WIM</b></span></span>
+              <span class="slot" style="--a:135deg"><span class="cs"><b style="--at:1.04s">CAB</b></span></span>
+              <span class="slot" style="--a:165deg"><span class="cs"><b style="--at:1.10s">BinHex</b></span></span>
+              <span class="slot" style="--a:195deg"><span class="cs"><b style="--at:1.16s">GZIP</b></span></span>
+              <span class="slot" style="--a:225deg"><span class="cs"><b style="--at:1.22s">Split .001</b></span></span>
+              <span class="slot" style="--a:255deg"><span class="cs"><b style="--at:1.28s">LZH</b></span></span>
+              <span class="slot" style="--a:285deg"><span class="cs"><b style="--at:1.34s">Password</b></span></span>
+              <span class="slot" style="--a:315deg"><span class="cs"><b style="--at:1.40s">BZIP2</b></span></span>
+              <span class="slot" style="--a:345deg"><span class="cs"><b style="--at:1.46s">XZ</b></span></span>
             </div>
           </div>
           <ul class="format-notes">
@@ -259,8 +259,7 @@
         </header>
         <figure class="card repair reveal" data-scene="repair" aria-label="A damaged Zipling archive being repaired">
           <p class="card-head"><b>Holiday.zlg</b><span class="state bad">7 parts damaged</span><span class="state good">Repaired, byte for byte</span></p>
-          <div class="grid" aria-hidden="true"></div>
-          <span class="sweep" aria-hidden="true"></span>
+          <div class="grid-wrap"><div class="grid" aria-hidden="true"></div><span class="sweep" aria-hidden="true"></span></div>
           <p class="card-head small"><b>Repair data inside</b><span>3% of its size</span></p>
           <div class="parity" aria-hidden="true"></div>
           <figcaption>If more is damaged than the repair data can cover, Zipling says exactly which files are lost instead of guessing.</figcaption>

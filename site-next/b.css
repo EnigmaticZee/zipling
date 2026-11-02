@@ -320,8 +320,9 @@ table.ff { width: 100%; border-collapse: collapse; font-size: 14px; line-height:
 .repair .grid i { aspect-ratio: 1; border-radius: 3px; background: var(--hair); transition: background var(--moderate) ease; }
 .repair .grid i.bad { background: var(--danger); }
 .repair .grid i.ok { background: var(--accent); }
-.repair .sweep { position: absolute; left: 28px; right: 28px; top: 72px; height: 0; pointer-events: none; }
-.repair .sweep::before { content: ""; position: absolute; top: 0; width: 60px; height: 116px; left: -60px; background: linear-gradient(90deg, transparent, var(--accent-soft), transparent); opacity: 0; }
+.repair .grid-wrap { position: relative; }
+.repair .sweep { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.repair .sweep::before { content: ""; position: absolute; top: 0; bottom: 0; width: 60px; left: -60px; background: linear-gradient(90deg, transparent, var(--accent-soft), transparent); opacity: 0; }
 .repair.sweeping .sweep::before { animation: sweep 1.6s linear both; }
 @keyframes sweep { from { left: -60px; opacity: 1; } to { left: 100%; opacity: 1; } }
 .repair .parity { display: grid; grid-template-columns: repeat(24, 1fr); gap: 4px; margin-top: 14px; }
