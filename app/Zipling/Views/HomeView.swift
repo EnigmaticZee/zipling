@@ -7,6 +7,7 @@ struct HomeView: View {
     @State private var jobs = JobCenter.shared
     /// What's being dragged over the window, while it is.
     @State private var hover: DropHover?
+    @State private var dropped = 0
     @State private var zone: CGRect = .zero
     private var targeted: Bool { hover != nil }
 
@@ -30,7 +31,7 @@ struct HomeView: View {
         .padding(.bottom, 20)
         .frame(width: 600)
         .coordinateSpace(.named(Self.space))
-        .onDrop(of: [.fileURL], delegate: HomeDrop(hover: $hover, zone: zone))
+        .onDrop(of: [.fileURL], delegate: HomeDrop(hover: $hover, dropped: $dropped, zone: zone))
         .sheet(item: $router.compressRequest) { request in
             CompressView(items: request.items)
         }
@@ -110,6 +111,10 @@ struct DropHover: Equatable {
 /// Archives dropped on the drop zone's right part are compressed instead of opened.
 private struct HomeDrop: DropDelegate {
     @Binding var hover: DropHover?
+    /// The drag pasteboard's change count at the last drop. That drag session still
+    /// sends an update or two after the drop, with no exit to follow, and they must
+    /// not light the zone again; the next drag has a new count.
+    @Binding var dropped: Int
     let zone: CGRect
     /// The drop zone's share that opens archives; the rest compresses them.
     static let openShare: CGFloat = 0.6
@@ -128,6 +133,7 @@ private struct HomeDrop: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         let urls = AppRouter.draggedFiles()
         let compress = state(info)?.compress ?? false
+        dropped = NSPasteboard(name: .drag).changeCount
         hover = nil
         guard !urls.isEmpty else { return false }
         if compress { AppRouter.shared.compress(urls) } else { AppRouter.shared.open(urls) }
@@ -135,6 +141,7 @@ private struct HomeDrop: DropDelegate {
     }
 
     private func state(_ info: DropInfo) -> DropHover? {
+        guard NSPasteboard(name: .drag).changeCount != dropped else { return nil }
         let urls = AppRouter.draggedFiles()
         guard !urls.isEmpty else { return nil }
         let archives = urls.allSatisfy(AppRouter.isArchive)
