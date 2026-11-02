@@ -1352,6 +1352,32 @@ realignment scan for inserted or dropped bytes is not built: a shifted file
 shows as damage past the budget. Not measured yet: the app's clock on the
 record's cost; the engine's says about one second per 200 MB at 3%.
 
+**Arca 1.0.0: the robustness pass and the realignment scan (2026-11-01, evening).**
+Before calling the engine 1.0, a fuzzing tool (`arca-core/examples/fuzzarchive.rs`)
+mutated archives made at Fast, Default and Max, with and without a record, 2,000
+ways per seed: bit flips, overwritten runs, truncation, insertions and deletions
+of up to 5,000 bytes, footer fields set to absurd or near-miss values, damage in
+the last 64 KiB. Each case is opened and verified, checked against its record,
+repaired, and the repaired copy verified again, with a watchdog for hangs; a
+panic, a hang or a "repairable" report whose copy fails is a problem. 10,000
+cases: no panic, no hang, 67 problems, all of one kind: an insertion or deletion
+near the record or the index left the record findable (the backward scan for the
+trailer) but the repaired copy, made by copying the file and patching slices,
+kept the shift. Two changes: the record carries the first 8 bytes of every data
+slice as an anchor (record version 2), so a slice that moved is found again by
+searching near its expected place and confirmed by its hash, and repair now
+rebuilds the copy piece by piece at the original offsets: data slices from
+wherever they sit, parity read or regenerated, both header copies, the trailer,
+the index copy and the footer copy. A file with bytes inserted or dropped comes
+back to its original length and layout; the search window is four slices or 64
+KiB, so a larger shift is still reported as damage. Tests: 7 bytes inserted, 300
+dropped, 4,500 inserted, each repaired byte for byte; the first attempt with a
+fixed list of probe shifts missed the 7-byte case, which is why anchors replaced
+it. The fuzzer was run again on the fixed engine: six seeds, 12,000 cases, no
+problem of any kind, 21 s a seed. The AppleScript `compress` command gained a `recovery` parameter (1 to
+50: inside a Zipling archive, a recovery file beside any other format). The
+engine's version is 1.0.0; the app stays 0.1.0 until its own release.
+
 **Default, lane by lane: what a stronger codec on one lane buys (2026-11-01,
 06:30-07:30, `bench/results-2026-11-01-default-lanes-r{1,2,3}.jsonl`,
 `bench/research/defaultlanes.py` and `defaultlanes_report.py`).** After the app

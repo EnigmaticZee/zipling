@@ -136,6 +136,8 @@ struct CheckReport: Decodable, Sendable, Equatable {
     let repairable: Bool
     /// Files whose data lies in damage the record cannot repair.
     let lostFiles: [String]
+    /// Bytes were inserted or dropped: the slices after the fault were found at a shifted position.
+    let realigned: Bool
 
     var intact: Bool { footerOk && indexOk && damagedDataSlices == 0 && damagedParitySlices == 0 && fileLen == expectedLen }
 }

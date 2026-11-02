@@ -62,7 +62,7 @@ What was planned, and holds:
   past the record's size is unrecoverable at any percentage.
 - Why off by default: on by default adds 3% to every archive and would hand back
   benchmark rows where the margin over 7-Zip is 2 to 4%.
-- Estimate: engine two to three days, app one to two, tests included.
+- Built in about four hours on 1 November 2026, plus a second pass the same evening: slice anchors and a realignment scan for inserted or dropped bytes, a second header copy, and a fuzzing pass over the reader and the record (`examples/fuzzarchive.rs`).
 
 ## Planned: Ultra as a context-mixing level (after release)
 

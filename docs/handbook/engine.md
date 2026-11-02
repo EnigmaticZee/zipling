@@ -154,14 +154,20 @@ footer   64 bytes: index offset and lengths, BLAKE3-128 of the index, the record
 over the header and the blocks, computed region by region (128 MiB each, its own
 code) in 64 KiB slices (4 KiB for small archives) with the `reed-solomon-simd`
 crate (O(n log n), GF(2^16)); a BLAKE3-128 hash per slice to locate damage
-without the key; a copy of the compressed index and of the footer; the record's
-header written twice, before and after the parity, so one hit cannot take the
-only copy; a trailer so a record whose footer is gone is found again, and a
-forward scan for its magic when the trailer is gone too. A record of X% repairs any X% of damage in each region,
-wherever it falls. Repair writes a corrected copy, never touches the damaged
-file, restores the index and footer from the copies, regenerates lost parity from
-the intact data, and when damage exceeds the budget names the files it would
-lose from the index copy. Off unless asked for (`PackOptions::recovery_percent`,
+without the key; the first 8 bytes of every data slice as an anchor, so a slice
+that moved (bytes inserted or dropped before it) is found again by searching
+near its place and confirmed by its hash; a copy of the compressed index and of
+the footer; the record's header written twice, before and after the parity, so
+one hit cannot take the only copy; a trailer so a record whose footer is gone is
+found again, and a forward scan for its magic when the trailer is gone too. A record of X% repairs any X% of damage in each region,
+wherever it falls. Repair writes a corrected copy piece by piece at the original
+offsets, never touches the damaged file, restores the index and footer from the
+copies, regenerates lost parity from the intact data, brings a file with inserted
+or dropped bytes back to its original length and layout, and when damage exceeds
+the budget names the files it would lose from the index copy. The reader and the
+record were fuzzed with `examples/fuzzarchive.rs` (bit flips, overwritten runs,
+truncation, insertions, deletions, lying footer fields, damage in the last 64
+KiB): no panic, no hang, and no repair that claimed success on a copy that fails. Off unless asked for (`PackOptions::recovery_percent`,
 1 to 50; `arca pack --recovery N`, `arca protect`, `arca check`, `arca repair`;
 FFI `arca_recovery_info/check/repair/add`). Cost on the 214 MB mixed-folder
 archive at 3%: about one second more to compress and 6.8 MB of size; a check

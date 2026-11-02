@@ -250,3 +250,34 @@ fn a_damaged_record_header_is_read_from_its_second_copy() {
     truncate(&out, len - 64);
     assert!(recovery::check(&out, &Hooks::default()).unwrap().record.is_some());
 }
+
+#[test]
+fn inserted_and_dropped_bytes_are_realigned() {
+    for (name, insert, at_frac) in [("insert 7", Some(7usize), 3u64), ("drop 300", None, 2), ("insert 4500", Some(4500), 5)] {
+        let c = make(5, Level::Balanced);
+        let whole = fs::read(&c.archive).unwrap();
+        let a = Archive::open(&c.archive).unwrap();
+        let (data_len, _) = a.recovery().unwrap();
+        let at = (data_len / at_frac) as usize;
+        let mut bytes = whole.clone();
+        match insert {
+            Some(n) => {
+                let junk = noise(n, 99);
+                bytes.splice(at..at, junk);
+            }
+            None => {
+                bytes.drain(at..at + 300);
+            }
+        }
+        fs::write(&c.archive, &bytes).unwrap();
+        assert!(Archive::open(&c.archive).and_then(|a| a.verify(2)).is_err(), "{name}: must show as damaged");
+        let r = recovery::check(&c.archive, &Hooks::default()).unwrap();
+        assert!(r.record.is_some() && r.realigned && r.repairable, "{name}: {r:?}");
+        assert!(r.damaged_data_slices <= 2, "{name}: only the slice holding the fault is lost, got {}", r.damaged_data_slices);
+        let out = c.dir.path().join("fixed.zlg");
+        let after = recovery::repair(&c.archive, &out, &Hooks::default()).unwrap();
+        assert!(after.repairable && after.damaged_data_slices == 0 && after.footer_ok && after.index_ok, "{name}: {after:?}");
+        assert_eq!(fs::read(&out).unwrap(), whole, "{name}: byte for byte the original");
+        extract_ok(&out, &c.src, &c.dir.path().join("x8"));
+    }
+}

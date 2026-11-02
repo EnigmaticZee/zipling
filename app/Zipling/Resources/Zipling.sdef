@@ -15,6 +15,9 @@
 			<parameter name="level" code="Levl" type="text" optional="yes" description="fast, balanced, max or ultra (Auto when left out).">
 				<cocoa key="level"/>
 			</parameter>
+			<parameter name="recovery" code="Recv" type="integer" optional="yes" description="Repair data as a percentage of the archive, 1 to 50: inside a Zipling archive, a recovery file beside any other (none when left out).">
+				<cocoa key="recovery"/>
+			</parameter>
 			<result type="file" description="The archive."/>
 		</command>
 		<command name="extract" code="ZplgExtr" description="Extract archives: one item comes out as it is, several in a folder named after the archive.">

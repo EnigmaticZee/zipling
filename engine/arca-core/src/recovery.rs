@@ -24,6 +24,8 @@
 //! footer_copy[FOOTER_LEN]
 //! index_copy_len u64, index_copy (the compressed index as written)
 //! slice hashes: per region k data hashes then m parity hashes, 16 bytes each
+//! anchors: the first 8 bytes of every data slice, so a slice that moved (bytes
+//!          inserted or dropped before it) is found again by searching for them
 //! header_hash[16]  (BLAKE3-128 of everything above)
 //! parity: per region m slices of `slice` bytes
 //! the header again, byte for byte (so one hit cannot take the only copy)
@@ -41,7 +43,7 @@ use std::path::Path;
 
 pub const MAGIC: &[u8; 8] = b"ARCARECV";
 pub const TRAILER_MAGIC: &[u8; 8] = b"ARCARECE";
-const RECORD_VERSION: u16 = 1;
+const RECORD_VERSION: u16 = 2;
 /// Bytes of archive one Reed-Solomon code covers. Repair of a region needs its
 /// intact slices in memory, so this bounds the memory a repair takes.
 pub const REGION: u64 = 128 << 20;
@@ -77,10 +79,11 @@ struct Record {
     footer_copy: [u8; FOOTER_LEN],
     index_copy: Vec<u8>,
     hashes: Vec<[u8; 16]>,
+    /// The first 8 bytes of every data slice, region after region.
+    anchors: Vec<[u8; 8]>,
     /// The header as written (both copies are this), for putting it back.
     head: Vec<u8>,
-    /// Where the record starts, where its parity starts, its whole length.
-    offset: u64,
+    /// Where the parity starts in the file as it is, and the record's whole length.
     parity_offset: u64,
     len: u64,
 }
@@ -108,6 +111,11 @@ impl Record {
         self.regions[..r].iter().map(|&(k, m)| (k + m) as usize).sum()
     }
 
+    /// First anchor index of a region's data slices.
+    fn anchor_base(&self, r: usize) -> usize {
+        self.regions[..r].iter().map(|&(k, _)| k as usize).sum()
+    }
+
     fn parity_base(&self, r: usize) -> u64 {
         self.parity_offset + self.regions[..r].iter().map(|&(_, m)| m as u64 * self.slice as u64).sum::<u64>()
     }
@@ -129,8 +137,12 @@ fn layout(data_len: u64, percent: u16) -> (u32, Vec<(u32, u32)>) {
     (slice as u32, regions)
 }
 
-fn header_len(regions: usize, index_copy: usize, hashes: usize) -> usize {
-    FIXED_HEADER + 8 * regions + FOOTER_LEN + 8 + index_copy + 16 * hashes + 16
+fn header_len(regions: usize, index_copy: usize, hashes: usize, data_slices: usize) -> usize {
+    FIXED_HEADER + 8 * regions + FOOTER_LEN + 8 + index_copy + 16 * hashes + 8 * data_slices + 16
+}
+
+fn anchor_of(shard: &[u8]) -> [u8; 8] {
+    shard[..8].try_into().unwrap()
 }
 
 /// Reads one slice of the file at `at`, zero-padded past `limit` (the end of
@@ -167,7 +179,8 @@ pub fn write_tail(out: &mut File, data_len: u64, index_comp: &[u8], index_raw_le
     ensure!((MIN_PERCENT..=MAX_PERCENT).contains(&percent), "recovery record of {percent}%: choose 1 to 50");
     let (slice, regions) = layout(data_len, percent);
     let hashes_n: usize = regions.iter().map(|&(k, m)| (k + m) as usize).sum();
-    let head_len = header_len(regions.len(), index_comp.len(), hashes_n);
+    let data_n: usize = regions.iter().map(|&(k, _)| k as usize).sum();
+    let head_len = header_len(regions.len(), index_comp.len(), hashes_n, data_n);
     let parity_len: u64 = regions.iter().map(|&(_, m)| m as u64 * slice as u64).sum();
     let record_len = 2 * head_len as u64 + parity_len + TRAILER as u64;
     let footer = Footer {
@@ -181,6 +194,7 @@ pub fn write_tail(out: &mut File, data_len: u64, index_comp: &[u8], index_raw_le
 
     // Parity and hashes, region by region, reading the data back from the file.
     let mut hashes: Vec<[u8; 16]> = Vec::with_capacity(hashes_n);
+    let mut anchors: Vec<[u8; 8]> = Vec::with_capacity(data_n);
     let mut parity: Vec<u8> = Vec::with_capacity(parity_len as usize);
     for (r, &(k, m)) in regions.iter().enumerate() {
         hooks.check()?;
@@ -191,6 +205,7 @@ pub fn write_tail(out: &mut File, data_len: u64, index_comp: &[u8], index_raw_le
         let shards: Vec<&[u8]> = buf.chunks(slice as usize).collect();
         for s in &shards {
             hashes.push(format::hash16(s));
+            anchors.push(anchor_of(s));
         }
         let rec = reed_solomon_simd::encode(k as usize, m as usize, shards).map_err(|e| anyhow::anyhow!("recovery coding: {e}"))?;
         for s in &rec {
@@ -218,6 +233,9 @@ pub fn write_tail(out: &mut File, data_len: u64, index_comp: &[u8], index_raw_le
     head.extend_from_slice(index_comp);
     for h in &hashes {
         head.extend_from_slice(h);
+    }
+    for a in &anchors {
+        head.extend_from_slice(a);
     }
     let hh = format::hash16(&head);
     head.extend_from_slice(&hh);
@@ -269,7 +287,8 @@ fn parse_at(file: &File, file_len: u64, at: u64, offset: u64) -> Result<Record> 
     pos += 8;
     let index_len = u64::from_le_bytes(l);
     ensure!(index_len <= 4 << 30, "recovery record header is damaged");
-    let head_len = header_len(n, index_len as usize, hashes_n);
+    let data_n: usize = regions.iter().map(|&(k, _)| k as usize).sum();
+    let head_len = header_len(n, index_len as usize, hashes_n, data_n);
     ensure!(at + head_len as u64 <= file_len, "recovery record cut off");
     let mut index_copy = vec![0u8; index_len as usize];
     file.read_exact_at(&mut index_copy, pos)?;
@@ -277,6 +296,9 @@ fn parse_at(file: &File, file_len: u64, at: u64, offset: u64) -> Result<Record> 
     let mut hb = vec![0u8; 16 * hashes_n];
     file.read_exact_at(&mut hb, pos)?;
     pos += hb.len() as u64;
+    let mut ab = vec![0u8; 8 * data_n];
+    file.read_exact_at(&mut ab, pos)?;
+    pos += ab.len() as u64;
     let mut stored = [0u8; 16];
     file.read_exact_at(&mut stored, pos)?;
     // The header hash covers everything before it.
@@ -285,6 +307,7 @@ fn parse_at(file: &File, file_len: u64, at: u64, offset: u64) -> Result<Record> 
     ensure!(format::hash16(&whole) == stored, "recovery record header is damaged");
     whole.extend_from_slice(&stored);
     let hashes = hb.chunks(16).map(|c| c.try_into().unwrap()).collect();
+    let anchors = ab.chunks(8).map(|c| c.try_into().unwrap()).collect();
     let parity_len: u64 = regions.iter().map(|&(_, m)| m as u64 * slice as u64).sum();
     Ok(Record {
         percent,
@@ -294,8 +317,8 @@ fn parse_at(file: &File, file_len: u64, at: u64, offset: u64) -> Result<Record> 
         footer_copy,
         index_copy,
         hashes,
+        anchors,
         head: whole,
-        offset,
         parity_offset: offset + head_len as u64,
         len: 2 * head_len as u64 + parity_len + TRAILER as u64,
     })
@@ -391,11 +414,66 @@ pub struct CheckReport {
     pub repairable: bool,
     /// Files whose data lies in unrepairable damage, when the index is readable.
     pub lost_files: Vec<String>,
+    /// Whether bytes were found inserted or dropped: slices after the fault were
+    /// located at a shifted position and are read from there.
+    pub realigned: bool,
+}
+
+struct RegionDamage {
+    bad_data: Vec<usize>,
+    bad_parity: Vec<usize>,
+    /// Where each data slice's bytes sit in the file relative to where they should:
+    /// 0 for a file that only has overwritten bytes, else the running shift.
+    shifts: Vec<i64>,
 }
 
 struct Damage {
-    /// Per region: damaged data slice indexes, damaged parity slice indexes.
-    regions: Vec<(Vec<usize>, Vec<usize>)>,
+    regions: Vec<RegionDamage>,
+}
+
+/// How far around a slice's expected place its anchor is searched for when the
+/// slice is not there: bytes inserted or dropped by a bad copy, up to a few slices.
+fn search_window(slice: usize) -> i64 {
+    (4 * slice as i64).max(64 << 10)
+}
+
+/// Looks for slice `t` of region `r` near where the current shift puts it, by its
+/// 8-byte anchor, and confirms a hit with the slice's hash. Returns the new shift.
+fn find_shift(file: &File, file_len: u64, rec: &Record, r: usize, t: usize, shift: i64, want: usize) -> Option<i64> {
+    let slice = rec.slice as usize;
+    let pos = (r as u64 * REGION + t as u64 * slice as u64) as i64;
+    let w = search_window(slice);
+    let lo = (pos + shift - w).max(0);
+    let hi = ((pos + shift + w + slice as i64) as u64).min(file_len) as i64;
+    if hi <= lo + 8 {
+        return None;
+    }
+    let mut buf = vec![0u8; (hi - lo) as usize];
+    file.read_exact_at(&mut buf, lo as u64).ok()?;
+    let anchor = &rec.anchors[rec.anchor_base(r) + t];
+    let hash = &rec.hashes[rec.hash_base(r) + t];
+    for (n, hit) in memchr::memmem::find_iter(&buf, anchor).enumerate() {
+        if n > 256 {
+            break;
+        }
+        let s = lo + hit as i64 - pos;
+        if s != shift && matches(file, file_len, pos + s, slice, want, hash) {
+            return Some(s);
+        }
+    }
+    None
+}
+
+/// A slice read from a position that may be shifted (and so negative or past the end).
+fn read_slice_at(file: &File, file_len: u64, pos: i64, slice: usize, want: usize) -> Option<Vec<u8>> {
+    if pos < 0 {
+        return None;
+    }
+    read_slice(file, file_len, pos as u64, slice, pos as u64 + want as u64)
+}
+
+fn matches(file: &File, file_len: u64, pos: i64, slice: usize, want: usize, hash: &[u8; 16]) -> bool {
+    read_slice_at(file, file_len, pos, slice, want).is_some_and(|s| format::hash16(&s) == *hash)
 }
 
 fn survey(file: &File, file_len: u64, rec: &Record, hooks: &Hooks) -> Result<(CheckReport, Damage)> {
@@ -412,18 +490,45 @@ fn survey(file: &File, file_len: u64, rec: &Record, hooks: &Hooks) -> Result<(Ch
         file.read_exact_at(&mut ix, footer.index_offset).is_ok() && format::hash16(&ix) == footer.index_hash
     };
     let mut damage = Damage { regions: Vec::with_capacity(rec.regions.len()) };
+    // The shift carries across regions: an insertion early in the file moves everything after it.
+    let mut shift: i64 = 0;
     for (r, &(k, m)) in rec.regions.iter().enumerate() {
         hooks.check()?;
         let base = rec.hash_base(r);
         let start = r as u64 * REGION;
         let limit = start + rec.region_len(r);
+        let want = |i: usize| ((limit - (start + i as u64 * slice as u64)).min(slice as u64)) as usize;
         let mut bad_data = Vec::new();
-        for i in 0..k as usize {
-            let at = start + i as u64 * slice as u64;
-            let ok = read_slice(file, file_len, at, slice, limit).is_some_and(|s| format::hash16(&s) == rec.hashes[base + i]);
-            if !ok {
-                bad_data.push(i);
+        let mut shifts = Vec::with_capacity(k as usize);
+        let mut i = 0usize;
+        while i < k as usize {
+            let at = (start + i as u64 * slice as u64) as i64;
+            if matches(file, file_len, at + shift, slice, want(i), &rec.hashes[base + i]) {
+                shifts.push(shift);
+                i += 1;
+                continue;
             }
+            // Not where it should be: was something inserted or dropped? Look for
+            // the slice itself by its anchor, then for the next one.
+            let _ = at;
+            let found = find_shift(file, file_len, rec, r, i, shift, want(i))
+                .map(|s| (s, false))
+                .or_else(|| (i + 1 < k as usize).then(|| find_shift(file, file_len, rec, r, i + 1, shift, want(i + 1)).map(|s| (s, true))).flatten());
+            match found {
+                Some((s, this_one_damaged)) => {
+                    shift = s;
+                    report.realigned = true;
+                    if this_one_damaged {
+                        bad_data.push(i);
+                    }
+                    shifts.push(shift);
+                }
+                None => {
+                    bad_data.push(i);
+                    shifts.push(shift);
+                }
+            }
+            i += 1;
         }
         let pbase = rec.parity_base(r);
         let mut bad_parity = Vec::new();
@@ -441,7 +546,7 @@ fn survey(file: &File, file_len: u64, rec: &Record, hooks: &Hooks) -> Result<(Ch
             report.unrepairable_regions.push(r as u32);
         }
         hooks.report(limit, rec.data_len);
-        damage.regions.push((bad_data, bad_parity));
+        damage.regions.push(RegionDamage { bad_data, bad_parity, shifts });
     }
     report.repairable = report.unrepairable_regions.is_empty();
     if !report.repairable {
@@ -458,8 +563,9 @@ fn lost_files(rec: &Record, damage: &Damage) -> Result<Vec<String>> {
     let index = format::Index::decode(&raw)?;
     let slice = rec.slice as u64;
     let mut ranges: Vec<(u64, u64)> = Vec::new();
-    for (r, (bad, parity_bad)) in damage.regions.iter().enumerate() {
-        if bad.len() + parity_bad.len() <= rec.regions[r].1 as usize {
+    for (r, d) in damage.regions.iter().enumerate() {
+        let bad = &d.bad_data;
+        if bad.len() + d.bad_parity.len() <= rec.regions[r].1 as usize {
             continue;
         }
         let start = r as u64 * REGION;
@@ -504,7 +610,9 @@ pub fn info(path: &Path) -> Result<Option<RecordInfo>> {
 
 /// Writes a repaired copy of `path` to `out` and reports what was done. The
 /// copy is complete when the report says `repairable`; otherwise the regions
-/// that could be repaired are, and `lost_files` names what could not.
+/// that could be repaired are, and `lost_files` names what could not. Every
+/// byte of the copy is written at its proper place, so a file with bytes
+/// inserted or dropped comes back to its original length and layout.
 pub fn repair(path: &Path, out: &Path, hooks: &Hooks) -> Result<CheckReport> {
     let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     let file_len = file.metadata()?.len();
@@ -513,86 +621,86 @@ pub fn repair(path: &Path, out: &Path, hooks: &Hooks) -> Result<CheckReport> {
     let footer = Footer::parse(&rec.footer_copy)?;
     let expected = before.expected_len;
     let slice = rec.slice as usize;
+    let head_len = rec.head.len() as u64;
+    // Where the record's parts belong in the original layout.
+    let record_at = rec.data_len;
+    let parity_at = record_at + head_len;
+    let parity_len: u64 = rec.regions.iter().map(|&(_, m)| m as u64 * slice as u64).sum();
 
-    // The copy: the file as it is, extended or cut to its proper length.
     let dst = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(out).with_context(|| format!("creating {}", out.display()))?;
-    {
-        let mut buf = vec![0u8; 8 << 20];
-        let mut pos = 0u64;
-        let copy_len = file_len.min(expected);
-        while pos < copy_len {
-            let n = (copy_len - pos).min(buf.len() as u64) as usize;
-            file.read_exact_at(&mut buf[..n], pos)?;
-            dst.write_all_at(&buf[..n], pos)?;
-            pos += n as u64;
-        }
-        dst.set_len(expected)?;
-    }
+    dst.set_len(expected)?;
 
     for (r, &(k, m)) in rec.regions.iter().enumerate() {
         hooks.check()?;
-        let (bad_data, bad_parity) = &damage.regions[r];
-        if bad_data.is_empty() && bad_parity.is_empty() {
-            continue;
-        }
-        if bad_data.len() + bad_parity.len() > m as usize {
-            continue; // beyond the record; reported, not repaired
-        }
+        let d = &damage.regions[r];
         let start = r as u64 * REGION;
         let limit = start + rec.region_len(r);
+        let want = |i: usize| ((limit - (start + i as u64 * slice as u64)).min(slice as u64)) as usize;
+        let repairable = d.bad_data.len() + d.bad_parity.len() <= m as usize;
+        // Every intact data slice, from wherever it sits in the damaged file.
+        let mut shards: Vec<Option<Vec<u8>>> = (0..k as usize)
+            .map(|i| {
+                if d.bad_data.contains(&i) {
+                    return None;
+                }
+                let at = (start + i as u64 * slice as u64) as i64 + d.shifts[i];
+                read_slice_at(&file, file_len, at, slice, want(i))
+            })
+            .collect();
         let pbase = rec.parity_base(r);
-        // Every intact slice of the region, then the decode.
-        let mut originals: Vec<(usize, Vec<u8>)> = Vec::with_capacity(k as usize);
-        for i in 0..k as usize {
-            if bad_data.contains(&i) {
-                continue;
-            }
-            let at = start + i as u64 * slice as u64;
-            originals.push((i, read_slice(&file, file_len, at, slice, limit).expect("surveyed intact")));
-        }
-        let mut recovery: Vec<(usize, Vec<u8>)> = Vec::with_capacity(m as usize);
-        for j in 0..m as usize {
-            if bad_parity.contains(&j) {
-                continue;
-            }
-            let at = pbase + j as u64 * slice as u64;
-            recovery.push((j, read_slice(&file, file_len, at, slice, at + slice as u64).expect("surveyed intact")));
-        }
-        if !bad_data.is_empty() {
+        let parity: Vec<Option<Vec<u8>>> = (0..m as usize)
+            .map(|j| {
+                if d.bad_parity.contains(&j) {
+                    return None;
+                }
+                let at = pbase + j as u64 * slice as u64;
+                read_slice(&file, file_len, at, slice, at + slice as u64)
+            })
+            .collect();
+        if repairable && shards.iter().any(Option::is_none) {
+            let originals: Vec<(usize, &[u8])> = shards.iter().enumerate().filter_map(|(i, s)| s.as_deref().map(|s| (i, s))).collect();
+            let recovery: Vec<(usize, &[u8])> = parity.iter().enumerate().filter_map(|(j, s)| s.as_deref().map(|s| (j, s))).collect();
             let restored: BTreeMap<usize, Vec<u8>> =
-                reed_solomon_simd::decode(k as usize, m as usize, originals.iter().map(|(i, s)| (*i, s.as_slice())), recovery.iter().map(|(j, s)| (*j, s.as_slice())))
-                    .map_err(|e| anyhow::anyhow!("recovery decoding: {e}"))?;
-            for (&i, s) in &restored {
-                let at = start + i as u64 * slice as u64;
-                let n = (limit - at).min(slice as u64) as usize;
-                dst.write_all_at(&s[..n], at)?;
-                originals.push((i, s.clone()));
+                reed_solomon_simd::decode(k as usize, m as usize, originals, recovery).map_err(|e| anyhow::anyhow!("recovery decoding: {e}"))?;
+            for (i, s) in restored {
+                shards[i] = Some(s);
             }
         }
-        if !bad_parity.is_empty() {
-            // Parity is regenerated from the now-complete data.
-            originals.sort_by_key(|(i, _)| *i);
-            let shards: Vec<&[u8]> = originals.iter().map(|(_, s)| s.as_slice()).collect();
-            let rec_shards = reed_solomon_simd::encode(k as usize, m as usize, shards).map_err(|e| anyhow::anyhow!("recovery coding: {e}"))?;
-            for &j in bad_parity {
-                dst.write_all_at(&rec_shards[j], pbase + j as u64 * slice as u64)?;
+        // The data, at its original offsets; a slice nothing could bring back stays zero.
+        for (i, s) in shards.iter().enumerate() {
+            if let Some(s) = s {
+                dst.write_all_at(&s[..want(i)], start + i as u64 * slice as u64)?;
+            }
+        }
+        // The parity: intact slices as they were, the rest regenerated from complete data.
+        let region_parity_at = parity_at + rec.regions[..r].iter().map(|&(_, m)| m as u64 * slice as u64).sum::<u64>();
+        let regenerated = if repairable && parity.iter().any(Option::is_none) {
+            let all: Vec<&[u8]> = shards.iter().map(|s| s.as_deref().expect("repairable region is complete")).collect();
+            Some(reed_solomon_simd::encode(k as usize, m as usize, all).map_err(|e| anyhow::anyhow!("recovery coding: {e}"))?)
+        } else {
+            None
+        };
+        for j in 0..m as usize {
+            let bytes: Option<&[u8]> = match (&parity[j], &regenerated) {
+                (Some(p), _) => Some(p.as_slice()),
+                (None, Some(rg)) => Some(rg[j].as_slice()),
+                (None, None) => None,
+            };
+            if let Some(b) = bytes {
+                dst.write_all_at(b, region_parity_at + j as u64 * slice as u64)?;
             }
         }
         hooks.report(limit, rec.data_len);
     }
-    if !before.index_ok {
-        dst.write_all_at(&rec.index_copy, footer.index_offset)?;
-    }
-    if !before.footer_ok {
-        dst.write_all_at(&rec.footer_copy, expected - FOOTER_LEN as u64)?;
-    }
-    // Both header copies and the trailer, in case the damage was there.
-    let head_len = rec.head.len() as u64;
-    dst.write_all_at(&rec.head, rec.offset)?;
-    dst.write_all_at(&rec.head, rec.offset + rec.len - TRAILER as u64 - head_len)?;
-    dst.write_all_at(&rec.len.to_le_bytes(), rec.offset + rec.len - TRAILER as u64)?;
-    dst.write_all_at(&head_len.to_le_bytes(), rec.offset + rec.len - 16)?;
-    dst.write_all_at(TRAILER_MAGIC, rec.offset + rec.len - 8)?;
+    // The record's two headers and trailer, the index and the footer, from the copies.
+    dst.write_all_at(&rec.head, record_at)?;
+    dst.write_all_at(&rec.head, parity_at + parity_len)?;
+    let trailer_at = parity_at + parity_len + head_len;
+    dst.write_all_at(&rec.len.to_le_bytes(), trailer_at)?;
+    dst.write_all_at(&head_len.to_le_bytes(), trailer_at + 8)?;
+    dst.write_all_at(TRAILER_MAGIC, trailer_at + 16)?;
+    dst.write_all_at(&rec.index_copy, footer.index_offset)?;
+    dst.write_all_at(&rec.footer_copy, expected - FOOTER_LEN as u64)?;
     dst.sync_all()?;
 
     let mut after = survey(&dst, expected, &rec, hooks)?.0;
@@ -601,6 +709,7 @@ pub fn repair(path: &Path, out: &Path, hooks: &Hooks) -> Result<CheckReport> {
         after.unrepairable_regions = before.unrepairable_regions.clone();
         after.lost_files = before.lost_files.clone();
     }
+    after.realigned = before.realigned;
     Ok(after)
 }
 

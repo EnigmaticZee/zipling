@@ -44,7 +44,8 @@ final class CompressCommand: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
         let items = files(directParameter)
         let format = format("format") ?? .zlg, level = level("level")
-        return run { try await Automation.compress(items, format: format, level: level) as NSURL }
+        let recovery = (evaluatedArguments?["recovery"] as? NSNumber)?.intValue
+        return run { try await Automation.compress(items, format: format, level: level, recovery: recovery) as NSURL }
     }
 }
 

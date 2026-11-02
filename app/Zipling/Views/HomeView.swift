@@ -20,7 +20,7 @@ struct HomeView: View {
             if !router.recents.isEmpty {
                 RecentList(urls: Array(router.recents.prefix(5))) { router.open([$0]) }
             }
-            Text("Zipling engine \(Engine.version) · lossless · every byte verified")
+            Text("Arca engine \(Engine.version) · Lossless · Every byte verified")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity)

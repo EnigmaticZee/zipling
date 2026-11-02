@@ -5,14 +5,19 @@ import AppKit
 @MainActor
 enum Automation {
     /// Makes an archive next to the first item (or in `folder`). A nil level means
-    /// Auto for Zipling archives and Balanced for the others.
+    /// Auto for Zipling archives and Balanced for the others. `recovery` (1 to 50) adds
+    /// repair data: inside a Zipling archive, a recovery file beside any other format.
     static func compress(
         _ items: [URL], format: ArchiveFormat = .zlg, level: Level? = nil, password: String? = nil,
-        into folder: URL? = nil
+        recovery: Int? = nil, into folder: URL? = nil
     ) async throws -> URL {
         Timing.begin("compress")
         guard let first = items.first else { throw EngineError(message: "There's nothing to compress.") }
         var options = CreateOptions(format: format, level: level ?? .balanced)
+        if let recovery, recovery > 0 {
+            options.recovery = format == .zlg ? .inArchive : .separateFile
+            options.recoveryPercent = min(max(recovery, 1), 50)
+        }
         if level == nil, format == .zlg {
             let contents = await ContentSummary.measure(items)
             options.level = (try? await Estimate.auto(items, contents: contents, task: EngineTask(), cancel: CancelToken()))?
