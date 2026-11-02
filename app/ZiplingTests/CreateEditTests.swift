@@ -255,4 +255,44 @@ struct CreateEditTests {
         model.close()
         again.close()
     }
+
+    @Test func quickLookArrowsMoveTheSelectionOverFiles() async throws {
+        let root = try makeTree()
+        try "two".write(to: root.appending(path: "Project/docs/second.txt"), atomically: true, encoding: .utf8)
+        try "three".write(to: root.appending(path: "Project/docs/third.txt"), atomically: true, encoding: .utf8)
+        let made = try await create(root, "Arrows.zlg", CreateOptions(format: .zlg, level: .fast))
+        let model = ArchiveModel(url: made.files[0])
+        await model.load()
+        model.show(folder: "Project/docs")
+        let files = model.visibleItems.filter { !$0.isFolder }.map(\.id)
+        #expect(files.count == 3)
+        model.selection = [files[0]]
+        model.moveQuickLookSelection(by: 1)
+        #expect(model.selection == [files[1]])
+        model.moveQuickLookSelection(by: 1)
+        model.moveQuickLookSelection(by: 1)
+        #expect(model.selection == [files[2]], "stops at the last file")
+        model.moveQuickLookSelection(by: -1)
+        #expect(model.selection == [files[1]])
+        model.moveQuickLookSelection(toEnd: false)
+        #expect(model.selection == [files[0]])
+        model.selection = []
+        model.moveQuickLookSelection(by: 1)
+        #expect(model.selection == [files[0]], "from nothing, Down starts at the first file")
+        // Folders are stepped over: only files can be previewed.
+        model.show(folder: "Project")
+        let items = model.visibleItems
+        let firstFile = try #require(items.first { !$0.isFolder })
+        let afterDocs = try #require(items.drop { $0.id != "Project/docs" }.dropFirst().first { !$0.isFolder })
+        model.selection = []
+        model.moveQuickLookSelection(by: 1)
+        #expect(model.selection == [firstFile.id], "from nothing, the first file")
+        model.selection = ["Project/docs"]
+        model.moveQuickLookSelection(by: 1)
+        #expect(model.selection == [afterDocs.id], "from a folder, the file after it")
+        model.moveQuickLookSelection(toEnd: true)
+        model.moveQuickLookSelection(by: 1)
+        #expect(model.selection == [items.last { !$0.isFolder }!.id], "the last file holds")
+        model.close()
+    }
 }

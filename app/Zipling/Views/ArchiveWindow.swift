@@ -1,4 +1,3 @@
-import QuickLook
 import SwiftUI
 
 extension FocusedValues {
@@ -62,6 +61,7 @@ struct BrowserView: View {
     @FocusState private var listFocused: Bool
     /// Files from elsewhere being dragged over the window: how many, while they are.
     @State private var incoming = 0
+    @Environment(\.controlActiveState) private var activeState
 
     var body: some View {
         NavigationSplitView {
@@ -116,9 +116,10 @@ struct BrowserView: View {
         .searchFocused($searchFocused)
         .modifier(InsideScopes(searchInside: $model.searchInside, shown: hasArchivesInside))
         .onChange(of: model.searchFocusRequest) { searchFocused = true }
+        // Quick Look follows the front window, as in Finder.
+        .onChange(of: activeState) { _, state in if state == .key { model.quickLookFollowsThisWindow() } }
         .navigationSubtitle(subtitle)
         .toolbar { toolbar }
-        .quickLookPreview($model.quickLookURL, in: model.quickLookURLs)
         .sheet(item: $model.renaming) { item in
             RenameSheet(model: model, item: item)
         }

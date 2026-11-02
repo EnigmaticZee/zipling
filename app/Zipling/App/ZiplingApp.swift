@@ -1,3 +1,4 @@
+import Quartz
 import SwiftUI
 
 @main
@@ -124,5 +125,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    // MARK: Quick Look
+
+    // The panel looks for its controller along the responder chain, which ends at the
+    // app delegate: every archive window's panel is driven from the same place.
+    nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        MainActor.assumeIsolated { QuickLookPanelController.shared.model != nil }
+    }
+
+    nonisolated override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { QuickLookPanelController.shared.begin(panel) }
+    }
+
+    nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { QuickLookPanelController.shared.end(panel) }
     }
 }
