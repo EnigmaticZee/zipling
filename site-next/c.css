@@ -81,10 +81,10 @@
 .ctx .hi { background: var(--brand-2); color: #fff; }
 .cursor { position: absolute; left: 0; top: 0; width: 18px; height: 22px; z-index: 5; pointer-events: none; }
 .cursor svg { width: 18px; height: 22px; stroke: #fff; stroke-width: 1.2; fill: #111; }
-.in .ctx { animation: ctx 9s cubic-bezier(.2,.8,.2,1) infinite; }
-.in .cursor { animation: cur 9s cubic-bezier(.2,.8,.2,1) infinite; }
-.in .file.new { animation: fnew 9s ease infinite; }
-.in .file.sel { animation: fsel 9s ease infinite; }
+.in .ctx { animation: ctx 6.5s cubic-bezier(.2,.8,.2,1) infinite; }
+.in .cursor { animation: cur 6.5s cubic-bezier(.2,.8,.2,1) infinite; }
+.in .file.new { animation: fnew 6.5s ease infinite; }
+.in .file.sel { animation: fsel 6.5s ease infinite; }
 @keyframes cur { 0% { transform: translate(640px, 330px); } 12%, 20% { transform: translate(300px, 170px); } 30%, 46% { transform: translate(420px, 258px); } 60%, 100% { transform: translate(560px, 360px); } }
 @keyframes ctx { 0%, 14% { opacity: 0; transform: scale(.96); } 18%, 46% { opacity: 1; transform: none; } 50%, 100% { opacity: 0; transform: scale(.98); } }
 @keyframes fnew { 0%, 54% { opacity: 0; transform: translateY(-4px); } 60%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
@@ -218,7 +218,7 @@
 /* ---------- Quick Look scene ---------- */
 .ql-scene { position: relative; width: 100%; max-width: 780px; }
 .ql-win .zw-row.sel { background: transparent; box-shadow: none; }
-.ql-win .zw-row { animation-duration: 12.5s; animation-timing-function: ease; animation-iteration-count: infinite; }
+.ql-win .zw-row { animation-duration: 8.5s; animation-timing-function: ease; animation-iteration-count: infinite; }
 .in .ql-win .zw-row:nth-child(3) { animation-name: ql-r1; }
 .in .ql-win .zw-row:nth-child(4) { animation-name: ql-r2; }
 .in .ql-win .zw-row:nth-child(5) { animation-name: ql-r3; }
@@ -231,10 +231,10 @@
 .qlp-bar .t { position: absolute; left: 32px; opacity: 0; }
 .qlp-img { position: relative; aspect-ratio: 3 / 2; background: #000; }
 .qlp-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
-.in .qlp { animation: qlp 12.5s ease infinite; }
-.in .qlp .p1, .in .qlp .t1 { animation: qp1 12.5s ease infinite; }
-.in .qlp .p2, .in .qlp .t2 { animation: qp2 12.5s ease infinite; }
-.in .qlp .p3, .in .qlp .t3 { animation: qp3 12.5s ease infinite; }
+.in .qlp { animation: qlp 8.5s ease infinite; }
+.in .qlp .p1, .in .qlp .t1 { animation: qp1 8.5s ease infinite; }
+.in .qlp .p2, .in .qlp .t2 { animation: qp2 8.5s ease infinite; }
+.in .qlp .p3, .in .qlp .t3 { animation: qp3 8.5s ease infinite; }
 @keyframes qlp { 0%, 11% { opacity: 0; transform: translate(-50%, 0) scale(.96); } 14%, 88% { opacity: 1; transform: translate(-50%, 0); } 92%, 100% { opacity: 0; transform: translate(-50%, 0) scale(.98); } }
 @keyframes qp1 { 0%, 36% { opacity: 1; } 38%, 100% { opacity: 0; } }
 @keyframes qp2 { 0%, 36% { opacity: 0; } 38%, 60% { opacity: 1; } 62%, 100% { opacity: 0; } }
@@ -242,11 +242,11 @@
 .ql-scene .keycap { bottom: -46px; }
 .ql-scene .k-space { left: calc(50% - 40px); }
 .ql-scene .k-down { left: calc(50% + 46px); width: 36px; text-align: center; }
-.in .ql-scene .k-space { animation: k-space 12.5s ease infinite; }
-.in .ql-scene .k-down { animation: k-down 12.5s ease infinite; }
+.in .ql-scene .k-space { animation: k-space 8.5s ease infinite; }
+.in .ql-scene .k-down { animation: k-down 8.5s ease infinite; }
 @keyframes k-space { 0%, 10% { transform: translate(-50%, 0); } 12% { transform: translate(-50%, 2px); border-bottom-width: 1px; } 14%, 100% { transform: translate(-50%, 0); } }
 @keyframes k-down { 0%, 33% { transform: translate(-50%, 0); } 35% { transform: translate(-50%, 2px); border-bottom-width: 1px; } 37%, 57% { transform: translate(-50%, 0); } 59% { transform: translate(-50%, 2px); border-bottom-width: 1px; } 61%, 100% { transform: translate(-50%, 0); } }
-.in .ql-scene .cursor { animation: ql-cur 12.5s cubic-bezier(.2,.8,.2,1) infinite; }
+.in .ql-scene .cursor { animation: ql-cur 8.5s cubic-bezier(.2,.8,.2,1) infinite; }
 @keyframes ql-cur { 0% { transform: translate(620px, 300px); } 7%, 100% { transform: translate(236px, 134px); } }
 
 /* ---------- Drawn sheets: compress, convert, lock ---------- */
@@ -262,8 +262,8 @@
 .lv b { display: block; font-size: 13px; color: var(--ink); margin-bottom: 3px; }
 .lv em { position: absolute; right: 8px; top: 8px; font-style: normal; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); }
 .lv.on, .in .cmp .lv.was { background: var(--brand-soft); border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
-.in .cmp .lv.was { animation: lv-was 10s ease infinite; }
-.in .cmp .lv.pick { animation: lv-pick 10s ease infinite; }
+.in .cmp .lv.was { animation: lv-was 7s ease infinite; }
+.in .cmp .lv.pick { animation: lv-pick 7s ease infinite; }
 @keyframes lv-was { 0%, 18% { background: var(--brand-soft); border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); } 22%, 100% { background: var(--fill-1); border-color: var(--line); box-shadow: none; } }
 @keyframes lv-pick { 0%, 18% { background: var(--fill-1); border-color: var(--line); box-shadow: none; } 22%, 100% { background: var(--brand-soft); border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); } }
 .sheet .est { position: relative; margin-top: 14px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; background: var(--fill-1); font-size: 13px; min-height: 40px; }
@@ -271,8 +271,8 @@
 .sheet .est b { font-weight: 600; }
 .cmp .est b { position: absolute; left: 38px; top: 11px; }
 .cmp .est .e2 { opacity: 0; }
-.in .cmp .est .e1 { animation: e1 10s ease infinite; }
-.in .cmp .est .e2 { animation: e2 10s ease infinite; }
+.in .cmp .est .e1 { animation: e1 7s ease infinite; }
+.in .cmp .est .e2 { animation: e2 7s ease infinite; }
 @keyframes e1 { 0%, 22% { opacity: 1; } 25%, 100% { opacity: 0; } }
 @keyframes e2 { 0%, 23% { opacity: 0; } 26%, 100% { opacity: 1; } }
 .cnv .est div { line-height: 1.3; }
@@ -286,36 +286,36 @@
 .prog-wrap .prog { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, var(--brand-2), var(--brand)); }
 .sheet .done { position: absolute; left: 22px; right: 22px; bottom: 22px; height: 36px; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--good-soft); color: var(--good); font-size: 12.5px; font-weight: 700; opacity: 0; box-shadow: inset 0 0 0 1px var(--good-line); }
 .sheet .done svg { width: 16px; height: 16px; stroke-width: 2.4; }
-.in .cmp .sh-foot .go { animation: press 10s ease infinite; }
-.in .cmp .prog-wrap { animation: pw 10s ease infinite; }
-.in .cmp .prog-wrap .prog { animation: pfill 10s linear infinite; }
-.in .cmp .done { animation: done 10s ease infinite; }
-.in .cmp .sh-foot { animation: footfade 10s ease infinite; }
+.in .cmp .sh-foot .go { animation: press 7s ease infinite; }
+.in .cmp .prog-wrap { animation: pw 7s ease infinite; }
+.in .cmp .prog-wrap .prog { animation: pfill 7s linear infinite; }
+.in .cmp .done { animation: done 7s ease infinite; }
+.in .cmp .sh-foot { animation: footfade 7s ease infinite; }
 @keyframes press { 0%, 41% { transform: none; } 43% { transform: scale(.96); } 45%, 100% { transform: none; } }
 @keyframes pw { 0%, 44% { opacity: 0; } 46%, 58% { opacity: 1; } 60%, 100% { opacity: 0; } }
 @keyframes pfill { 0%, 45% { width: 0; } 58%, 100% { width: 100%; } }
 @keyframes done { 0%, 59% { opacity: 0; transform: translateY(6px); } 62%, 94% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; } }
 @keyframes footfade { 0%, 44% { opacity: 1; } 46%, 94% { opacity: 0; } 97%, 100% { opacity: 1; } }
-.in .cmp .cursor { animation: cmp-cur 10s cubic-bezier(.2,.8,.2,1) infinite; }
+.in .cmp .cursor { animation: cmp-cur 7s cubic-bezier(.2,.8,.2,1) infinite; }
 @keyframes cmp-cur { 0% { transform: translate(560px, 380px); } 14%, 30% { transform: translate(440px, 206px); } 40%, 100% { transform: translate(474px, 332px); } }
-.in .cnv .sh-foot .go { animation: press 9s ease infinite; }
-.in .cnv .prog-wrap { animation: pw 9s ease infinite; }
-.in .cnv .prog-wrap .prog { animation: pfill 9s linear infinite; }
-.in .cnv .done { animation: done 9s ease infinite; }
-.in .cnv .sh-foot { animation: footfade 9s ease infinite; }
-.in .cnv .cursor { animation: cnv-cur 9s cubic-bezier(.2,.8,.2,1) infinite; }
+.in .cnv .sh-foot .go { animation: press 6.5s ease infinite; }
+.in .cnv .prog-wrap { animation: pw 6.5s ease infinite; }
+.in .cnv .prog-wrap .prog { animation: pfill 6.5s linear infinite; }
+.in .cnv .done { animation: done 6.5s ease infinite; }
+.in .cnv .sh-foot { animation: footfade 6.5s ease infinite; }
+.in .cnv .cursor { animation: cnv-cur 6.5s cubic-bezier(.2,.8,.2,1) infinite; }
 @keyframes cnv-cur { 0% { transform: translate(540px, 340px); } 30%, 100% { transform: translate(470px, 286px); } }
 .lock .sw { width: 36px; height: 20px; border-radius: 10px; background: var(--them); position: relative; flex: none; }
 .lock .sw i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
-.in .lock .o1 .sw { animation: sw-on 9s ease infinite; }
-.in .lock .o1 .sw i { animation: sw-knob 9s ease infinite; }
-.in .lock .o2 .sw { animation: sw-on 9s ease infinite 1.8s; }
-.in .lock .o2 .sw i { animation: sw-knob 9s ease infinite 1.8s; }
+.in .lock .o1 .sw { animation: sw-on 6.5s ease infinite; }
+.in .lock .o1 .sw i { animation: sw-knob 6.5s ease infinite; }
+.in .lock .o2 .sw { animation: sw-on 6.5s ease infinite 1.3s; }
+.in .lock .o2 .sw i { animation: sw-knob 6.5s ease infinite 1.3s; }
 @keyframes sw-on { 0%, 16% { background: var(--them); } 19%, 90% { background: var(--brand-2); } 93%, 100% { background: var(--them); } }
 @keyframes sw-knob { 0%, 16% { transform: none; } 19%, 90% { transform: translateX(16px); } 93%, 100% { transform: none; } }
-.in .lock .parts span { animation: part 9s ease infinite; animation-delay: var(--at); }
+.in .lock .parts span { animation: part 6.5s ease infinite; animation-delay: var(--at); }
 @keyframes part { 0%, 40% { opacity: 0; transform: translateY(4px); } 44%, 90% { opacity: 1; transform: none; } 93%, 100% { opacity: 0; } }
-.in .lock .cursor { animation: lock-cur 9s cubic-bezier(.2,.8,.2,1) infinite; }
+.in .lock .cursor { animation: lock-cur 6.5s cubic-bezier(.2,.8,.2,1) infinite; }
 @keyframes lock-cur { 0% { transform: translate(520px, 360px); } 12%, 20% { transform: translate(42px, 206px); } 32%, 40% { transform: translate(42px, 242px); } 55%, 100% { transform: translate(300px, 330px); } }
 
 /* ---------- Edit in place scene ---------- */
@@ -327,15 +327,15 @@
 .edit-win .zw-row.new { opacity: 0; transform: translateY(-6px); }
 .dragged { position: absolute; display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line-2); box-shadow: var(--shadow-pop); font-size: 12.5px; font-weight: 600; opacity: 0; left: 0; top: 0; }
 .edit-scene .k-del { left: auto; right: 20px; bottom: -46px; transform: none; }
-.in .edit-scene .cursor { animation: ed-cur 10s cubic-bezier(.2,.8,.2,1) infinite; }
-.in .edit-scene .dragged { animation: ed-drag 10s cubic-bezier(.2,.8,.2,1) infinite; }
-.in .edit-win .zw-row.new { animation: ed-new 10s ease infinite; }
-.in .edit-win .zw-row.del { animation: ed-del 10s ease infinite; }
-.in .edit-win .saved { animation: ed-saved 10s ease infinite; }
-.in .edit-win .s1 { animation: ed-s1 10s ease infinite; }
-.in .edit-win .s2 { animation: ed-s2 10s ease infinite; }
-.in .edit-win .s3 { animation: ed-s3 10s ease infinite; }
-.in .edit-scene .k-del { animation: k-del 10s ease infinite; }
+.in .edit-scene .cursor { animation: ed-cur 7s cubic-bezier(.2,.8,.2,1) infinite; }
+.in .edit-scene .dragged { animation: ed-drag 7s cubic-bezier(.2,.8,.2,1) infinite; }
+.in .edit-win .zw-row.new { animation: ed-new 7s ease infinite; }
+.in .edit-win .zw-row.del { animation: ed-del 7s ease infinite; }
+.in .edit-win .saved { animation: ed-saved 7s ease infinite; }
+.in .edit-win .s1 { animation: ed-s1 7s ease infinite; }
+.in .edit-win .s2 { animation: ed-s2 7s ease infinite; }
+.in .edit-win .s3 { animation: ed-s3 7s ease infinite; }
+.in .edit-scene .k-del { animation: k-del 7s ease infinite; }
 @keyframes ed-cur { 0% { transform: translate(640px, 40px); } 8% { transform: translate(600px, 60px); } 30%, 36% { transform: translate(330px, 230px); } 52%, 70% { transform: translate(300px, 170px); } 85%, 100% { transform: translate(560px, 330px); } }
 @keyframes ed-drag { 0%, 6% { opacity: 0; transform: translate(600px, 50px); } 9% { opacity: 1; transform: translate(606px, 66px); } 30% { opacity: 1; transform: translate(336px, 236px); } 33%, 100% { opacity: 0; transform: translate(336px, 236px); } }
 @keyframes ed-new { 0%, 31% { opacity: 0; transform: translateY(-6px); } 35%, 100% { opacity: 1; transform: none; } }
