@@ -223,4 +223,36 @@ struct CreateEditTests {
         let old = CreateOptions(encoded: #"{"format":"zlg","level":"max","encryptNames":true,"leaveOutMacFiles":true}"#)
         #expect(old?.level == .max && old?.recovery == .off && old?.recoveryPercent == 3)
     }
+
+    /// The archive window's own path: Add Recovery (in the archive), then damage, then Check and Repair.
+    @Test func modelAddsARecordAndRepairsWithIt() async throws {
+        let root = try makeTree()
+        let made = try await create(root, "Model.zlg", CreateOptions(format: .zlg, level: .balanced))
+        let archive = made.files[0]
+        let model = ArchiveModel(url: archive)
+        await model.load()
+        #expect(model.recordInfo == nil && !model.canRepair)
+        model.addRecord(percent: 10)
+        for _ in 0..<2000 where model.jobs.contains(where: \.isRunning) { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(model.recordInfo?.percent == 10, "the archive was rewritten with a record")
+        #expect(try await Engine.recoveryInfo(archive)?.percent == 10)
+        let whole = try Data(contentsOf: archive)
+
+        // Junk in the blocks and over the footer, then the model's Check and Repair.
+        var damaged = whole
+        damaged.replaceSubrange(48..<48 + 200, with: Data(repeating: 0x5A, count: 200))
+        damaged.replaceSubrange(damaged.count - 64..<damaged.count, with: Data(repeating: 0, count: 64))
+        try damaged.write(to: archive)
+        let again = ArchiveModel(url: archive)
+        await again.load()
+        #expect(again.canRepair, "a damaged archive with a record offers Repair")
+        again.checkAndRepair()
+        for _ in 0..<2000 where again.jobs.contains(where: \.isRunning) { try await Task.sleep(for: .milliseconds(10)) }
+        let repaired = root.appending(path: "Model (Repaired).zlg")
+        #expect(fm.fileExists(atPath: repaired.path), "the repaired copy is next to the archive")
+        #expect(try Data(contentsOf: repaired) == whole, "bit for bit")
+        #expect(try Data(contentsOf: archive) == damaged, "the damaged file is left as it was")
+        model.close()
+        again.close()
+    }
 }
