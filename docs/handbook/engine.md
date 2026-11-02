@@ -167,7 +167,10 @@ or dropped bytes back to its original length and layout, and when damage exceeds
 the budget names the files it would lose from the index copy. The reader and the
 record were fuzzed with `examples/fuzzarchive.rs` (bit flips, overwritten runs,
 truncation, insertions, deletions, lying footer fields, damage in the last 64
-KiB): no panic, no hang, and no repair that claimed success on a copy that fails. Off unless asked for (`PackOptions::recovery_percent`,
+KiB): no panic, no hang, and no repair that claimed success on a copy that fails.
+The ZIP reader was fuzzed the same way (`examples/fuzzzip.rs`, 70,000 cases
+including a Mac-made ZIP with resource twins): no panic, no hang, and nothing
+written outside the destination. Off unless asked for (`PackOptions::recovery_percent`,
 1 to 50; `arca pack --recovery N`, `arca protect`, `arca check`, `arca repair`;
 FFI `arca_recovery_info/check/repair/add`). Cost on the 214 MB mixed-folder
 archive at 3%: about one second more to compress and 6.8 MB of size; a check
@@ -207,7 +210,9 @@ CLI (`arca`): `pack OUT INPUTS -l fast|balanced|max|ultra [-j N] [--no-transform
 `verify`, and the ZIP commands `zip`, `unzip`, `ziptest`.
 
 Research examples kept: `jpegmodel/` (the rounds that produced our JPEG coder),
-`lzsbench`, `lzslit`, `lztok` (the lzt codec), `treecmp` (tree comparison).
+`lzsbench`, `lzslit`, `lztok` (the lzt codec), `treecmp` (tree comparison); the
+robustness tools `fuzzarchive` and `fuzzzip` (`SEED ITERATIONS WORKDIR`; run them
+after any change to the readers or the record).
 
 FFI (`arca-ffi`, 12 functions): version, task new/cancel/free, string free, list,
 pack, extract, verify, zip create/extract/verify. The app calls `PackOptions::preset`

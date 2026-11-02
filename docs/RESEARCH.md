@@ -1374,7 +1374,12 @@ KiB, so a larger shift is still reported as damage. Tests: 7 bytes inserted, 300
 dropped, 4,500 inserted, each repaired byte for byte; the first attempt with a
 fixed list of probe shifts missed the 7-byte case, which is why anchors replaced
 it. The fuzzer was run again on the fixed engine: six seeds, 12,000 cases, no
-problem of any kind, 21 s a seed. The AppleScript `compress` command gained a `recovery` parameter (1 to
+problem of any kind, 21 s a seed. The ZIP reader got the same treatment
+(`examples/fuzzzip.rs`: ZIPs from the engine's writer at Deflate and stored, and a
+Mac-made one from ditto with its `__MACOSX` twins; the same mutations plus lies in
+32-bit fields and damage over the central directory; each case opened, verified
+and extracted, with a check that nothing lands beside the destination): 70,000
+cases, no panic, no hang, nothing escaped. The AppleScript `compress` command gained a `recovery` parameter (1 to
 50: inside a Zipling archive, a recovery file beside any other format). The
 engine's version is 1.0.0; the app stays 0.1.0 until its own release.
 
