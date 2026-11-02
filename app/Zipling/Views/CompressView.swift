@@ -7,7 +7,6 @@ extension Level {
         case .fast: "Fast"
         case .balanced: "Balanced"
         case .max: "Max"
-        case .ultra: "Ultra"
         }
     }
 
@@ -16,7 +15,6 @@ extension Level {
         case .fast: "hare"
         case .balanced: "gauge.with.dots.needle.50percent"
         case .max: "arrow.down.right.and.arrow.up.left"
-        case .ultra: "sparkles"
         }
     }
 
@@ -25,7 +23,6 @@ extension Level {
         case .fast: "Done in seconds. Smaller than a Finder zip."
         case .balanced: "Smaller than 7-Zip Ultra, and several times faster."
         case .max: "Smallest archive that still opens quickly."
-        case .ultra: "Every last byte. Slower to open."
         }
     }
 }

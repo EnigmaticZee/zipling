@@ -166,10 +166,13 @@ struct InteractionTests {
             UserDefaults.standard.removePersistentDomain(forName: suite)
         }
         #expect(Presets.saved().isEmpty)
-        let options = CreateOptions(format: .sevenZip, level: .ultra, encryptNames: true, splitBytes: 700 << 20)
+        let options = CreateOptions(format: .sevenZip, level: .max, encryptNames: true, splitBytes: 700 << 20)
         Presets.save([CreatePreset(name: "Discs", options: options, usesPassword: true)])
         let back = try #require(Presets.saved().first)
         #expect(back.name == "Discs" && back.options == options && back.usesPassword)
         #expect(CreateOptions(encoded: options.encoded) == options, "the last options used come back")
+        // Options saved by a build that still offered the engine's Ultra level.
+        let older = try JSONDecoder().decode(CreateOptions.self, from: Data(#"{"format":"7z","level":"ultra"}"#.utf8))
+        #expect(older.level == .max, "Ultra reads as Max")
     }
 }

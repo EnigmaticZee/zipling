@@ -23,11 +23,11 @@ enum ArchiveFormatChoice: String, AppEnum {
 }
 
 enum LevelChoice: String, AppEnum {
-    case auto, fast, balanced, max, ultra
+    case auto, fast, balanced, max
 
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Compression"
     static let caseDisplayRepresentations: [LevelChoice: DisplayRepresentation] = [
-        .auto: "Auto", .fast: "Fast", .balanced: "Balanced", .max: "Max", .ultra: "Ultra",
+        .auto: "Auto", .fast: "Fast", .balanced: "Balanced", .max: "Max",
     ]
 
     var level: Level? { Level(rawValue: rawValue) }

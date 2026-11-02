@@ -76,7 +76,9 @@ struct CreateOptions: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         format = try c.decodeIfPresent(ArchiveFormat.self, forKey: .format) ?? .zlg
-        level = try c.decodeIfPresent(Level.self, forKey: .level) ?? .balanced
+        // A level the app no longer offers (the engine's research Ultra) reads as Max.
+        let level = try c.decodeIfPresent(String.self, forKey: .level)
+        self.level = level.flatMap(Level.init(rawValue:)) ?? (level == nil ? .balanced : .max)
         encryptNames = try c.decodeIfPresent(Bool.self, forKey: .encryptNames) ?? true
         splitBytes = try c.decodeIfPresent(UInt64.self, forKey: .splitBytes)
         leaveOutMacFiles = try c.decodeIfPresent(Bool.self, forKey: .leaveOutMacFiles) ?? true
@@ -169,7 +171,7 @@ enum Creation {
     /// Fast and Balanced ZIPs without a password or split volumes come from the
     /// engine's writer: on a 660 MB folder, Deflate level 7 on every core made it
     /// 0.07% smaller than 7-Zip's fast Deflate (-mx1) in 1.4 s instead of 1.7 s.
-    /// Max and Ultra keep 7-Zip, whose optimal-parsing Deflate is 1% smaller.
+    /// Max keeps 7-Zip, whose optimal-parsing Deflate is 1% smaller.
     static func engineWritesZip(_ options: CreateOptions, password: String?) -> Bool {
         options.format == .zip && (password?.isEmpty ?? true) && options.splitBytes == nil
             && (options.level == .fast || options.level == .balanced)
@@ -201,7 +203,6 @@ enum Creation {
         case .fast: 1
         case .balanced: options.format == .zip ? 1 : 5
         case .max: 7
-        case .ultra: 9
         }
         var args = ["a", options.format == .zip ? "-tzip" : "-t7z", "-mx=\(level)", "-snl", "-bso0", "-bse2", "-bsp1",
                     "-sccUTF-8", "-scsUTF-8"]
@@ -247,7 +248,7 @@ enum Creation {
             // No AppleDouble "._" copies or extended attributes: clean on Linux.
             args += ["--no-mac-metadata", "--no-xattrs", "--exclude", ".DS_Store", "--exclude", "._*"]
         }
-        if options.format == .tarXz, options.level == .ultra || options.level == .max {
+        if options.format == .tarXz, options.level == .max {
             args += ["--options", "xz:compression-level=9"]
         }
         // Each item relative to its own folder, so the archive holds just their names.

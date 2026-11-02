@@ -43,8 +43,10 @@ final class ProgressRelay: Sendable {
     }
 }
 
+/// The engine's fourth level, Ultra, is research only and stays out of the app
+/// until it is finished; a stored "ultra" reads as Max (see CreateOptions).
 enum Level: String, CaseIterable, Identifiable, Codable, Sendable {
-    case fast, balanced, max, ultra
+    case fast, balanced, max
     var id: String { rawValue }
 }
 
