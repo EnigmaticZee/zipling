@@ -56,7 +56,7 @@
                 <div><b>19%</b><span>smaller than 7-Zip's best setting</span></div>
                 <div><b>30%</b><span>saved on a typical JPEG</span></div>
               </div>
-              <p class="honest"><b>The honest bit.</b> Only JPEGs get this treatment. HEIC photos from an iPhone and PNG screenshots take different routes: PNGs are unpacked (next idea), HEIC is stored as it is.</p>
+              <p class="honest"><b>The honest bit.</b> This coder is for JPEGs. PNG screenshots and graphics have a coder of their own (next idea). HEIC photos from an iPhone are stored as they are.</p>
             </div>
           </li>
           <li class="idea reveal">
@@ -64,12 +64,13 @@
             <div class="idea-body">
               <h2>It unpacks what is already compressed.</h2>
               <p>PDFs, PNGs, Office documents and disk images hide old, weak compression inside. Zipling undoes it exactly, compresses the raw data with a modern codec, and on the way out re-creates the original stream, byte for byte.</p>
+              <p>PNGs go one step further at the Max setting. Once unpacked, Zipling's own pixel coder predicts each pixel from its neighbours and stores only the difference: 19% smaller than the strongest general-purpose compressor on the same pixels, and faster.</p>
               <div class="idea-facts">
                 <div><b>56%</b><span>smaller than Finder's zip on PDFs and screenshots</span></div>
                 <div><b>42%</b><span>smaller than 7-Zip's best on the same folder, at the default setting</span></div>
                 <div><b>¼</b><span>smaller disk images at Max</span></div>
               </div>
-              <p class="honest"><b>The honest bit.</b> This only works where Zipling can reproduce the original compressor exactly. A stream it cannot reproduce is stored as it is, so nothing is ever changed.</p>
+              <p class="honest"><b>The honest bit.</b> This only works where Zipling can reproduce the original compressor exactly; a stream it cannot reproduce is stored as it is, so nothing is ever changed. The pixel coder stays off at the default setting, which keeps extraction quick: unpacking alone already makes screenshots 56% smaller than a zip there.</p>
             </div>
           </li>
           <li class="idea reveal">
