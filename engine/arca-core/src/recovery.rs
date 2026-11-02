@@ -65,7 +65,8 @@ pub struct RecordInfo {
     pub parity_bytes: u64,
     pub slice: u32,
     pub regions: u32,
-    /// Damage repairable in any one region, in bytes (the smallest region's parity).
+    /// Damage repairable in any one full region, in bytes: a full region's parity
+    /// (the last region is shorter and carries the same share of itself).
     pub repairs_up_to: u64,
 }
 
@@ -91,7 +92,7 @@ struct Record {
 impl Record {
     fn info(&self) -> RecordInfo {
         let parity: u64 = self.regions.iter().map(|&(_, m)| m as u64 * self.slice as u64).sum();
-        let least = self.regions.iter().map(|&(_, m)| m as u64 * self.slice as u64).min().unwrap_or(0);
+        let least = self.regions.iter().map(|&(_, m)| m as u64 * self.slice as u64).max().unwrap_or(0);
         RecordInfo {
             percent: self.percent,
             covered_bytes: self.data_len,

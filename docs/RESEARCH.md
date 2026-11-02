@@ -1352,6 +1352,24 @@ realignment scan for inserted or dropped bytes is not built: a shifted file
 shows as damage past the budget. Not measured yet: the app's clock on the
 record's cost; the engine's says about one second per 200 MB at 3%.
 
+**The 30 GB run (2026-11-01, 20:49-21:05).** Nothing bigger than 1.2 GB had been
+archived in testing, so a scale run before release: 30.8 GB in 60,307 files,
+built in four minutes from 10 GB of random bytes (unique, incompressible), 10 GB
+of generated prose over a 6,000-word vocabulary, 8 GB of patterned binary (256
+random 64 KiB pieces repeated by a seed), 50,000 small notes and the five public
+sets once. Default: 16.93 GB in 448 s (69 MB/s with another session loading the
+Mac; the random half goes through the quick probe and is stored), peak 4.48 GB
+resident, within the budget. `verify` decoded everything in 5.6 s; extraction
+wrote 30.8 GB in 14.1 s (the SSD's write speed), peak 2.4 GB, and `diff -r`
+found every file identical. Then the record: `protect` at 3% in 25 s, 489 MiB of
+parity over 15.77 GiB (3.03%), peak 835 MB; six 3,000-byte spots in six regions
+plus a zeroed footer; `check` found 5 data slices and 1 parity slice damaged and
+the footer gone, repairable; `repair` wrote the 17.4 GB copy in 49 s at a peak of
+486 MB (bounded by one region), and its SHA-256 equals the undamaged protected
+archive's; the copy verifies. One reporting flaw found and fixed: "repairs up to"
+quoted the smallest region's parity (the short tail region, 576 KiB) instead of a
+full region's (3.84 MiB per 128 MiB stretch); it now quotes a full region's.
+
 **Arca 1.0.0: the robustness pass and the realignment scan (2026-11-01, evening).**
 Before calling the engine 1.0, a fuzzing tool (`arca-core/examples/fuzzarchive.rs`)
 mutated archives made at Fast, Default and Max, with and without a record, 2,000

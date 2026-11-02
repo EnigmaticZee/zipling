@@ -170,7 +170,11 @@ truncation, insertions, deletions, lying footer fields, damage in the last 64
 KiB): no panic, no hang, and no repair that claimed success on a copy that fails.
 The ZIP reader was fuzzed the same way (`examples/fuzzzip.rs`, 70,000 cases
 including a Mac-made ZIP with resource twins): no panic, no hang, and nothing
-written outside the destination. Off unless asked for (`PackOptions::recovery_percent`,
+written outside the destination. Scale: a 30.8 GB, 60,307-file set (research
+log, "The 30 GB run") compressed at Default to 16.93 GB in 448 s at a peak of
+4.48 GB resident, verified in 5.6 s, extracted in 14.1 s and compared identical;
+its 3% record was written in 25 s and repaired six damaged regions plus a lost
+footer in 49 s at a peak of 486 MB, byte for byte. Off unless asked for (`PackOptions::recovery_percent`,
 1 to 50; `arca pack --recovery N`, `arca protect`, `arca check`, `arca repair`;
 FFI `arca_recovery_info/check/repair/add`). Cost on the 214 MB mixed-folder
 archive at 3%: about one second more to compress and 6.8 MB of size; a check
