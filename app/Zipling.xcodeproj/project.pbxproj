@@ -449,7 +449,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# The unmodified 7-Zip helper reads every non-Zipling format, in its own process.\n# tools/7zip/build.sh builds it from the pinned official source (run it once).\nHELPER=\"$SRCROOT/../tools/7zip/bin/7zz\"\nDEST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nif [ -x \"$HELPER\" ]; then\n  mkdir -p \"$DEST\"\n  cp -f \"$HELPER\" \"$DEST/7zz\"\n  codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"$DEST/7zz\"\nelif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  echo \"error: tools/7zip/bin/7zz is missing. Run tools/7zip/build.sh once.\"\n  exit 1\nelse\n  echo \"warning: the 7-Zip helper isn't built yet, so this debug build uses Homebrew's 7zz. Run tools/7zip/build.sh.\"\nfi\n";
+			shellScript = "# The unmodified 7-Zip helper reads every non-Zipling format, in its own process.\n# tools/7zip/build.sh builds it from the pinned official source (run it once).\nHELPER=\"$SRCROOT/../tools/7zip/bin/7zz\"\nDEST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nif [ -x \"$HELPER\" ]; then\n  mkdir -p \"$DEST\"\n  cp -f \"$HELPER\" \"$DEST/7zz\"\n  if [ \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" = \"-\" ]; then\n    codesign --force --sign - --timestamp=none \"$DEST/7zz\"\n  else\n    codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --options runtime --timestamp \"$DEST/7zz\"\n  fi\nelif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  echo \"error: tools/7zip/bin/7zz is missing. Run tools/7zip/build.sh once.\"\n  exit 1\nelse\n  echo \"warning: the 7-Zip helper isn't built yet, so this debug build uses Homebrew's 7zz. Run tools/7zip/build.sh.\"\nfi\n";
 		};
 		BA0A7BFD18B953476D1E9F9E /* Embed The Unarchiver's tools */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -468,7 +468,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# lsar and unar read classic Mac formats and legacy file-name encodings, in\n# their own processes. tools/unar/build.sh builds them from pinned source.\nDEST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nfor TOOL in lsar unar; do\n  HELPER=\"$SRCROOT/../tools/unar/bin/$TOOL\"\n  if [ -x \"$HELPER\" ]; then\n    mkdir -p \"$DEST\"\n    cp -f \"$HELPER\" \"$DEST/$TOOL\"\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"$DEST/$TOOL\"\n  elif [ \"$CONFIGURATION\" = \"Release\" ]; then\n    echo \"error: tools/unar/bin/$TOOL is missing. Run tools/unar/build.sh once.\"\n    exit 1\n  else\n    echo \"warning: The Unarchiver's $TOOL isn't built yet, so this debug build uses Homebrew's. Run tools/unar/build.sh.\"\n  fi\ndone\n";
+			shellScript = "# lsar and unar read classic Mac formats and legacy file-name encodings, in\n# their own processes. tools/unar/build.sh builds them from pinned source.\nDEST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nfor TOOL in lsar unar; do\n  HELPER=\"$SRCROOT/../tools/unar/bin/$TOOL\"\n  if [ -x \"$HELPER\" ]; then\n    mkdir -p \"$DEST\"\n    cp -f \"$HELPER\" \"$DEST/$TOOL\"\n    if [ \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" = \"-\" ]; then\n      codesign --force --sign - --timestamp=none \"$DEST/$TOOL\"\n    else\n      codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --options runtime --timestamp \"$DEST/$TOOL\"\n    fi\n  elif [ \"$CONFIGURATION\" = \"Release\" ]; then\n    echo \"error: tools/unar/bin/$TOOL is missing. Run tools/unar/build.sh once.\"\n    exit 1\n  else\n    echo \"warning: The Unarchiver's $TOOL isn't built yet, so this debug build uses Homebrew's. Run tools/unar/build.sh.\"\n  fi\ndone\n";
 		};
 		F05682BBD46EBFE9F33849C1 /* Build Rust engine */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -696,10 +696,13 @@
 			buildSettings = {
 				ARCHS = arm64;
 				CODE_SIGN_ENTITLEMENTS = ZiplingQuickLook/ZiplingQuickLook.entitlements;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = G39T62RW4Q;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = ZiplingQuickLook/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -707,6 +710,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/target/xcode/release";
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				OTHER_LDFLAGS = (
 					"-larca_ffi",
 					"-liconv",
@@ -770,11 +774,13 @@
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				ENABLE_HARDENED_RUNTIME = NO;
+				DEVELOPMENT_TEAM = G39T62RW4Q;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = Zipling/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -782,6 +788,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/target/xcode/release";
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				OTHER_LDFLAGS = (
 					"-larca_ffi",
 					"-liconv",
