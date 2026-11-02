@@ -201,7 +201,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
 .stage { position: relative; grid-template-columns: minmax(0, 1fr); border-radius: var(--radius); background: var(--bg-sunken); border: 1px solid var(--hair); overflow: clip; min-height: 560px; display: grid; }
 .panel { grid-area: 1 / 1; min-width: 0; opacity: 0; visibility: hidden; transition: opacity var(--moderate) ease, visibility 0s var(--moderate); display: grid; grid-template-columns: 1fr 300px; }
 .panel.on { opacity: 1; visibility: visible; transition: opacity var(--moderate) ease; }
-.panel-vis { position: relative; min-width: 0; min-height: 560px; display: grid; place-items: center; padding: 40px; overflow: clip; }
+.panel-vis { position: relative; min-width: 0; min-height: 560px; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 40px; overflow: clip; }
 .panel-copy { min-width: 0; padding: 36px 32px 36px 0; border-left: 1px solid var(--hair); padding-left: 32px; align-self: center; }
 .panel-copy .lead { margin-top: 10px; font-size: 15px; line-height: 24px; }
 .panel-copy .caption { margin-top: 16px; }
