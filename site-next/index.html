@@ -10,12 +10,13 @@
   <link rel="stylesheet" href="next.css">
   <script>document.documentElement.classList.add("js")</script>
   <script src="next.js" defer></script>
+  <script src="switch.js" defer></script>
 </head>
-<body>
+<body data-variant="a">
   <a class="skip" href="#main">Skip to content</a>
 
   <header class="nav">
-    <div class="nav-pill">
+    <div class="nav-inner">
       <a class="brand" href="#top" aria-label="Zipling home">
         <img src="../site/assets/icon-512.png" alt="" width="28" height="28">
         <span>Zipling</span>
@@ -28,7 +29,10 @@
         <a href="#app">The app</a>
         <a href="#faq">FAQ</a>
       </nav>
-      <a class="nav-cta" href="#get">Coming soon</a>
+      <div class="nav-right">
+        <span class="nav-price"><b>$19.99</b>, once</span>
+        <a class="nav-cta" href="#get">Coming soon</a>
+      </div>
     </div>
   </header>
 
@@ -46,10 +50,10 @@
           <li>Compress</li><li>Open anything</li><li>Repair</li><li>Convert</li>
         </ul>
         <div class="cta reveal">
-          <a class="btn btn-primary" href="https://github.com/EnigmaticZee/zipling">Follow along on GitHub <span aria-hidden="true">→</span></a>
+          <a class="btn btn-primary" href="#get">Coming soon · $19.99, once</a>
           <a class="btn btn-ghost" href="#smaller">See how it works</a>
         </div>
-        <p class="fine reveal">Coming soon · For Macs with Apple silicon</p>
+        <p class="fine reveal">One-time purchase, no subscription · For Macs with Apple silicon</p>
       </div>
 
       <!-- The one picture that explains Zipling: the same folder, zipped in Finder and packed by Zipling. -->
@@ -415,11 +419,12 @@
       <div class="wrap get-inner reveal">
         <img src="../site/assets/icon-512.png" alt="" width="88" height="88">
         <h2>Coming soon.</h2>
-        <p class="sub">Zipling is in development. Follow the project to see it come together, and be first to know when it is ready.</p>
+        <p class="sub">One price, paid once. No subscription, and every update is included.</p>
+        <p class="price"><span class="amount">$19.99</span><span class="per">one-time purchase</span></p>
         <div class="cta">
-          <a class="btn btn-primary" href="https://github.com/EnigmaticZee/zipling">Follow along on GitHub <span aria-hidden="true">→</span></a>
+          <span class="btn btn-primary is-soon">Coming soon</span>
         </div>
-        <p class="fine">For Macs with Apple silicon · Pricing to be announced</p>
+        <p class="fine">For Macs with Apple silicon</p>
       </div>
     </section>
 
@@ -453,7 +458,7 @@
           </details>
           <details>
             <summary>When can I download it, and what will it cost?</summary>
-            <p>Not yet. Zipling is in active development, and pricing hasn't been announced. Follow the project on GitHub.</p>
+            <p>Not yet. Zipling is in active development. It will cost $19.99, paid once: no subscription, and updates are included.</p>
           </details>
           <details>
             <summary>Which Macs does it run on?</summary>
@@ -473,7 +478,6 @@
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div><h3>Product</h3><a href="../site/benchmarks.html">Benchmarks</a><a href="../site/compare.html">Compare</a><a href="../site/arca.html">Inside the engine</a><a href="#faq">FAQ</a></div>
-        <div><h3>Project</h3><a href="https://github.com/EnigmaticZee/zipling">GitHub</a><a href="https://github.com/EnigmaticZee/zipling/issues/new?template=bug_report.yml">Report a bug</a></div>
         <div><h3>Legal</h3><a href="../site/privacy.html">Privacy</a><a href="../site/legal.html">Legal notice</a></div>
       </nav>
     </div>

@@ -2,6 +2,11 @@
 (() => {
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // The bar draws its hairline once the page is scrolled.
+  const nav = document.querySelector(".nav");
+  const onScroll = () => nav && nav.classList.toggle("scrolled", scrollY > 8);
+  addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
   // ---- Counters: <b data-count="192.6" data-from="281.1" data-dec="1" data-dur="1400" data-delay="0">
   const fmt = (v, dec) => v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
   function runCounter(el) {
