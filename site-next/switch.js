@@ -14,10 +14,10 @@
       font: 500 12.5px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif; color: #D9DBE6; background: #0B0C14; border-bottom: 1px solid rgba(255,255,255,.08); }
     .proto span.lbl { color: #8A8EA3; }
     .proto .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.07); }
-    .proto .seg a, .proto .seg button { appearance: none; border: 0; background: transparent; color: #B9BCCB; font: inherit; padding: 5px 11px; border-radius: 999px; cursor: pointer; text-decoration: none; }
+    .proto .seg a, .proto .seg button { white-space: nowrap; appearance: none; border: 0; background: transparent; color: #B9BCCB; font: inherit; padding: 5px 11px; border-radius: 999px; cursor: pointer; text-decoration: none; }
     .proto .seg .on { background: #FFFFFF; color: #0B0C14; }
     .proto .note { color: #6F7388; }
-    @media (max-width: 600px) { .proto { gap: 10px; } .proto .note { display: none; } }
+    @media (max-width: 600px) { .proto { gap: 10px; } .proto .note, .proto .lbl, .proto .long { display: none; } }
   `;
   const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style);
 
@@ -28,8 +28,9 @@
   bar.innerHTML = `
     <span class="lbl">Prototype</span>
     <span class="seg" id="proto-variant">
-      <a href="index.html" data-v="a">A · Bold</a>
-      <a href="b.html" data-v="b">B · Fluid</a>
+      <a href="index.html" data-v="a">A<span class="long"> · Bold</span></a>
+      <a href="b.html" data-v="b">B<span class="long"> · Fluid</span></a>
+      <a href="c.html" data-v="c">C<span class="long"> · Bold + shots</span></a>
     </span>
     <span class="lbl">Theme</span>
     <span class="seg" id="proto-theme">
