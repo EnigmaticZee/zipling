@@ -352,11 +352,11 @@
               <tr><td>Expands Mac asset catalogs and disk images</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
               <tr><td>Stores duplicates once, at any distance</td><td class="yes">Yes</td><td class="part">Within its window</td><td class="part">Within its window</td><td class="no">No</td></tr>
               <tr><td>Verifies each transform by rebuilding the original</td><td class="yes">Yes</td><td class="no">No transforms</td><td class="no">No transforms</td><td class="no">No transforms</td></tr>
-              <tr><td>Recovery data for damaged archives</td><td class="yes">Yes, a recovery file</td><td class="no">No</td><td class="yes">Yes, built in</td><td class="no">No</td></tr>
+              <tr><td>Recovery data for damaged archives</td><td class="yes">Yes, inside the archive</td><td class="no">No</td><td class="yes">Yes, built in</td><td class="no">No</td></tr>
             </tbody>
           </table>
         </div>
-        <p class="note">7-Zip, and Keka and BetterZip which use it, also filter arm64 code as Arca does. WinRAR's recovery record is part of its format; Zipling's recovery file is separate today and moves inside the format in 1.0. * Ultra is experimental and not in the released app.</p>
+        <p class="note">7-Zip, and Keka and BetterZip which use it, also filter arm64 code as Arca does. WinRAR's recovery record is part of its format, and so is Zipling's: repair data inside the .zlg, chosen when you compress, at 1 to 50% of the data; ZIP and 7z archives get a recovery file next to them instead. * Ultra is experimental and not in the released app.</p>
       </div>
     </section>
 

@@ -58,7 +58,7 @@ helper.
 1. **Zipling format (.zlg)**: dedup + format-aware transforms + parallel blocks (benchmarks in BENCHMARKS.md).
 2. **Mount any archive as a Finder volume** (FSKit, read-only): open files in place, no extraction.
 3. **Spotlight finds files inside archives** (importer for archive listings).
-4. **Self-healing archives**: Reed–Solomon recovery records (configurable %, like RAR's), plus `repair`.
+4. **Self-healing archives**: Reed–Solomon recovery records inside the `.zlg` (1 to 50%, 3% by default), plus `repair`. Done 1 November 2026 (format version 4).
 5. **Versioned archives**: `zipling update` appends a snapshot that shares unchanged chunks — Time-Machine-style history in one file.
 6. **Optimise existing archives**: convert a zip/7z/rar to .zlg, or to a smaller but universally compatible zip, losslessly.
 7. **Size & time estimate before you compress** (sampling), with a "best for…" recommendation (sharing with Windows → zip, Mac only → .zlg, maximum → Zipling max).
@@ -77,7 +77,7 @@ helper.
 | **1 — App MVP** | SwiftUI app shell, Rust FFI (UniFFI), libarchive backend in XPC helper, browser, extract/compress sheets, drag & drop, progress, Quick Look preview | daily-driver for zip/7z/rar/tar/.zlg |
 | **2 — Breadth** | 7-Zip + XADMaster backends, all read formats, write matrix, split + encryption everywhere, edit in place | every comparison row green |
 | **3 — Differentiators** | Finder mount (FSKit), Spotlight, recovery records, versioned archives, optimise-archive, estimate | features nobody else has |
-| **4 — Engine v2** | encryption + recovery in .zlg; multi-threaded Lepton decoding for folders of a few huge photos (max extraction already beats 7z on mixed data, but not yet on PDF/PNG folders); a multi-threaded LZMA match finder for inputs with fewer blocks than cores; x86-64 BCJ; recursive unwrapping (zip-in-zip, JPEG-in-PDF); PNG pixel model; WAV/AIFF predictor; context-mixing text codec for ultra; memory budgeting for 8 GB Macs; deterministic block order | another 10–30% on mixed data, and extraction at least as fast as 7z at every level |
+| **4 — Engine v2** | encryption (the recovery record inside .zlg landed on 1 November 2026); multi-threaded Lepton decoding for folders of a few huge photos (max extraction already beats 7z on mixed data, but not yet on PDF/PNG folders); a multi-threaded LZMA match finder for inputs with fewer blocks than cores; x86-64 BCJ; recursive unwrapping (zip-in-zip, JPEG-in-PDF); PNG pixel model; WAV/AIFF predictor; context-mixing text codec for ultra; memory budgeting for 8 GB Macs; deterministic block order | another 10–30% on mixed data, and extraction at least as fast as 7z at every level |
 | **5 — Ship** | notarisation, Sparkle updates or Mac App Store, localisation, docs site | 1.0 |
 
 ## 6. Open decisions
@@ -105,7 +105,7 @@ Parked on purpose, to revisit before a future release.
 **Requires an engine change** (Stage 8 features that change the Arca engine and, for the first two, the `.zlg` format; parked until the engine is opened up again):
 
 * **Versioned archives.** One `.zlg` keeps several snapshots of a folder; each update adds only what changed, and any earlier version can be restored. Requires an engine change: a chain of indexes sharing data blocks, and an "add a snapshot" operation. Format change.
-* **Recovery data inside the `.zlg`.** Self-healing stored in the archive itself, so one file can repair its own damage. Requires an engine change: the engine writes the recovery data and uses it when reading. Format change. (A separate recovery file next to any archive needs no engine change and is in the app.)
+* **Recovery data inside the `.zlg`.** Done 1 November 2026: format version 4 carries a Reed-Solomon record between the blocks and the index, with copies of the index and footer, so one file repairs its own damage; off unless chosen, 1 to 50%. The separate recovery file stays for ZIP and 7z.
 * **Shrink later, block by block.** Re-pack a Fast archive to Max one block at a time, so the job can pause, resume and survive a restart. Requires an engine change: swapping individual blocks and rewriting the index. (Re-packing the whole archive in one go needs no engine change and is in the app.)
 
 **Waiting on an Apple Developer account:**

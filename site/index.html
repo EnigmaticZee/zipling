@@ -527,7 +527,7 @@
         </details>
         <details>
           <summary>What if an archive gets damaged?</summary>
-          <p>Give it a recovery file. Zipling saves repair data next to any archive, at 5, 10 or 20% of its size, and if the archive is later damaged by a failing disk or a broken download, it rebuilds the damaged parts exactly, byte for byte. If more is damaged than the recovery file can cover, Zipling tells you instead of guessing. It works for any archive, not just Zipling's own.</p>
+          <p>Add repair data when you compress. In a Zipling archive it lives inside the file, at 1 to 50% of its size (3% unless you choose otherwise), so one file carries its own repair; for ZIP and 7z, Zipling saves a recovery file next to the archive. If the archive is later damaged by a failing disk or a broken download, Zipling rebuilds the damaged parts exactly, byte for byte, even when the damage took the end of the file. If more is damaged than the repair data can cover, it tells you which files are lost instead of guessing.</p>
         </details>
         <details>
           <summary>What is Arca?</summary>

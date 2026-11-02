@@ -79,6 +79,7 @@ Done (first slice):
 - [x] A size and time estimate in the Compress and Convert sheets, from compressing a sample spread across the files (exact when everything fits in the sample), and an Auto level that picks Fast, Balanced or Max from it
 - [x] Shrink later: archives made at Fast or Balanced are re-packed at Max while the Mac is idle and plugged in, swapped in only when complete, checked, identical in content and smaller
 - [x] Recovery files: `Name.zip.recovery` (5, 10 or 20% of the archive) rebuilds damaged parts with Reed–Solomon coding; Check and Repair in the inspector, a repair button when an archive won't open, and a warning when one opens only in part
+- [x] Recovery record inside Zipling archives (format version 4, 1 November 2026): the compress sheet's Recovery setting (Off, In the archive, Separate file; 1 to 50%, 3% by default, the cost shown from the estimate), Add Recovery in the inspector and the archive menu, Check and Repair and the window's Repair button routed to the engine for `.zlg`; the engine repairs from a corrected copy, restores a lost index and footer from the record's copies, and names the files it cannot recover
 - [x] Automation: Shortcuts actions (compress, extract, convert), AppleScript commands, two Folder Action scripts; Spotlight finds archives by the names of the files inside
 
 Next:
